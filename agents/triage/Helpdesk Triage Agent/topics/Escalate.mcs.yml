@@ -1,0 +1,31 @@
+mcs.metadata:
+  componentName: Escalate
+  description: Triggered when the user wants to talk to a human, or after 3 fallbacks. Routes to the IT-Helpdesk Teams channel.
+kind: AdaptiveDialog
+startBehavior: CancelOtherTopics
+beginDialog:
+  kind: OnEscalate
+  id: main
+  intent:
+    displayName: Escalate
+    includeInOnSelectIntent: false
+    triggerQueries:
+      - Talk to a person
+      - Talk to a human
+      - I want a human
+      - Connect me to support
+      - Get me a real person
+      - This isn't working — get me help
+      - I need a real agent
+      - Speak to IT
+      - Speak to helpdesk
+      - Live agent please
+
+  actions:
+    - kind: SendActivity
+      id: sendMessage_escalate
+      conversationOutcome: Escalated
+      activity: |-
+        I'll route this to the IT helpdesk team. They'll see this conversation and pick it up shortly. If it's urgent, you can also reach them directly in the IT-Helpdesk Teams channel or by phone (extension on the company portal).
+
+        Is there anything else I can help with in the meantime?

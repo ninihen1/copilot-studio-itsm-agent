@@ -1,0 +1,77 @@
+{
+  "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+  "type": "AdaptiveCard",
+  "version": "1.5",
+  "body": [
+    {
+      "type": "TextBlock",
+      "text": "SLA BREACH",
+      "weight": "Bolder",
+      "size": "Large",
+      "color": "Attention",
+      "wrap": true
+    },
+    {
+      "type": "TextBlock",
+      "text": "Ticket ${ticketNumber} has exceeded its SLA window.",
+      "wrap": true
+    },
+    {
+      "type": "FactSet",
+      "facts": [
+        { "title": "Ticket",         "value": "${ticketNumber}" },
+        { "title": "Priority",       "value": "${priority}" },
+        { "title": "Caller",         "value": "${callerUpn}" },
+        { "title": "Assignment grp", "value": "${assignmentGroup}" },
+        { "title": "Currently with", "value": "${assignedTo}" },
+        { "title": "Opened",         "value": "${openedDate}" },
+        { "title": "SLA was due",    "value": "${slaDue}" },
+        { "title": "Now overdue by", "value": "${overdueBy}" }
+      ]
+    },
+    {
+      "type": "Container",
+      "spacing": "Medium",
+      "items": [
+        { "type": "TextBlock", "text": "Summary", "weight": "Bolder" },
+        { "type": "TextBlock", "text": "${shortDescription}", "wrap": true }
+      ]
+    }
+  ],
+  "actions": [
+    {
+      "type": "Action.OpenUrl",
+      "title": "Open ticket",
+      "url": "${ticketUrl}"
+    },
+    {
+      "type": "Action.Submit",
+      "title": "Acknowledge breach",
+      "data": { "decision": "acknowledged", "ticketId": "${ticketId}" }
+    },
+    {
+      "type": "Action.ShowCard",
+      "title": "Escalate now",
+      "card": {
+        "type": "AdaptiveCard",
+        "body": [
+          {
+            "type": "Input.Text",
+            "id": "escalationNotes",
+            "label": "Why is escalation needed?",
+            "isMultiline": true,
+            "isRequired": true
+          }
+        ],
+        "actions": [
+          {
+            "type": "Action.Submit",
+            "title": "Escalate",
+            "style": "destructive",
+            "data": { "decision": "escalate", "ticketId": "${ticketId}" }
+          }
+        ]
+      }
+    }
+  ]
+}

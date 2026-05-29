@@ -1,0 +1,29 @@
+mcs.metadata:
+  componentName: Greeting
+  description: Triggered when the user greets the agent.
+kind: AdaptiveDialog
+beginDialog:
+  kind: OnRecognizedIntent
+  id: main
+  intent:
+    displayName: Greeting
+    includeInOnSelectIntent: false
+    triggerQueries:
+      - Good afternoon
+      - Good morning
+      - Hello
+      - Hey
+      - Hi
+      - Hi there
+
+  actions:
+    - kind: SendActivity
+      id: sendMessage_greet
+      activity:
+        text:
+          - Hi — what's the IT issue or request?
+        speak:
+          - Hi, what's the IT issue or request?
+
+    - kind: CancelAllDialogs
+      id: cancelAllDialogs_greet

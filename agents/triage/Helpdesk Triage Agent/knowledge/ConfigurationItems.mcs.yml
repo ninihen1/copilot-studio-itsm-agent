@@ -1,0 +1,7 @@
+mcs.metadata:
+  componentName: Configuration Items
+  description: The CMDB. Resolves user-facing names ("Salesforce", "the production database", "office wifi") to canonical CIs and their owners.
+kind: KnowledgeSourceConfiguration
+source:
+  kind: SharePointSearchSource
+  site: https://contoso.sharepoint.com/sites/ITSM/Lists/ConfigurationItems

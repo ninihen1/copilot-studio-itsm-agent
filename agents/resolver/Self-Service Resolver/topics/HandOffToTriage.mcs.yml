@@ -1,0 +1,17 @@
+mcs.metadata:
+  componentName: Hand Off To Triage
+  description: Cleanly redirects the user to the Helpdesk Triage Agent (configured as a connected agent in the agent settings). Conversation history is preserved automatically by Copilot Studio's connected-agent handoff.
+kind: AdaptiveDialog
+beginDialog:
+  kind: OnRedirect
+  id: main
+  actions:
+    - kind: SendActivity
+      id: sendMessage_handoff
+      activity: |-
+        Connecting you with the Helpdesk Triage Agent now. They have everything we've discussed.
+
+    - kind: TransferConversationToAgent
+      id: transfer_to_triage
+      agentDialog: cr1c2_helpdesktriage
+      conversationOutcome: TransferredToAgent

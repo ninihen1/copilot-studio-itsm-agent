@@ -1,0 +1,18 @@
+mcs.metadata:
+  componentName: Conversation Start
+  description: Greets the user and sets expectations for the helpdesk session.
+kind: AdaptiveDialog
+beginDialog:
+  kind: OnConversationStart
+  id: main
+  actions:
+    - kind: SendActivity
+      id: sendMessage_intro
+      activity:
+        text:
+          - |-
+            Hi, I'm the Helpdesk Triage Agent. I can help you log a ticket, find a knowledge base article, or check the status of a request you've already raised.
+
+            Tell me what you need — for example: "I forgot my password", "I need access to the Finance SharePoint", or "show me my open tickets". I'll classify it, look for a self-help answer first, and only escalate to a human if needed.
+        speak:
+          - Hi, I'm the Helpdesk Triage Agent. How can I help?

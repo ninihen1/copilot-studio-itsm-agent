@@ -1,0 +1,174 @@
+name: SPFx Build and Deploy
+
+on:
+  pull_request:
+    paths:
+      - "src/**"
+      - "config/**"
+      - "sharepoint/**"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/spfx-build-deploy.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "src/**"
+      - "config/**"
+      - "sharepoint/**"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/spfx-build-deploy.yml"
+  workflow_dispatch:
+    inputs:
+      deploy:
+        description: "Deploy the packaged .sppkg to the tenant app catalog"
+        required: true
+        default: false
+        type: boolean
+      environment:
+        description: "GitHub environment containing deployment secrets"
+        required: true
+        default: pilot
+        type: choice
+        options:
+          - pilot
+          - production
+      appCatalogUrl:
+        description: "App catalog URL (site collection app catalog on /sites/ITSM)"
+        required: true
+        default: "https://contoso.sharepoint.com/sites/ITSM"
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: "22.14.0"
+  PACKAGE_GLOB: "sharepoint/solution/*.sppkg"
+
+jobs:
+  build:
+    name: Build and package SPFx
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install dependencies
+        shell: bash
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci
+          else
+            npm install
+          fi
+
+      - name: Build and package
+        run: npm run ci
+
+      - name: Verify package exists
+        shell: bash
+        run: |
+          shopt -s nullglob
+          packages=($PACKAGE_GLOB)
+          if [ ${#packages[@]} -eq 0 ]; then
+            echo "No .sppkg package found under sharepoint/solution."
+            echo "Check config/package-solution.json paths.zippedPackage and the SPFx package script."
+            exit 1
+          fi
+          printf "Found package: %s\n" "${packages[@]}"
+
+      - name: Upload SPFx package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: spfx-sppkg
+          path: ${{ env.PACKAGE_GLOB }}
+          if-no-files-found: error
+          retention-days: 30
+
+  deploy:
+    name: Deploy to tenant app catalog
+    runs-on: ubuntu-latest
+    needs: build
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.deploy == true }}
+    environment: ${{ inputs.environment }}
+
+    steps:
+      - name: Download SPFx package artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: spfx-sppkg
+          path: ./dist/spfx
+
+      - name: Setup Node.js for CLI for Microsoft 365
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install CLI for Microsoft 365
+        run: npm install --global @pnp/cli-microsoft365
+
+      - name: Decode deployment certificate
+        shell: bash
+        env:
+          M365_CERT_BASE64: ${{ secrets.M365_CERT_BASE64 }}
+        run: |
+          if [ -z "$M365_CERT_BASE64" ]; then
+            echo "Missing required secret M365_CERT_BASE64."
+            exit 1
+          fi
+          echo "$M365_CERT_BASE64" | base64 --decode > ./m365-deploy-cert.pfx
+          chmod 600 ./m365-deploy-cert.pfx
+
+      - name: Upload and deploy package
+        shell: bash
+        env:
+          M365_TENANT_ID: ${{ secrets.M365_TENANT_ID }}
+          M365_APP_ID: ${{ secrets.M365_APP_ID }}
+          M365_CERT_PASSWORD: ${{ secrets.M365_CERT_PASSWORD }}
+          APP_CATALOG_URL: ${{ inputs.appCatalogUrl }}
+        run: |
+          set -euo pipefail
+
+          for required in M365_TENANT_ID M365_APP_ID M365_CERT_PASSWORD APP_CATALOG_URL; do
+            if [ -z "${!required:-}" ]; then
+              echo "Missing required deployment value: $required"
+              exit 1
+            fi
+          done
+
+          package_path="$(find ./dist/spfx -name '*.sppkg' -type f | head -n 1)"
+          if [ -z "$package_path" ]; then
+            echo "No .sppkg artifact found in ./dist/spfx."
+            exit 1
+          fi
+
+          package_name="$(basename "$package_path")"
+
+          m365 login \
+            --authType certificate \
+            --tenant "$M365_TENANT_ID" \
+            --appId "$M365_APP_ID" \
+            --certificateFile ./m365-deploy-cert.pfx \
+            --password "$M365_CERT_PASSWORD"
+
+          m365 spo app add \
+            --appCatalogScope sitecollection \
+            --appCatalogUrl "$APP_CATALOG_URL" \
+            --filePath "$package_path" \
+            --overwrite
+
+          m365 spo app deploy \
+            --appCatalogScope sitecollection \
+            --appCatalogUrl "$APP_CATALOG_URL" \
+            --name "$package_name" \
+            --skipFeatureDeployment
+
+          m365 logout

@@ -1,0 +1,45 @@
+mcs.metadata:
+  componentName: On Error
+  description: Triggered when the agent encounters an error. Logs telemetry and provides a graceful fallback message.
+kind: AdaptiveDialog
+startBehavior: UseLatestPublishedContentAndCancelOtherTopics
+beginDialog:
+  kind: OnError
+  id: main
+  actions:
+    - kind: SetVariable
+      id: setVariable_timestamp
+      variable: init:Topic.CurrentTime
+      value: =Text(Now(), DateTimeFormat.UTC)
+
+    - kind: ConditionGroup
+      id: condition_testmode
+      conditions:
+        - id: condition_testmode_true
+          condition: =System.Conversation.InTestMode = true
+          actions:
+            - kind: SendActivity
+              id: sendMessage_testmode
+              activity: |-
+                Error Message: {System.Error.Message}
+                Error Code: {System.Error.Code}
+                Conversation Id: {System.Conversation.Id}
+                Time (UTC): {Topic.CurrentTime}
+
+      elseActions:
+        - kind: SendActivity
+          id: sendMessage_user
+          activity:
+            text:
+              - |-
+                Something went wrong on my end. Your conversation reference is {System.Conversation.Id} (time {Topic.CurrentTime} UTC). Please try again — if it keeps happening, paste that reference into a message to the IT-Helpdesk Teams channel and someone will look at it.
+            speak:
+              - Something went wrong on my end. Please try again.
+
+    - kind: LogCustomTelemetryEvent
+      id: logTelemetry_OnError
+      eventName: TriageAgent.OnError
+      properties: "={ErrorMessage: System.Error.Message, ErrorCode: System.Error.Code, TimeUTC: Topic.CurrentTime, ConversationId: System.Conversation.Id}"
+
+    - kind: CancelAllDialogs
+      id: cancelAllDialogs_onerror

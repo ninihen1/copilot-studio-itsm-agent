@@ -1,0 +1,22 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/spfx/client-side-web-part-manifest.schema.json",
+  "id": "00000000-0000-4000-8000-000000000027",
+  "alias": "ItsmHostWebPart",
+  "componentType": "WebPart",
+  "version": "*",
+  "manifestVersion": 2,
+  "requiresCustomScript": false,
+  "supportedHosts": ["SharePointWebPart", "TeamsPersonalApp", "TeamsTab", "SharePointFullPage"],
+  "supportsThemeVariants": true,
+  "supportsFullBleed": true,
+  "preconfiguredEntries": [{
+    "groupId": "00000000-0000-4000-8000-000000000021",
+    "group": { "default": "Advanced" },
+    "title": { "default": "ITSM Service Portal" },
+    "description": { "default": "Full-screen SharePoint-hosted ITSM SPA shell" },
+    "officeFabricIconFontName": "ServiceActivity",
+    "properties": {
+      "description": "ITSM Service Portal"
+    }
+  }]
+}

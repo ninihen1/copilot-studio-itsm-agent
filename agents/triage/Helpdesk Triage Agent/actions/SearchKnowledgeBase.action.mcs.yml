@@ -1,0 +1,40 @@
+mcs.metadata:
+  componentName: SearchKnowledgeBase
+  description: Reads published articles directly from the ITSM SharePoint Knowledge Base list using the SharePoint connector.
+kind: TaskDialog
+
+modelDisplayName: Search knowledge base
+modelDescription: |-
+  Reads published articles from the internal ITSM Knowledge Base SharePoint list. Use this before creating a ticket when a self-service article may resolve the issue. Rank the returned articles against the user's question using ArticleNumber, Title, Keywords, Summary, and Body. Prefer exact article number, title, and keyword matches. For password reset questions, prefer KB-0001 when the user says reset, forgot, locked out, sign in, login, or cannot access their account.
+
+inputs:
+  - kind: ManualTaskInput
+    propertyName: dataset
+    value: https://contoso.sharepoint.com/sites/ITSM
+
+  - kind: ManualTaskInput
+    propertyName: table
+    value: Knowledge Base
+
+  - kind: ManualTaskInput
+    propertyName: filter
+    value: ArticleStatus eq 'Published'
+
+  - kind: ManualTaskInput
+    propertyName: top
+    value: 100
+
+outputs:
+  - propertyName: body
+
+action:
+  kind: InvokeConnectorTaskAction
+  connectionReference: cre79_agent.shared_sharepointonline.f1550c57e913479793d6de83b61fa1b0
+  connectionProperties:
+    $kind: ConnectionProperties
+    diagnostics:
+    mode: Invoker
+
+  operationId: GetItems
+
+outputMode: All

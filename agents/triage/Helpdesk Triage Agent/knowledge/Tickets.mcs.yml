@@ -1,0 +1,7 @@
+mcs.metadata:
+  componentName: Tickets
+  description: Existing tickets across all types. Used to find similar tickets, the caller's open tickets, and Major Incident parents. SharePoint enforces item-level permissions on read — agent only sees what the caller can see.
+kind: KnowledgeSourceConfiguration
+source:
+  kind: SharePointSearchSource
+  site: https://contoso.sharepoint.com/sites/ITSM/Lists/Tickets

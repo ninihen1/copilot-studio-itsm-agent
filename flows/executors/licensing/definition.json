@@ -1,0 +1,446 @@
+{
+  "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "$connections": {
+      "defaultValue": {},
+      "type": "Object"
+    },
+    "$authentication": {
+      "defaultValue": {},
+      "type": "SecureObject"
+    }
+  },
+  "triggers": {
+    "When_a_PJ_is_Modified": {
+      "type": "OpenApiConnection",
+      "inputs": {
+        "host": {
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+          "connectionName": "shared_sharepointonline",
+          "operationId": "GetOnUpdatedItems"
+        },
+        "parameters": {
+          "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+          "table": "Provisioning Jobs"
+        },
+        "authentication": "@parameters('$authentication')"
+      },
+      "recurrence": {
+        "frequency": "Minute",
+        "interval": 3
+      },
+      "splitOn": "@triggerOutputs()?['body/value']"
+    }
+  },
+  "actions": {
+    "If_Licensing_Dispatched": {
+      "runAfter": {},
+      "type": "If",
+      "expression": {
+        "and": [
+          {
+            "equals": [
+              "@triggerOutputs()?['body/JobStatus/Value']",
+              "Dispatched"
+            ]
+          },
+          {
+            "startsWith": [
+              "@coalesce(triggerOutputs()?['body/JobType'],'')",
+              "licensing."
+            ]
+          }
+        ]
+      },
+      "actions": {
+        "Update_Status_InProgress": {
+          "runAfter": {},
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+              "connectionName": "shared_sharepointonline",
+              "operationId": "PatchItem"
+            },
+            "parameters": {
+              "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+              "table": "Provisioning Jobs",
+              "id": "@triggerOutputs()?['body/ID']",
+              "item/Title": "@coalesce(triggerOutputs()?['body/Title'], 'PJ-fallback')",
+              "item/JobType": "@triggerOutputs()?['body/JobType']",
+              "item/ParentTicket/Id": "@triggerOutputs()?['body/ParentTicket/Id']",
+              "item/JobStatus/Value": "InProgress",
+              "item/CallerUpn": "@triggerOutputs()?['body/CallerUpn']",
+              "item/TargetJson": "@triggerOutputs()?['body/TargetJson']",
+              "item/IdempotencyKey": "@triggerOutputs()?['body/IdempotencyKey']",
+              "item/CorrelationId": "@triggerOutputs()?['body/CorrelationId']",
+              "item/ServicePrincipal": "SP-IT-Licensing",
+              "item/StartedAt": "@utcNow()"
+            },
+            "authentication": "@parameters('$authentication')"
+          }
+        },
+        "Get_KV_Secret": {
+          "runAfter": {
+            "Update_Status_InProgress": [
+              "Succeeded"
+            ]
+          },
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_keyvault",
+              "connectionName": "shared_keyvault",
+              "operationId": "GetSecret"
+            },
+            "parameters": {
+              "secretName": "SP-IT-Licensing-ClientSecret"
+            },
+            "authentication": "@parameters('$authentication')"
+          },
+          "runtimeConfiguration": {
+            "secureData": {
+              "properties": [
+                "inputs",
+                "outputs"
+              ]
+            }
+          }
+        },
+        "Get_Graph_Token": {
+          "runAfter": {
+            "Get_KV_Secret": [
+              "Succeeded"
+            ]
+          },
+          "type": "Http",
+          "inputs": {
+            "method": "POST",
+            "uri": "https://login.microsoftonline.com/00000000-0000-4000-8000-000000000009/oauth2/v2.0/token",
+            "headers": {
+              "Content-Type": "application/x-www-form-urlencoded"
+            },
+            "body": "@{concat('grant_type=client_credentials&client_id=00000000-0000-4000-8000-000000000025&scope=https%3A%2F%2Fgraph.microsoft.com%2F.default&client_secret=', encodeUriComponent(body('Get_KV_Secret')?['value']))}"
+          },
+          "runtimeConfiguration": {
+            "secureData": {
+              "properties": [
+                "inputs",
+                "outputs"
+              ]
+            }
+          }
+        },
+        "Parse_Token": {
+          "runAfter": {
+            "Get_Graph_Token": [
+              "Succeeded"
+            ]
+          },
+          "type": "ParseJson",
+          "inputs": {
+            "content": "@body('Get_Graph_Token')",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "token_type": {
+                  "type": "string"
+                },
+                "expires_in": {
+                  "type": "integer"
+                },
+                "access_token": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "runtimeConfiguration": {
+            "secureData": {
+              "properties": [
+                "inputs"
+              ]
+            }
+          }
+        },
+        "Parse_Target": {
+          "runAfter": {
+            "Parse_Token": [
+              "Succeeded"
+            ]
+          },
+          "type": "ParseJson",
+          "inputs": {
+            "content": "@triggerOutputs()?['body/TargetJson']",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string"
+                },
+                "upn": {
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "Switch_JobType": {
+          "runAfter": {
+            "Parse_Target": [
+              "Succeeded"
+            ]
+          },
+          "type": "Switch",
+          "expression": "@triggerOutputs()?['body/JobType']",
+          "default": {
+            "actions": {
+              "Update_Failed_UnsupportedJobType": {
+                "runAfter": {},
+                "type": "OpenApiConnection",
+                "inputs": {
+                  "host": {
+                    "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                    "connectionName": "shared_sharepointonline",
+                    "operationId": "PatchItem"
+                  },
+                  "parameters": {
+                    "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+                    "table": "Provisioning Jobs",
+                    "id": "@triggerOutputs()?['body/ID']",
+                    "item/Title": "@coalesce(triggerOutputs()?['body/Title'], 'PJ-fallback')",
+                    "item/JobType": "@triggerOutputs()?['body/JobType']",
+                    "item/ParentTicket/Id": "@triggerOutputs()?['body/ParentTicket/Id']",
+                    "item/JobStatus/Value": "Failed",
+                    "item/CallerUpn": "@triggerOutputs()?['body/CallerUpn']",
+                    "item/TargetJson": "@triggerOutputs()?['body/TargetJson']",
+                    "item/IdempotencyKey": "@triggerOutputs()?['body/IdempotencyKey']",
+                    "item/CorrelationId": "@triggerOutputs()?['body/CorrelationId']",
+                    "item/ServicePrincipal": "SP-IT-Licensing",
+                    "item/CompletedAt": "@utcNow()",
+                    "item/ErrorJson": "@{concat('{\"reason\":\"unsupported_jobtype\",\"jobType\":\"', triggerOutputs()?['body/JobType'], '\",\"executor\":\"SP-IT-Licensing\"}')}"
+                  },
+                  "authentication": "@parameters('$authentication')"
+                }
+              }
+            }
+          },
+          "cases": {
+            "JobType_AssignLicense": {
+              "case": "licensing.assign",
+              "actions": {
+                "Compose_Body_AssignLicense": {
+                  "runAfter": {},
+                  "type": "Compose",
+                  "inputs": {
+                    "addLicenses": [
+                      {
+                        "skuId": "@{coalesce(if(empty(coalesce(triggerOutputs()?['body/ArgsJson'],'')), null, json(triggerOutputs()?['body/ArgsJson'])?['skuId']), '00000000-0000-0000-0000-000000000000')}",
+                        "disabledPlans": []
+                      }
+                    ],
+                    "removeLicenses": []
+                  }
+                },
+                "Http_Graph_AssignLicense": {
+                  "runAfter": {
+                    "Compose_Body_AssignLicense": [
+                      "Succeeded"
+                    ]
+                  },
+                  "type": "Http",
+                  "inputs": {
+                    "method": "POST",
+                    "uri": "@{concat('https://graph.microsoft.com/v1.0/users/', body('Parse_Target')?['upn'], '/assignLicense')}",
+                    "headers": {
+                      "Authorization": "@{concat('Bearer ', body('Parse_Token')?['access_token'])}",
+                      "Content-Type": "application/json"
+                    },
+                    "body": "@outputs('Compose_Body_AssignLicense')"
+                  }
+                },
+                "Update_Succeeded_AssignLicense": {
+                  "runAfter": {
+                    "Http_Graph_AssignLicense": [
+                      "Succeeded"
+                    ]
+                  },
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "host": {
+                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                      "connectionName": "shared_sharepointonline",
+                      "operationId": "PatchItem"
+                    },
+                    "parameters": {
+                      "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+                      "table": "Provisioning Jobs",
+                      "id": "@triggerOutputs()?['body/ID']",
+                      "item/Title": "@coalesce(triggerOutputs()?['body/Title'], 'PJ-fallback')",
+                      "item/JobType": "@triggerOutputs()?['body/JobType']",
+                      "item/ParentTicket/Id": "@triggerOutputs()?['body/ParentTicket/Id']",
+                      "item/JobStatus/Value": "Succeeded",
+                      "item/CallerUpn": "@triggerOutputs()?['body/CallerUpn']",
+                      "item/TargetJson": "@triggerOutputs()?['body/TargetJson']",
+                      "item/IdempotencyKey": "@triggerOutputs()?['body/IdempotencyKey']",
+                      "item/CorrelationId": "@triggerOutputs()?['body/CorrelationId']",
+                      "item/ServicePrincipal": "SP-IT-Licensing",
+                      "item/CompletedAt": "@utcNow()",
+                      "item/DurationMs": "@div(sub(ticks(utcNow()), ticks(body('Update_Status_InProgress')?['StartedAt'])), 10000)",
+                      "item/GraphRequestId": "@coalesce(outputs('Http_Graph_AssignLicense')?['headers']?['x-ms-correlation-id'], outputs('Http_Graph_AssignLicense')?['headers']?['request-id'])",
+                      "item/ResultJson": "@{concat('{\"licenseAssigned\":true,\"targetUpn\":\"', body('Parse_Target')?['upn'], '\"}')}"
+                    },
+                    "authentication": "@parameters('$authentication')"
+                  }
+                },
+                "Update_Failed_AssignLicense": {
+                  "runAfter": {
+                    "Http_Graph_AssignLicense": [
+                      "Failed",
+                      "TimedOut"
+                    ]
+                  },
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "host": {
+                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                      "connectionName": "shared_sharepointonline",
+                      "operationId": "PatchItem"
+                    },
+                    "parameters": {
+                      "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+                      "table": "Provisioning Jobs",
+                      "id": "@triggerOutputs()?['body/ID']",
+                      "item/Title": "@coalesce(triggerOutputs()?['body/Title'], 'PJ-fallback')",
+                      "item/JobType": "@triggerOutputs()?['body/JobType']",
+                      "item/ParentTicket/Id": "@triggerOutputs()?['body/ParentTicket/Id']",
+                      "item/JobStatus/Value": "Failed",
+                      "item/CallerUpn": "@triggerOutputs()?['body/CallerUpn']",
+                      "item/TargetJson": "@triggerOutputs()?['body/TargetJson']",
+                      "item/IdempotencyKey": "@triggerOutputs()?['body/IdempotencyKey']",
+                      "item/CorrelationId": "@triggerOutputs()?['body/CorrelationId']",
+                      "item/ServicePrincipal": "SP-IT-Licensing",
+                      "item/CompletedAt": "@utcNow()",
+                      "item/DurationMs": "@div(sub(ticks(utcNow()), ticks(body('Update_Status_InProgress')?['StartedAt'])), 10000)",
+                      "item/GraphRequestId": "@coalesce(outputs('Http_Graph_AssignLicense')?['headers']?['x-ms-correlation-id'], outputs('Http_Graph_AssignLicense')?['headers']?['request-id'])",
+                      "item/ErrorJson": "@{string(body('Http_Graph_AssignLicense'))}"
+                    },
+                    "authentication": "@parameters('$authentication')"
+                  }
+                }
+              }
+            },
+            "JobType_RevokeLicense": {
+              "case": "licensing.revoke",
+              "actions": {
+                "Compose_Body_RevokeLicense": {
+                  "runAfter": {},
+                  "type": "Compose",
+                  "inputs": {
+                    "addLicenses": [],
+                    "removeLicenses": [
+                      "@{coalesce(if(empty(coalesce(triggerOutputs()?['body/ArgsJson'],'')), null, json(triggerOutputs()?['body/ArgsJson'])?['skuId']), '00000000-0000-0000-0000-000000000000')}"
+                    ]
+                  }
+                },
+                "Http_Graph_RevokeLicense": {
+                  "runAfter": {
+                    "Compose_Body_RevokeLicense": [
+                      "Succeeded"
+                    ]
+                  },
+                  "type": "Http",
+                  "inputs": {
+                    "method": "POST",
+                    "uri": "@{concat('https://graph.microsoft.com/v1.0/users/', body('Parse_Target')?['upn'], '/assignLicense')}",
+                    "headers": {
+                      "Authorization": "@{concat('Bearer ', body('Parse_Token')?['access_token'])}",
+                      "Content-Type": "application/json"
+                    },
+                    "body": "@outputs('Compose_Body_RevokeLicense')"
+                  }
+                },
+                "Update_Succeeded_RevokeLicense": {
+                  "runAfter": {
+                    "Http_Graph_RevokeLicense": [
+                      "Succeeded"
+                    ]
+                  },
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "host": {
+                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                      "connectionName": "shared_sharepointonline",
+                      "operationId": "PatchItem"
+                    },
+                    "parameters": {
+                      "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+                      "table": "Provisioning Jobs",
+                      "id": "@triggerOutputs()?['body/ID']",
+                      "item/Title": "@coalesce(triggerOutputs()?['body/Title'], 'PJ-fallback')",
+                      "item/JobType": "@triggerOutputs()?['body/JobType']",
+                      "item/ParentTicket/Id": "@triggerOutputs()?['body/ParentTicket/Id']",
+                      "item/JobStatus/Value": "Succeeded",
+                      "item/CallerUpn": "@triggerOutputs()?['body/CallerUpn']",
+                      "item/TargetJson": "@triggerOutputs()?['body/TargetJson']",
+                      "item/IdempotencyKey": "@triggerOutputs()?['body/IdempotencyKey']",
+                      "item/CorrelationId": "@triggerOutputs()?['body/CorrelationId']",
+                      "item/ServicePrincipal": "SP-IT-Licensing",
+                      "item/CompletedAt": "@utcNow()",
+                      "item/DurationMs": "@div(sub(ticks(utcNow()), ticks(body('Update_Status_InProgress')?['StartedAt'])), 10000)",
+                      "item/GraphRequestId": "@coalesce(outputs('Http_Graph_RevokeLicense')?['headers']?['x-ms-correlation-id'], outputs('Http_Graph_RevokeLicense')?['headers']?['request-id'])",
+                      "item/ResultJson": "@{concat('{\"licenseRevoked\":true,\"targetUpn\":\"', body('Parse_Target')?['upn'], '\"}')}"
+                    },
+                    "authentication": "@parameters('$authentication')"
+                  }
+                },
+                "Update_Failed_RevokeLicense": {
+                  "runAfter": {
+                    "Http_Graph_RevokeLicense": [
+                      "Failed",
+                      "TimedOut"
+                    ]
+                  },
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "host": {
+                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                      "connectionName": "shared_sharepointonline",
+                      "operationId": "PatchItem"
+                    },
+                    "parameters": {
+                      "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+                      "table": "Provisioning Jobs",
+                      "id": "@triggerOutputs()?['body/ID']",
+                      "item/Title": "@coalesce(triggerOutputs()?['body/Title'], 'PJ-fallback')",
+                      "item/JobType": "@triggerOutputs()?['body/JobType']",
+                      "item/ParentTicket/Id": "@triggerOutputs()?['body/ParentTicket/Id']",
+                      "item/JobStatus/Value": "Failed",
+                      "item/CallerUpn": "@triggerOutputs()?['body/CallerUpn']",
+                      "item/TargetJson": "@triggerOutputs()?['body/TargetJson']",
+                      "item/IdempotencyKey": "@triggerOutputs()?['body/IdempotencyKey']",
+                      "item/CorrelationId": "@triggerOutputs()?['body/CorrelationId']",
+                      "item/ServicePrincipal": "SP-IT-Licensing",
+                      "item/CompletedAt": "@utcNow()",
+                      "item/DurationMs": "@div(sub(ticks(utcNow()), ticks(body('Update_Status_InProgress')?['StartedAt'])), 10000)",
+                      "item/GraphRequestId": "@coalesce(outputs('Http_Graph_RevokeLicense')?['headers']?['x-ms-correlation-id'], outputs('Http_Graph_RevokeLicense')?['headers']?['request-id'])",
+                      "item/ErrorJson": "@{string(body('Http_Graph_RevokeLicense'))}"
+                    },
+                    "authentication": "@parameters('$authentication')"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "else": {
+        "actions": {}
+      }
+    }
+  }
+}

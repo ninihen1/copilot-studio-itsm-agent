@@ -1,0 +1,17 @@
+{
+  "version": "2.0",
+  "managedDependency": { "Enabled": false },
+  "extensions": {
+    "http": {
+      "routePrefix": "api",
+      "maxConcurrentRequests": 25,
+      "maxOutstandingRequests": 100
+    }
+  },
+  "logging": {
+    "applicationInsights": {
+      "samplingSettings": { "isEnabled": true, "excludedTypes": "Request" }
+    }
+  },
+  "functionTimeout": "00:05:00"
+}

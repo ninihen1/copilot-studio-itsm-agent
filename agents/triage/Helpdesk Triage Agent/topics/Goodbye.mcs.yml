@@ -1,0 +1,31 @@
+mcs.metadata:
+  componentName: Goodbye
+  description: Triggered when the user says goodbye.
+kind: AdaptiveDialog
+beginDialog:
+  kind: OnRecognizedIntent
+  id: main
+  intent:
+    displayName: Goodbye
+    includeInOnSelectIntent: false
+    triggerQueries:
+      - Bye
+      - Bye bye
+      - Goodbye
+      - See you
+      - See you later
+      - Cya
+      - Farewell
+      - Talk to you later
+
+  actions:
+    - kind: SendActivity
+      id: sendMessage_bye
+      activity:
+        text:
+          - Goodbye. If you need anything else, just say hi.
+        speak:
+          - Goodbye.
+
+    - kind: EndConversation
+      id: endConversation_bye

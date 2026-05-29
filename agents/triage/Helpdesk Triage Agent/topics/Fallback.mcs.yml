@@ -1,0 +1,23 @@
+mcs.metadata:
+  componentName: Fallback
+  description: Triggered when the user's utterance does not match any existing topic. After 3 failed attempts, escalates to a human queue.
+kind: AdaptiveDialog
+beginDialog:
+  kind: OnUnknownIntent
+  id: main
+  actions:
+    - kind: ConditionGroup
+      id: conditionGroup_fallback
+      conditions:
+        - id: conditionItem_under3
+          condition: =System.FallbackCount < 3
+          actions:
+            - kind: SendActivity
+              id: sendMessage_rephrase
+              activity: |-
+                I'm not sure how to help with that — can you rephrase it as a specific IT issue or request? Examples: "I forgot my password", "I need access to a SharePoint site", "my laptop won't connect to wifi".
+
+      elseActions:
+        - kind: BeginDialog
+          id: beginDialog_escalate
+          dialog: cre79_agent.topic.Escalate

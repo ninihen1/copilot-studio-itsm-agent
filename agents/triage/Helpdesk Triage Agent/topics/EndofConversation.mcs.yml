@@ -1,0 +1,78 @@
+mcs.metadata:
+  componentName: End of Conversation
+  description: Wraps the conversation with a CSAT survey and an offer to continue.
+kind: AdaptiveDialog
+startBehavior: CancelOtherTopics
+beginDialog:
+  kind: OnSystemRedirect
+  id: main
+  actions:
+    - kind: Question
+      id: q_resolved
+      conversationOutcome: ResolvedImplied
+      alwaysPrompt: true
+      variable: init:Topic.SurveyResponse
+      prompt: Did that answer your question?
+      entity: BooleanPrebuiltEntity
+
+    - kind: ConditionGroup
+      id: condition_resolved
+      conditions:
+        - id: condition_resolved_true
+          condition: =Topic.SurveyResponse = true
+          actions:
+            - kind: CSATQuestion
+              id: csat_main
+              conversationOutcome: ResolvedConfirmed
+
+            - kind: SendActivity
+              id: sendMessage_thanks
+              activity: Thanks — feedback noted.
+
+            - kind: Question
+              id: q_continue
+              alwaysPrompt: true
+              variable: init:Topic.Continue
+              prompt: Anything else?
+              entity: BooleanPrebuiltEntity
+
+            - kind: ConditionGroup
+              id: condition_continue
+              conditions:
+                - id: condition_continue_true
+                  condition: =Topic.Continue = true
+                  actions:
+                    - kind: SendActivity
+                      id: sendMessage_listening
+                      activity: Go ahead.
+
+              elseActions:
+                - kind: SendActivity
+                  id: sendMessage_bye
+                  activity: Bye.
+
+                - kind: EndConversation
+                  id: endConversation_resolved
+
+      elseActions:
+        - kind: Question
+          id: q_tryagain
+          alwaysPrompt: true
+          variable: init:Topic.TryAgain
+          prompt: Sorry I couldn't help. Should I try again, or escalate to a human?
+          entity: BooleanPrebuiltEntity
+
+        - kind: ConditionGroup
+          id: condition_tryagain
+          conditions:
+            - id: condition_tryagain_false
+              condition: =Topic.TryAgain = false
+              actions:
+                - kind: BeginDialog
+                  id: beginDialog_escalate_eoc
+                  dialog: cre79_agent.topic.Escalate
+
+          elseActions:
+            - kind: SendActivity
+              id: sendMessage_listening_again
+              activity: Go ahead — what didn't work?

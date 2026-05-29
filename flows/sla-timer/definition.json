@@ -1,0 +1,349 @@
+{
+  "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "$connections": {
+      "defaultValue": {},
+      "type": "Object"
+    },
+    "$authentication": {
+      "defaultValue": {},
+      "type": "SecureObject"
+    }
+  },
+  "triggers": {
+    "Run_Every_15_Min_Business_Hours": {
+      "type": "Recurrence",
+      "recurrence": {
+        "frequency": "Week",
+        "interval": 1,
+        "schedule": {
+          "weekDays": [
+            "Monday",
+            "Tuesday",
+            "Wednesday",
+            "Thursday",
+            "Friday"
+          ],
+          "hours": [
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15,
+            16
+          ],
+          "minutes": [
+            0,
+            15,
+            30,
+            45
+          ]
+        },
+        "timeZone": "AUS Eastern Standard Time"
+      }
+    }
+  },
+  "actions": {
+    "Get_Open_Tickets": {
+      "runAfter": {},
+      "type": "OpenApiConnection",
+      "inputs": {
+        "host": {
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+          "connectionName": "shared_sharepointonline",
+          "operationId": "GetItems"
+        },
+        "parameters": {
+          "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+          "table": "Tickets",
+          "$filter": "TicketState ne 'Resolved' and TicketState ne 'Closed' and TicketState ne 'Cancelled' and Archived ne 1 and TicketTypeValidationStatus ne 'NeedsConfirmation'",
+          "$top": 500
+        },
+        "authentication": "@parameters('$authentication')"
+      }
+    },
+    "ForEach_Open_Ticket": {
+      "runAfter": {
+        "Get_Open_Tickets": [
+          "Succeeded"
+        ]
+      },
+      "type": "Foreach",
+      "foreach": "@body('Get_Open_Tickets')?['value']",
+      "actions": {
+        "Compose_TargetMinutes": {
+          "runAfter": {},
+          "type": "Compose",
+          "inputs": "@if(or(contains(toLower(coalesce(items('ForEach_Open_Ticket')?['Priority']?['Value'], items('ForEach_Open_Ticket')?['Priority'], '')), 'critical'), contains(toLower(coalesce(items('ForEach_Open_Ticket')?['Priority']?['Value'], items('ForEach_Open_Ticket')?['Priority'], '')), 'high')), 240, if(or(contains(toLower(coalesce(items('ForEach_Open_Ticket')?['Priority']?['Value'], items('ForEach_Open_Ticket')?['Priority'], '')), 'normal'), contains(toLower(coalesce(items('ForEach_Open_Ticket')?['Priority']?['Value'], items('ForEach_Open_Ticket')?['Priority'], '')), 'moderate')), 480, 1440))"
+        },
+        "If_On_Hold": {
+          "runAfter": {
+            "Compose_TargetMinutes": [
+              "Succeeded"
+            ]
+          },
+          "type": "If",
+          "expression": {
+            "and": [
+              {
+                "equals": [
+                  "@items('ForEach_Open_Ticket')?['TicketState']?['Value']",
+                  "On Hold"
+                ]
+              }
+            ]
+          },
+          "actions": {
+            "Patch_On_Hold_Pause": {
+              "runAfter": {},
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": {
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                  "connectionName": "shared_sharepointonline",
+                  "operationId": "HttpRequest"
+                },
+                "parameters": {
+                  "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+                  "parameters/method": "POST",
+                  "parameters/uri": "@{concat('_api/web/lists/getbytitle(''Tickets'')/items(', items('ForEach_Open_Ticket')?['ID'], ')')}",
+                  "parameters/headers": {
+                    "IF-MATCH": "*",
+                    "X-HTTP-Method": "MERGE",
+                    "Accept": "application/json;odata=nometadata",
+                    "Content-Type": "application/json;odata=nometadata"
+                  },
+                  "parameters/body": {
+                    "SlaTargetMinutes": "@outputs('Compose_TargetMinutes')",
+                    "SlaStatus": "On Track",
+                    "OnHoldSince": "@coalesce(items('ForEach_Open_Ticket')?['OnHoldSince'], utcNow())",
+                    "TotalPausedMinutes": "@coalesce(items('ForEach_Open_Ticket')?['TotalPausedMinutes'], 0)",
+                    "WorkNotes": "@{concat(coalesce(items('ForEach_Open_Ticket')?['WorkNotes'], ''), decodeUriComponent('%0A'), 'SLA Timer: SLA paused while ticket is On Hold at ', utcNow(), '.')}"
+                  }
+                },
+                "authentication": "@parameters('$authentication')"
+              }
+            }
+          },
+          "else": {
+            "actions": {
+              "Compose_ResumePausedMinutes": {
+                "runAfter": {},
+                "type": "Compose",
+                "inputs": "@if(empty(items('ForEach_Open_Ticket')?['OnHoldSince']), coalesce(items('ForEach_Open_Ticket')?['TotalPausedMinutes'], 0), add(coalesce(items('ForEach_Open_Ticket')?['TotalPausedMinutes'], 0), div(sub(ticks(utcNow()), ticks(items('ForEach_Open_Ticket')?['OnHoldSince'])), 600000000)))"
+              },
+              "Compose_NewBusinessMinutes": {
+                "runAfter": {
+                  "Compose_ResumePausedMinutes": [
+                    "Succeeded"
+                  ]
+                },
+                "type": "Compose",
+                "inputs": "@add(coalesce(items('ForEach_Open_Ticket')?['SlaBusinessMinutesElapsed'], 0), 15)"
+              },
+              "Compose_PercentElapsed": {
+                "runAfter": {
+                  "Compose_NewBusinessMinutes": [
+                    "Succeeded"
+                  ]
+                },
+                "type": "Compose",
+                "inputs": "@div(mul(outputs('Compose_NewBusinessMinutes'), 100), outputs('Compose_TargetMinutes'))"
+              },
+              "If_Breached": {
+                "runAfter": {
+                  "Compose_PercentElapsed": [
+                    "Succeeded"
+                  ]
+                },
+                "type": "If",
+                "expression": {
+                  "and": [
+                    {
+                      "greaterOrEquals": [
+                        "@outputs('Compose_PercentElapsed')",
+                        100
+                      ]
+                    }
+                  ]
+                },
+                "actions": {
+                  "Patch_Ticket_Breached": {
+                    "runAfter": {},
+                    "type": "OpenApiConnection",
+                    "inputs": {
+                      "host": {
+                        "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                        "connectionName": "shared_sharepointonline",
+                        "operationId": "HttpRequest"
+                      },
+                      "parameters": {
+                        "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+                        "parameters/method": "POST",
+                        "parameters/uri": "@{concat('_api/web/lists/getbytitle(''Tickets'')/items(', items('ForEach_Open_Ticket')?['ID'], ')')}",
+                        "parameters/headers": {
+                          "IF-MATCH": "*",
+                          "X-HTTP-Method": "MERGE",
+                          "Accept": "application/json;odata=nometadata",
+                          "Content-Type": "application/json;odata=nometadata"
+                        },
+                        "parameters/body": {
+                          "SlaTargetMinutes": "@outputs('Compose_TargetMinutes')",
+                          "SlaBusinessMinutesElapsed": "@outputs('Compose_NewBusinessMinutes')",
+                          "SlaPercentElapsed": "@outputs('Compose_PercentElapsed')",
+                          "TotalPausedMinutes": "@outputs('Compose_ResumePausedMinutes')",
+                          "OnHoldSince": null,
+                          "SlaStatus": "Breached",
+                          "SlaBreachedAt": "@coalesce(items('ForEach_Open_Ticket')?['SlaBreachedAt'], utcNow())",
+                          "MadeSla": false,
+                          "WorkNotes": "@{concat(coalesce(items('ForEach_Open_Ticket')?['WorkNotes'], ''), decodeUriComponent('%0A'), 'SLA Timer: breached at ', utcNow(), ' after ', string(outputs('Compose_NewBusinessMinutes')), ' business minutes. Paused minutes=', string(outputs('Compose_ResumePausedMinutes')), '.')}"
+                        }
+                      },
+                      "authentication": "@parameters('$authentication')"
+                    }
+                  },
+                  "If_First_SLA_Breach_Notification": {
+                    "runAfter": {
+                      "Patch_Ticket_Breached": [
+                        "Succeeded"
+                      ]
+                    },
+                    "type": "If",
+                    "expression": {
+                      "and": [
+                        {
+                          "equals": [
+                            "@empty(items('ForEach_Open_Ticket')?['SlaBreachedAt'])",
+                            true
+                          ]
+                        }
+                      ]
+                    },
+                    "actions": {
+                      "Post_SLA_Breach_Notification": {
+                        "runAfter": {},
+                        "type": "OpenApiConnection",
+                        "inputs": {
+                          "host": {
+                            "apiId": "/providers/Microsoft.PowerApps/apis/shared_teams",
+                            "connectionName": "shared_teams",
+                            "operationId": "PostMessageToConversation"
+                          },
+                          "parameters": {
+                            "poster": "Flow bot",
+                            "location": "Chat with Flow bot",
+                            "body/recipient": "catherine.han@flowstudio.app",
+                            "body/messageBody": "@{concat('<h2>SLA breach</h2><p><b>Ticket:</b> ', items('ForEach_Open_Ticket')?['Title'], ' (item ID ', string(items('ForEach_Open_Ticket')?['ID']), ')</p><p><b>Priority:</b> ', coalesce(items('ForEach_Open_Ticket')?['Priority']?['Value'], string(items('ForEach_Open_Ticket')?['Priority']), '(none)'), '</p><p><b>SLA target:</b> ', string(outputs('Compose_TargetMinutes')), ' business minutes</p><p><b>Elapsed:</b> ', string(outputs('Compose_NewBusinessMinutes')), ' business minutes</p><p><b>Paused:</b> ', string(outputs('Compose_ResumePausedMinutes')), ' minutes</p><p><b>Breached at:</b> ', utcNow(), '</p><p><a href=\"https://contoso.sharepoint.com/sites/ITSM/Lists/Tickets/DispForm.aspx?ID=', string(items('ForEach_Open_Ticket')?['ID']), '\">Open ticket</a></p>')}"
+                          },
+                          "authentication": "@parameters('$authentication')"
+                        },
+                        "description": "Day 4 task 12: first SLA breach notification to service desk/admin via Teams Flow bot."
+                      }
+                    },
+                    "else": {
+                      "actions": {}
+                    },
+                    "description": "Only send the breach notification the first time a ticket crosses the SLA threshold."
+                  }
+                },
+                "else": {
+                  "actions": {
+                    "If_Warning": {
+                      "runAfter": {},
+                      "type": "If",
+                      "expression": {
+                        "and": [
+                          {
+                            "greaterOrEquals": [
+                              "@outputs('Compose_PercentElapsed')",
+                              75
+                            ]
+                          }
+                        ]
+                      },
+                      "actions": {
+                        "Patch_Ticket_Warning": {
+                          "runAfter": {},
+                          "type": "OpenApiConnection",
+                          "inputs": {
+                            "host": {
+                              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                              "connectionName": "shared_sharepointonline",
+                              "operationId": "HttpRequest"
+                            },
+                            "parameters": {
+                              "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+                              "parameters/method": "POST",
+                              "parameters/uri": "@{concat('_api/web/lists/getbytitle(''Tickets'')/items(', items('ForEach_Open_Ticket')?['ID'], ')')}",
+                              "parameters/headers": {
+                                "IF-MATCH": "*",
+                                "X-HTTP-Method": "MERGE",
+                                "Accept": "application/json;odata=nometadata",
+                                "Content-Type": "application/json;odata=nometadata"
+                              },
+                              "parameters/body": {
+                                "SlaTargetMinutes": "@outputs('Compose_TargetMinutes')",
+                                "SlaBusinessMinutesElapsed": "@outputs('Compose_NewBusinessMinutes')",
+                                "SlaPercentElapsed": "@outputs('Compose_PercentElapsed')",
+                                "TotalPausedMinutes": "@outputs('Compose_ResumePausedMinutes')",
+                                "OnHoldSince": null,
+                                "SlaStatus": "Warning",
+                                "SlaWarningAt": "@coalesce(items('ForEach_Open_Ticket')?['SlaWarningAt'], utcNow())",
+                                "MadeSla": true,
+                                "WorkNotes": "@{concat(coalesce(items('ForEach_Open_Ticket')?['WorkNotes'], ''), decodeUriComponent('%0A'), 'SLA Timer: warning at ', utcNow(), ' after ', string(outputs('Compose_NewBusinessMinutes')), ' business minutes. Paused minutes=', string(outputs('Compose_ResumePausedMinutes')), '.')}"
+                              }
+                            },
+                            "authentication": "@parameters('$authentication')"
+                          }
+                        }
+                      },
+                      "else": {
+                        "actions": {
+                          "Patch_Ticket_OnTrack": {
+                            "runAfter": {},
+                            "type": "OpenApiConnection",
+                            "inputs": {
+                              "host": {
+                                "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                                "connectionName": "shared_sharepointonline",
+                                "operationId": "HttpRequest"
+                              },
+                              "parameters": {
+                                "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+                                "parameters/method": "POST",
+                                "parameters/uri": "@{concat('_api/web/lists/getbytitle(''Tickets'')/items(', items('ForEach_Open_Ticket')?['ID'], ')')}",
+                                "parameters/headers": {
+                                  "IF-MATCH": "*",
+                                  "X-HTTP-Method": "MERGE",
+                                  "Accept": "application/json;odata=nometadata",
+                                  "Content-Type": "application/json;odata=nometadata"
+                                },
+                                "parameters/body": {
+                                  "SlaTargetMinutes": "@outputs('Compose_TargetMinutes')",
+                                  "SlaBusinessMinutesElapsed": "@outputs('Compose_NewBusinessMinutes')",
+                                  "SlaPercentElapsed": "@outputs('Compose_PercentElapsed')",
+                                  "TotalPausedMinutes": "@outputs('Compose_ResumePausedMinutes')",
+                                  "OnHoldSince": null,
+                                  "SlaStatus": "On Track",
+                                  "MadeSla": true
+                                }
+                              },
+                              "authentication": "@parameters('$authentication')"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,7 @@
+mcs.metadata:
+  componentName: Service Catalog
+  description: Orderable items for Request tickets. Each catalog item links to a JobType and an Approval Policy.
+kind: KnowledgeSourceConfiguration
+source:
+  kind: SharePointSearchSource
+  site: https://contoso.sharepoint.com/sites/ITSM/Lists/ServiceCatalog

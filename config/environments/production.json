@@ -1,0 +1,82 @@
+{
+  "environment": "production",
+  "tenant": {
+    "id": "00000000-0000-4000-8000-000000000009",
+    "name": "contoso.onmicrosoft.com",
+    "sharePointDomain": "contoso.sharepoint.com"
+  },
+  "powerPlatform": {
+    "environmentId": "00000000-0000-4000-8000-000000000045"
+  },
+  "sharePoint": {
+    "itsmSiteUrl": "https://contoso.sharepoint.com/sites/ITSM",
+    "appCatalogUrl": "https://contoso.sharepoint.com/sites/appcatalog"
+  },
+  "spfx": {
+    "solutionId": "00000000-0000-4000-8000-000000000029",
+    "solutionName": "itsm-frontend-client-side-solution",
+    "packagePath": "sharepoint/solution/itsm-frontend.sppkg",
+    "skipFeatureDeployment": true
+  },
+  "azure": {
+    "subscriptionId": "00000000-0000-4000-8000-000000000037",
+    "resourceGroup": "rg-itsm-pilot",
+    "keyVaultName": "kv-itsm-demo",
+    "appInsightsName": "appi-itsm-pilot",
+    "idempotencyStorageAccount": "stitsmidempotency",
+    "idempotencyTables": [
+      "IdempotencyKeys",
+      "JwtReplay"
+    ],
+    "serviceBus": {
+      "namespace": "sb-itsm-demo-pilot",
+      "topic": "provisioning-jobs",
+      "sku": "Standard",
+      "duplicateDetectionHistory": "PT10M",
+      "defaultMessageTimeToLive": "P1D",
+      "lockDuration": "PT5M",
+      "maxDeliveryCount": 5,
+      "requiresSessions": true,
+      "subscriptions": [
+        {
+          "name": "sub-identity",
+          "filter": "sys.Label LIKE 'identity.%'"
+        },
+        {
+          "name": "sub-groups",
+          "filter": "sys.Label LIKE 'groups.%'"
+        },
+        {
+          "name": "sub-licensing",
+          "filter": "sys.Label LIKE 'licensing.%'"
+        },
+        {
+          "name": "sub-exchange",
+          "filter": "sys.Label LIKE 'exchange.%'"
+        },
+        {
+          "name": "sub-sharepoint",
+          "filter": "sys.Label LIKE 'sharepoint.%'"
+        },
+        {
+          "name": "sub-teams",
+          "filter": "sys.Label LIKE 'teams.%' OR sys.Label LIKE 'endpoint.%'"
+        }
+      ]
+    }
+  },
+  "auth": {
+    "m365AppId": "00000000-0000-4000-8000-000000000023",
+    "deployTool": "CLI"
+  },
+  "runtime": {
+    "businessHoursTimeZone": "Australia/Sydney",
+    "businessHoursStart": "09:00",
+    "businessHoursEnd": "17:00",
+    "slaTargetsHours": {
+      "High": 4,
+      "Normal": 8,
+      "Low": 24
+    }
+  }
+}

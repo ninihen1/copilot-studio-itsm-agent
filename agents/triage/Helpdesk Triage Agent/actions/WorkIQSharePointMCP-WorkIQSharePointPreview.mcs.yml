@@ -1,0 +1,39 @@
+mcs.metadata:
+  componentName: Work IQ SharePoint MCP - Work IQ SharePoint (Preview)
+kind: TaskDialog
+modelDisplayName: Work IQ SharePoint (Preview)
+modelDescription: "Work IQ MCP server for Microsoft SharePoint operations. This feature is in preview and is part of the Work IQ tools, providing shared work intelligence and actions for agents. Availability and capabilities are subject to change. Learn more: https://aka.ms/AboutWorkIQ"
+action:
+  kind: InvokeExternalAgentTaskAction
+  connectionReference: cre79_agent.shared_workiqsharepoint.08cecd6b638a43cabcc587d16f350eb3
+  connectionProperties:
+    mode: Invoker
+
+  operationDetails:
+    kind: ModelContextProtocolMetadata
+    operationId: mcp_SharePointRemoteServer
+    tools:
+      kind: UseSpecificTools
+      tools:
+        - getFolderChildren
+        - readSmallTextFile
+        - getDefaultDocumentLibraryInSite
+        - listListItems
+        - checkOperationStatus
+        - readSmallBinaryFile
+        - getSiteByPath
+        - listColumns
+        - listLists
+        - getFileOrFolderMetadataByUrl
+        - listSubsites
+        - setSensitivityLabelOnFile
+        - deleteFileOrFolder
+        - findSite
+        - getListItem
+        - copyFileOrFolder
+        - shareFileOrFolder
+        - listDocumentLibrariesInSite
+        - uploadFileFromUrl
+        - getFileOrFolderMetadata
+        - findFileOrFolder
+        - moveFileOrFolder

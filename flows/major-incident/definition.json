@@ -1,0 +1,414 @@
+{
+  "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "$connections": {
+      "defaultValue": {},
+      "type": "Object"
+    },
+    "$authentication": {
+      "defaultValue": {},
+      "type": "SecureObject"
+    },
+    "WindowMinutes": {
+      "defaultValue": 60,
+      "type": "Int"
+    },
+    "Threshold": {
+      "defaultValue": 3,
+      "type": "Int"
+    }
+  },
+  "triggers": {
+    "When_Ticket_is_Created": {
+      "type": "OpenApiConnection",
+      "inputs": {
+        "host": {
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+          "connectionName": "shared_sharepointonline",
+          "operationId": "GetOnUpdatedItems"
+        },
+        "parameters": {
+          "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+          "table": "Tickets"
+        },
+        "authentication": "@parameters('$authentication')"
+      },
+      "recurrence": {
+        "frequency": "Minute",
+        "interval": 1
+      },
+      "conditions": [
+        {
+          "expression": "@and(equals(triggerOutputs()?['body/TicketType/Value'], 'Incident'), equals(coalesce(triggerOutputs()?['body/TicketTypeValidated'], false), true), not(equals(coalesce(triggerOutputs()?['body/TicketTypeValidationStatus/Value'], ''), 'NeedsConfirmation')), equals(coalesce(triggerOutputs()?['body/TicketState/Value'], 'New'), 'New'))"
+        }
+      ],
+      "splitOn": "@triggerOutputs()?['body/value']",
+      "runtimeConfiguration": {
+        "concurrency": {
+          "runs": 1,
+          "maximumWaitingRuns": 25
+        }
+      }
+    }
+  },
+  "actions": {
+    "If_New_Incident": {
+      "runAfter": {},
+      "type": "If",
+      "expression": {
+        "and": [
+          {
+            "equals": [
+              "@triggerOutputs()?['body/TicketType/Value']",
+              "Incident"
+            ]
+          },
+          {
+            "not": {
+              "equals": [
+                "@coalesce(triggerOutputs()?['body/MajorIncidentFlag'], false)",
+                true
+              ]
+            }
+          }
+        ]
+      },
+      "actions": {
+        "Get_Recent_Incidents": {
+          "runAfter": {},
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+              "connectionName": "shared_sharepointonline",
+              "operationId": "GetItems"
+            },
+            "parameters": {
+              "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+              "table": "Tickets",
+              "$filter": "@{concat('TicketType eq ''Incident'' and MajorIncidentFlag ne 1 and EscalationFlag ne 1 and Created ge ''', addMinutes(utcNow(), mul(-1, parameters('WindowMinutes'))), '''')}",
+              "$orderby": "Created desc",
+              "$top": 10
+            },
+            "authentication": "@parameters('$authentication')"
+          }
+        },
+        "Select_Incident_Context": {
+          "runAfter": {
+            "Get_Recent_Incidents": [
+              "Succeeded"
+            ]
+          },
+          "type": "Select",
+          "inputs": {
+            "from": "@body('Get_Recent_Incidents')?['value']",
+            "select": {
+              "id": "@item()?['ID']",
+              "title": "@item()?['Title']",
+              "shortDescription": "@item()?['ShortDescription']",
+              "description": "@item()?['Description']",
+              "category": "@coalesce(item()?['CategoryRef']?['Value'], '')",
+              "subcategory": "@coalesce(item()?['Subcategory']?['Value'], '')"
+            }
+          }
+        },
+        "Compose_Agent_Prompt": {
+          "runAfter": {
+            "Select_Incident_Context": [
+              "Succeeded"
+            ]
+          },
+          "type": "Compose",
+          "inputs": "@{concat('Analyze these incidents. Are 3 or more related to the same root cause or issue? Consider similar symptoms, same service/system affected, related error patterns, and user impact. Do not rely only on exact category match.\\n\\nIncidents JSON:\\n', string(body('Select_Incident_Context')), '\\n\\nReply with EXACTLY this tagged JSON block and no other text:\\n<<<MAJOR_INCIDENT_BEGIN>>>\\n{ \"clusterFound\": true|false, \"relatedTicketIds\": [1,2,3], \"clusterSummary\": \"...\", \"affectedService\": \"...\", \"recommendedEscalation\": \"...\" }\\n<<<MAJOR_INCIDENT_END>>>\\n\\nOnly set clusterFound=true when relatedTicketIds contains at least ', string(parameters('Threshold')), ' ticket IDs from the incident JSON.')}"
+        },
+        "Execute_Agent_Cluster_Analysis": {
+          "runAfter": {
+            "Compose_Agent_Prompt": [
+              "Succeeded"
+            ]
+          },
+          "type": "OpenApiConnectionWebhook",
+          "inputs": {
+            "host": {
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_microsoftcopilotstudio",
+              "connectionName": "shared_microsoftcopilotstudio",
+              "operationId": "ExecuteCopilotAsyncV2"
+            },
+            "parameters": {
+              "Copilot": "cre79_agent",
+              "body/message": "@{outputs('Compose_Agent_Prompt')}"
+            },
+            "authentication": "@parameters('$authentication')"
+          }
+        },
+        "Compose_Agent_Raw_Reply": {
+          "runAfter": {
+            "Execute_Agent_Cluster_Analysis": [
+              "Succeeded"
+            ]
+          },
+          "type": "Compose",
+          "inputs": "@{coalesce(outputs('Execute_Agent_Cluster_Analysis')?['body/lastResponse'], '')}"
+        },
+        "Compose_Extracted_Cluster_Block": {
+          "runAfter": {
+            "Compose_Agent_Raw_Reply": [
+              "Succeeded"
+            ]
+          },
+          "type": "Compose",
+          "inputs": "@if(and(contains(outputs('Compose_Agent_Raw_Reply'), '<<<MAJOR_INCIDENT_BEGIN>>>'), contains(outputs('Compose_Agent_Raw_Reply'), '<<<MAJOR_INCIDENT_END>>>')), trim(substring(outputs('Compose_Agent_Raw_Reply'), add(indexOf(outputs('Compose_Agent_Raw_Reply'), '<<<MAJOR_INCIDENT_BEGIN>>>'), 26), sub(indexOf(outputs('Compose_Agent_Raw_Reply'), '<<<MAJOR_INCIDENT_END>>>'), add(indexOf(outputs('Compose_Agent_Raw_Reply'), '<<<MAJOR_INCIDENT_BEGIN>>>'), 26)))), '{\"clusterFound\":false,\"relatedTicketIds\":[] }')"
+        },
+        "Parse_Cluster_Decision": {
+          "runAfter": {
+            "Compose_Extracted_Cluster_Block": [
+              "Succeeded"
+            ]
+          },
+          "type": "ParseJson",
+          "inputs": {
+            "content": "@outputs('Compose_Extracted_Cluster_Block')",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "clusterFound": {
+                  "type": "boolean"
+                },
+                "relatedTicketIds": {
+                  "type": "array",
+                  "items": {
+                    "type": [
+                      "integer",
+                      "string"
+                    ]
+                  }
+                },
+                "clusterSummary": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "affectedService": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "recommendedEscalation": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "If_Agent_Found_Cluster": {
+          "runAfter": {
+            "Parse_Cluster_Decision": [
+              "Succeeded"
+            ]
+          },
+          "type": "If",
+          "expression": {
+            "and": [
+              {
+                "equals": [
+                  "@body('Parse_Cluster_Decision')?['clusterFound']",
+                  true
+                ]
+              },
+              {
+                "greaterOrEquals": [
+                  "@length(body('Parse_Cluster_Decision')?['relatedTicketIds'])",
+                  "@parameters('Threshold')"
+                ]
+              }
+            ]
+          },
+          "actions": {
+            "Compose_Major_Number": {
+              "runAfter": {},
+              "type": "Compose",
+              "inputs": "@{concat('MI', formatDateTime(utcNow(),'yyMMddHHmm'), substring(replace(guid(),'-',''),0,4))}"
+            },
+            "Create_Major_Incident": {
+              "runAfter": {
+                "Compose_Cluster_Key": [
+                  "Succeeded"
+                ]
+              },
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": {
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                  "connectionName": "shared_sharepointonline",
+                  "operationId": "PostItem"
+                },
+                "parameters": {
+                  "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+                  "table": "Tickets",
+                  "item/Title": "@outputs('Compose_Major_Number')",
+                  "item/TicketType/Value": "Incident",
+                  "item/CategoryRef/Id": "@triggerOutputs()?['body/CategoryRef/Id']",
+                  "item/Subcategory/Id": "@triggerOutputs()?['body/Subcategory/Id']",
+                  "item/Caller/Claims": "@triggerOutputs()?['body/Caller/Claims']",
+                  "item/TicketState/Value": "In Progress",
+                  "item/Impact/Value": "1 - High",
+                  "item/Urgency/Value": "1 - High",
+                  "item/Priority/Value": "1 - Critical",
+                  "item/ShortDescription": "@{concat('Major Incident: ', coalesce(body('Parse_Cluster_Decision')?['affectedService'], 'service disruption'))}",
+                  "item/Description": "@{concat('Summary: ', coalesce(body('Parse_Cluster_Decision')?['clusterSummary'], '(none)'), decodeUriComponent('%0A%0A'), 'Affected service/system: ', coalesce(body('Parse_Cluster_Decision')?['affectedService'], '(unknown)'), decodeUriComponent('%0A%0A'), 'Recommended escalation: ', coalesce(body('Parse_Cluster_Decision')?['recommendedEscalation'], '(none)'), decodeUriComponent('%0A%0A'), 'Agent raw decision: ', string(body('Parse_Cluster_Decision')))}",
+                  "item/ConfidentialityLevel/Value": "@coalesce(triggerOutputs()?['body/ConfidentialityLevel/Value'], 'Public')",
+                  "item/WorkNotes": "@{concat('Major Incident Detector created parent from semantic Triage Agent cluster at ', utcNow(), '. Related IDs: ', string(body('Parse_Cluster_Decision')?['relatedTicketIds']))}"
+                },
+                "authentication": "@parameters('$authentication')"
+              }
+            },
+            "ForEach_Clustered_Incident_Id": {
+              "runAfter": {
+                "Update_Major_Incident_Metadata": [
+                  "Succeeded"
+                ]
+              },
+              "type": "Foreach",
+              "foreach": "@body('Parse_Cluster_Decision')?['relatedTicketIds']",
+              "runtimeConfiguration": {
+                "concurrency": {
+                  "repetitions": 1
+                }
+              },
+              "actions": {
+                "Get_Related_Incident": {
+                  "runAfter": {},
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "host": {
+                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                      "connectionName": "shared_sharepointonline",
+                      "operationId": "GetItem"
+                    },
+                    "parameters": {
+                      "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+                      "table": "Tickets",
+                      "id": "@items('ForEach_Clustered_Incident_Id')"
+                    },
+                    "authentication": "@parameters('$authentication')"
+                  }
+                },
+                "Patch_Related_Incident": {
+                  "runAfter": {
+                    "Get_Related_Incident": [
+                      "Succeeded"
+                    ]
+                  },
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "host": {
+                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                      "connectionName": "shared_sharepointonline",
+                      "operationId": "HttpRequest"
+                    },
+                    "parameters": {
+                      "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+                      "parameters/method": "POST",
+                      "parameters/uri": "@{concat('_api/web/lists/getbytitle(''Tickets'')/items(', items('ForEach_Clustered_Incident_Id'), ')')}",
+                      "parameters/headers": {
+                        "IF-MATCH": "*",
+                        "X-HTTP-Method": "MERGE",
+                        "Accept": "application/json;odata=nometadata",
+                        "Content-Type": "application/json;odata=nometadata"
+                      },
+                      "parameters/body": {
+                        "ParentTicketId": "@body('Create_Major_Incident')?['ID']",
+                        "EscalationFlag": true,
+                        "MajorIncidentClusterKey": "@outputs('Compose_Cluster_Key')",
+                        "MajorIncidentDetectedAt": "@utcNow()",
+                        "WorkNotes": "@{concat(coalesce(body('Get_Related_Incident')?['WorkNotes'], ''), decodeUriComponent('%0A'), 'Major Incident Detector linked this incident to ', body('Create_Major_Incident')?['Title'], ' at ', utcNow(), '. Agent summary: ', coalesce(body('Parse_Cluster_Decision')?['clusterSummary'], '(none)'))}"
+                      }
+                    },
+                    "authentication": "@parameters('$authentication')"
+                  }
+                }
+              }
+            },
+            "Compose_Cluster_Key": {
+              "runAfter": {
+                "Compose_Major_Number": [
+                  "Succeeded"
+                ]
+              },
+              "type": "Compose",
+              "inputs": "@{concat('agent-', formatDateTime(utcNow(),'yyMMddHHmm'))}"
+            },
+            "Update_Major_Incident_Metadata": {
+              "runAfter": {
+                "Create_Major_Incident": [
+                  "Succeeded"
+                ]
+              },
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": {
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                  "connectionName": "shared_sharepointonline",
+                  "operationId": "HttpRequest"
+                },
+                "parameters": {
+                  "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+                  "parameters/method": "POST",
+                  "parameters/uri": "@{concat('_api/web/lists/getbytitle(''Tickets'')/items(', body('Create_Major_Incident')?['ID'], ')')}",
+                  "parameters/headers": {
+                    "IF-MATCH": "*",
+                    "X-HTTP-Method": "MERGE",
+                    "Accept": "application/json;odata=nometadata",
+                    "Content-Type": "application/json;odata=nometadata"
+                  },
+                  "parameters/body": {
+                    "MajorIncidentFlag": true,
+                    "EscalationFlag": true,
+                    "MajorIncidentClusterKey": "@outputs('Compose_Cluster_Key')",
+                    "MajorIncidentDetectedAt": "@utcNow()"
+                  }
+                },
+                "authentication": "@parameters('$authentication')"
+              }
+            },
+            "Post_Major_Incident_Notification": {
+              "runAfter": {
+                "Update_Major_Incident_Metadata": [
+                  "Succeeded"
+                ]
+              },
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": {
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_teams",
+                  "connectionName": "shared_teams",
+                  "operationId": "PostMessageToConversation"
+                },
+                "parameters": {
+                  "poster": "Flow bot",
+                  "location": "Chat with Flow bot",
+                  "body/recipient": "catherine.han@flowstudio.app",
+                  "body/messageBody": "@{concat('<h2>Major incident detected</h2><p><b>MI ticket:</b> ', body('Create_Major_Incident')?['Title'], ' (item ID ', string(body('Create_Major_Incident')?['ID']), ')</p><p><b>Affected service/system:</b> ', coalesce(body('Parse_Cluster_Decision')?['affectedService'], '(unknown)'), '</p><p><b>Cluster summary:</b> ', coalesce(body('Parse_Cluster_Decision')?['clusterSummary'], '(none)'), '</p><p><b>Related incident IDs:</b> ', string(body('Parse_Cluster_Decision')?['relatedTicketIds']), '</p><p><b>Recommended escalation:</b> ', coalesce(body('Parse_Cluster_Decision')?['recommendedEscalation'], '(none)'), '</p><p><b>Escalation flag:</b> true</p><p><a href=\"https://contoso.sharepoint.com/sites/ITSM/Lists/Tickets/DispForm.aspx?ID=', string(body('Create_Major_Incident')?['ID']), '\">Open major incident</a></p>')}"
+                },
+                "authentication": "@parameters('$authentication')"
+              },
+              "description": "Day 4 task 13: major incident notification to service desk/admin via Teams Flow bot."
+            }
+          },
+          "else": {
+            "actions": {}
+          }
+        }
+      },
+      "else": {
+        "actions": {}
+      }
+    }
+  }
+}

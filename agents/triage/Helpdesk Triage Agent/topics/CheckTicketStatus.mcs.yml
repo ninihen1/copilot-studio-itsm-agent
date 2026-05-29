@@ -1,0 +1,49 @@
+mcs.metadata:
+  componentName: Check Ticket Status
+  description: User asks about a ticket they previously raised. Searches the Tickets knowledge source filtered by caller UPN.
+kind: AdaptiveDialog
+beginDialog:
+  kind: OnRecognizedIntent
+  id: main
+  intent:
+    displayName: Check Ticket Status
+    includeInOnSelectIntent: true
+    triggerQueries:
+      - What's the status of my ticket
+      - Status of my request
+      - Where is my ticket
+      - Update on my ticket
+      - Did my ticket get approved
+      - Show me my open tickets
+      - List my tickets
+      - Any update on
+      - Has my password reset gone through
+      - Did my license get assigned
+
+  actions:
+    - kind: SetVariable
+      id: setVar_caller_status
+      variable: init:Topic.CallerUpn
+      value: =System.User.PrincipalName
+
+    - kind: AnswerQuestionWithAI
+      id: ai_search_my_tickets
+      userInput: =System.Activity.Text
+      additionalInstructions: |-
+        Search the Tickets knowledge source for tickets where Caller equals the current user. Only return tickets the current user has access to (SharePoint item-level permissions are enforced on the read side — do not bypass).
+
+        If the user mentioned a specific ticket number, focus on that one and report:
+        - Status (New, In Progress, On Hold, Resolved, Closed)
+        - AssignedTo (if any)
+        - Last update timestamp (from Modified)
+        - Any pending approval stage if Status = AwaitingApproval
+
+        If they're asking generally, list up to 5 most recent open tickets with one-line summaries.
+
+        If no tickets are found: "I don't see any tickets for you. If you raised one through a different channel, give me the ticket number."
+      variable: init:Topic.MyTicketsSummary
+
+    - kind: SendActivity
+      id: sendMessage_status
+      conversationOutcome: ResolvedImplied
+      activity: ={Topic.MyTicketsSummary}

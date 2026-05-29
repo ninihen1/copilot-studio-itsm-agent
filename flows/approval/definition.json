@@ -1,0 +1,192 @@
+{
+  "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "$connections":   { "defaultValue": {}, "type": "Object" },
+    "$authentication":{ "defaultValue": {}, "type": "SecureObject" }
+  },
+  "triggers": {
+    "When_an_Approval_is_Modified": {
+      "type": "OpenApiConnection",
+      "inputs": {
+        "host": {
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+          "connectionName": "shared_sharepointonline",
+          "operationId": "GetOnUpdatedItems"
+        },
+        "parameters": {
+          "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+          "table": "Approvals"
+        },
+        "authentication": "@parameters('$authentication')"
+      },
+      "recurrence": { "frequency": "Minute", "interval": 3 },
+      "splitOn": "@triggerOutputs()?['body/value']"
+    }
+  },
+  "actions": {
+    "If_Terminal_State": {
+      "runAfter": {},
+      "type": "If",
+      "expression": {
+        "and": [
+          { "or": [
+              { "equals": [ "@triggerOutputs()?['body/SessionState/Value']", "Approved" ] },
+              { "equals": [ "@triggerOutputs()?['body/SessionState/Value']", "Rejected" ] }
+            ]
+          },
+          { "equals": [ "@coalesce(triggerOutputs()?['body/CompletedAt'], '')", "" ] }
+        ]
+      },
+      "actions": {
+        "Get_Linked_PJ": {
+          "runAfter": {},
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+              "connectionName": "shared_sharepointonline",
+              "operationId": "GetItems"
+            },
+            "parameters": {
+              "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+              "table": "Provisioning Jobs",
+              "$filter": "@{concat('JobId eq ''', triggerOutputs()?['body/LinkedJobId'], '''')}",
+              "$top": 1
+            },
+            "authentication": "@parameters('$authentication')"
+          }
+        },
+        "If_PJ_Found": {
+          "runAfter": { "Get_Linked_PJ": ["Succeeded"] },
+          "type": "If",
+          "expression": {
+            "and": [
+              { "greater": [ "@length(coalesce(body('Get_Linked_PJ')?['value'], createArray()))", 0 ] }
+            ]
+          },
+          "actions": {
+            "Switch_On_State": {
+              "runAfter": {},
+              "type": "Switch",
+              "expression": "@triggerOutputs()?['body/SessionState/Value']",
+              "default": { "actions": {} },
+              "cases": {
+                "Case_Approved": {
+                  "case": "Approved",
+                  "actions": {
+                    "Call_Dispatcher": {
+                      "runAfter": {},
+                      "type": "Http",
+                      "inputs": {
+                        "method": "POST",
+                        "uri": "https://d0897ddefb5143f58049c16dd0bfab.b5.environment.api.powerplatform.com:443/powerautomate/automations/direct/workflows/9bec7f27ae2147b4972dadcc056e93cf/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=nHduuee4UGkH8-hOwub0S-HEeKN4qr5C2gAw4PZcM58",
+                        "headers": { "Content-Type": "application/json" },
+                        "body": {
+                          "pjId":              "@first(body('Get_Linked_PJ')?['value'])?['ID']",
+                          "idempotencyKey":    "@coalesce(triggerOutputs()?['body/ApprovalSessionId'], guid())",
+                          "callerUpn":         "@first(body('Get_Linked_PJ')?['value'])?['CallerUpn']",
+                          "approverUpn":       "@coalesce(triggerOutputs()?['body/Editor/Email'], 'system')",
+                          "approvalSessionId": "@triggerOutputs()?['body/ApprovalSessionId']",
+                          "jobType":           "@first(body('Get_Linked_PJ')?['value'])?['JobType']",
+                          "correlationId":     "@coalesce(first(body('Get_Linked_PJ')?['value'])?['CorrelationId'], guid())"
+                        }
+                      }
+                    },
+                    "Mark_Approval_Completed_Approved": {
+                      "runAfter": { "Call_Dispatcher": ["Succeeded", "Failed", "TimedOut"] },
+                      "type": "OpenApiConnection",
+                      "inputs": {
+                        "host": {
+                          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                          "connectionName": "shared_sharepointonline",
+                          "operationId": "PatchItem"
+                        },
+                        "parameters": {
+                          "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+                          "table": "Approvals",
+                          "id": "@triggerOutputs()?['body/ID']",
+                          "item/Title":             "@triggerOutputs()?['body/Title']",
+                          "item/ApprovalSessionId": "@triggerOutputs()?['body/ApprovalSessionId']",
+                          "item/PolicyApplied/Id":  "@triggerOutputs()?['body/PolicyApplied/Id']",
+                          "item/PolicyVersionUsed": "@triggerOutputs()?['body/PolicyVersionUsed']",
+                          "item/SessionState/Value":"Approved",
+                          "item/StartedAt":         "@triggerOutputs()?['body/StartedAt']",
+                          "item/CompletedAt":       "@utcNow()",
+                          "item/DurationMinutes":   "@div(sub(ticks(utcNow()), ticks(triggerOutputs()?['body/StartedAt'])), 600000000)"
+                        },
+                        "authentication": "@parameters('$authentication')"
+                      }
+                    }
+                  }
+                },
+                "Case_Rejected": {
+                  "case": "Rejected",
+                  "actions": {
+                    "Patch_PJ_To_Rejected": {
+                      "runAfter": {},
+                      "type": "OpenApiConnection",
+                      "inputs": {
+                        "host": {
+                          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                          "connectionName": "shared_sharepointonline",
+                          "operationId": "PatchItem"
+                        },
+                        "parameters": {
+                          "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+                          "table": "Provisioning Jobs",
+                          "id":                     "@first(body('Get_Linked_PJ')?['value'])?['ID']",
+                          "item/Title":             "@first(body('Get_Linked_PJ')?['value'])?['Title']",
+                          "item/JobId":             "@first(body('Get_Linked_PJ')?['value'])?['JobId']",
+                          "item/JobType":           "@first(body('Get_Linked_PJ')?['value'])?['JobType']",
+                          "item/ParentTicket/Id":   "@first(body('Get_Linked_PJ')?['value'])?['ParentTicket']?['Id']",
+                          "item/JobStatus/Value":   "Rejected",
+                          "item/CallerUpn":         "@first(body('Get_Linked_PJ')?['value'])?['CallerUpn']",
+                          "item/TargetJson":        "@first(body('Get_Linked_PJ')?['value'])?['TargetJson']",
+                          "item/IdempotencyKey":    "@first(body('Get_Linked_PJ')?['value'])?['IdempotencyKey']",
+                          "item/CorrelationId":     "@first(body('Get_Linked_PJ')?['value'])?['CorrelationId']",
+                          "item/ProposedAt":        "@first(body('Get_Linked_PJ')?['value'])?['ProposedAt']",
+                          "item/ApprovalSessionId": "@triggerOutputs()?['body/ApprovalSessionId']",
+                          "item/CompletedAt":       "@utcNow()",
+                          "item/ErrorJson":         "@{concat('{\"reason\":\"approval_rejected\",\"approvalSessionId\":\"', triggerOutputs()?['body/ApprovalSessionId'], '\",\"rejectionReason\":', if(equals(coalesce(triggerOutputs()?['body/RejectionReason'],''),''), 'null', concat('\"', triggerOutputs()?['body/RejectionReason'], '\"')), '}')}"
+                        },
+                        "authentication": "@parameters('$authentication')"
+                      }
+                    },
+                    "Mark_Approval_Completed_Rejected": {
+                      "runAfter": { "Patch_PJ_To_Rejected": ["Succeeded", "Failed", "TimedOut"] },
+                      "type": "OpenApiConnection",
+                      "inputs": {
+                        "host": {
+                          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                          "connectionName": "shared_sharepointonline",
+                          "operationId": "PatchItem"
+                        },
+                        "parameters": {
+                          "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+                          "table": "Approvals",
+                          "id": "@triggerOutputs()?['body/ID']",
+                          "item/Title":             "@triggerOutputs()?['body/Title']",
+                          "item/ApprovalSessionId": "@triggerOutputs()?['body/ApprovalSessionId']",
+                          "item/PolicyApplied/Id":  "@triggerOutputs()?['body/PolicyApplied/Id']",
+                          "item/PolicyVersionUsed": "@triggerOutputs()?['body/PolicyVersionUsed']",
+                          "item/SessionState/Value":"Rejected",
+                          "item/StartedAt":         "@triggerOutputs()?['body/StartedAt']",
+                          "item/CompletedAt":       "@utcNow()",
+                          "item/DurationMinutes":   "@div(sub(ticks(utcNow()), ticks(triggerOutputs()?['body/StartedAt'])), 600000000)"
+                        },
+                        "authentication": "@parameters('$authentication')"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "else": { "actions": {} }
+        }
+      },
+      "else": { "actions": {} }
+    }
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/spfx-build/config.2.0.schema.json",
+  "version": "2.0",
+  "bundles": {
+    "itsm-host-web-part": {
+      "components": [
+        {
+          "entrypoint": "./lib/webparts/itsmHost/ItsmHostWebPart.js",
+          "manifest": "./src/webparts/itsmHost/ItsmHostWebPart.manifest.json"
+        }
+      ]
+    }
+  },
+  "externals": {},
+  "localizedResources": {
+    "ItsmHostWebPartStrings": "lib/webparts/itsmHost/loc/{locale}.js"
+  }
+}

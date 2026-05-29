@@ -1,0 +1,54 @@
+# Local environment and credentials
+.env
+.env.local
+.env.production
+.env.*.local
+.mcp.json
+*.pfx
+*.pem
+*.key
+.spfx-deploy-cert.pfx
+infra/azure/functions/local.settings.json
+
+# Local agent/tool state
+.auth/
+.agents/
+.claude/
+.codex/
+.codex-tmp/
+
+# Dependencies
+node_modules/
+
+# SPFx and build output
+/dist/
+/lib/
+/lib-commonjs/
+/release/
+/sharepoint/solution/
+/temp/
+*.tsbuildinfo
+
+# Test output
+/coverage/
+/jest-output/
+/playwright-report/
+/test-results/
+
+# Caches
+__pycache__/
+*.py[cod]
+.cache/
+.eslintcache
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

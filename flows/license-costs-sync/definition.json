@@ -1,0 +1,344 @@
+{
+  "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "$connections": {
+      "defaultValue": {},
+      "type": "Object"
+    },
+    "$authentication": {
+      "defaultValue": {},
+      "type": "SecureObject"
+    }
+  },
+  "triggers": {
+    "Weekly_Schedule": {
+      "recurrence": {
+        "frequency": "Week",
+        "interval": 1,
+        "schedule": {
+          "weekDays": [
+            "Sunday"
+          ],
+          "hours": [
+            "2"
+          ],
+          "minutes": [
+            0
+          ]
+        },
+        "timeZone": "AUS Eastern Standard Time"
+      },
+      "evaluatedRecurrence": {
+        "frequency": "Week",
+        "interval": 1,
+        "schedule": {
+          "weekDays": [
+            "Sunday"
+          ],
+          "hours": [
+            "2"
+          ],
+          "minutes": [
+            0
+          ]
+        },
+        "timeZone": "AUS Eastern Standard Time"
+      },
+      "type": "Recurrence"
+    }
+  },
+  "actions": {
+    "Compose_Microsoft_Sku_Csv_Url": {
+      "runAfter": {},
+      "type": "Compose",
+      "inputs": "https://download.microsoft.com/download/e/3/e/00000000-0000-4000-8000-000000000050/Product%20names%20and%20service%20plan%20identifiers%20for%20licensing.csv"
+    },
+    "Compose_Microsoft_Reference_Url": {
+      "runAfter": {
+        "Compose_Microsoft_Sku_Csv_Url": [
+          "Succeeded"
+        ]
+      },
+      "type": "Compose",
+      "inputs": "https://learn.microsoft.com/entra/identity/users/licensing-service-plan-reference"
+    },
+    "Download_Microsoft_Sku_Csv": {
+      "runAfter": {
+        "Compose_Microsoft_Reference_Url": [
+          "Succeeded"
+        ]
+      },
+      "type": "Http",
+      "inputs": {
+        "method": "GET",
+        "uri": "@outputs('Compose_Microsoft_Sku_Csv_Url')"
+      },
+      "runtimeConfiguration": {
+        "contentTransfer": {
+          "transferMode": "Chunked"
+        }
+      }
+    },
+    "Compose_Csv_Text": {
+      "runAfter": {
+        "Download_Microsoft_Sku_Csv": [
+          "Succeeded"
+        ]
+      },
+      "type": "Compose",
+      "inputs": "@string(body('Download_Microsoft_Sku_Csv'))"
+    },
+    "Compose_Csv_Data_Lines": {
+      "runAfter": {
+        "Compose_Csv_Text": [
+          "Succeeded"
+        ]
+      },
+      "type": "Compose",
+      "inputs": "@skip(split(replace(outputs('Compose_Csv_Text'), decodeUriComponent('%0D%0A'), decodeUriComponent('%0A')), decodeUriComponent('%0A')), 1)",
+      "description": "Drops the header row. The Microsoft CSV has one row per service plan, so later steps deduplicate by String_Id."
+    },
+    "Get_License_Costs": {
+      "runAfter": {
+        "Compose_Csv_Data_Lines": [
+          "Succeeded"
+        ]
+      },
+      "type": "OpenApiConnection",
+      "inputs": {
+        "host": {
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+          "connectionName": "shared_sharepointonline",
+          "operationId": "GetItems"
+        },
+        "parameters": {
+          "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+          "table": "License Costs",
+          "$top": 5000
+        },
+        "authentication": "@parameters('$authentication')"
+      }
+    },
+    "Initialize_Processed_Skus": {
+      "runAfter": {
+        "Get_License_Costs": [
+          "Succeeded"
+        ]
+      },
+      "type": "InitializeVariable",
+      "inputs": {
+        "variables": [
+          {
+            "name": "processedSkus",
+            "type": "array",
+            "value": []
+          }
+        ]
+      }
+    },
+    "Apply_To_Each_Csv_Line": {
+      "foreach": "@outputs('Compose_Csv_Data_Lines')",
+      "actions": {
+        "Compose_Line": {
+          "runAfter": {},
+          "type": "Compose",
+          "inputs": "@trim(item())"
+        },
+        "If_Line_Has_Data": {
+          "actions": {
+            "Compose_Product_Name": {
+              "runAfter": {},
+              "type": "Compose",
+              "inputs": "@if(startsWith(outputs('Compose_Line'), '\"'), replace(first(skip(split(outputs('Compose_Line'), '\"'), 1)), '\"\"', '\"'), first(split(outputs('Compose_Line'), ',')))"
+            },
+            "Compose_Line_After_Product": {
+              "runAfter": {
+                "Compose_Product_Name": [
+                  "Succeeded"
+                ]
+              },
+              "type": "Compose",
+              "inputs": "@if(startsWith(outputs('Compose_Line'), '\"'), last(split(outputs('Compose_Line'), '\",')), join(skip(split(outputs('Compose_Line'), ','), 1), ','))",
+              "description": "The official CSV quotes product names that contain commas. This strips only the first Product_Display_Name column."
+            },
+            "Compose_Sku_Part_Number": {
+              "runAfter": {
+                "Compose_Line_After_Product": [
+                  "Succeeded"
+                ]
+              },
+              "type": "Compose",
+              "inputs": "@first(split(outputs('Compose_Line_After_Product'), ','))"
+            },
+            "Compose_Sku_Id": {
+              "runAfter": {
+                "Compose_Sku_Part_Number": [
+                  "Succeeded"
+                ]
+              },
+              "type": "Compose",
+              "inputs": "@first(skip(split(outputs('Compose_Line_After_Product'), ','), 1))"
+            },
+            "If_First_Row_For_Sku": {
+              "actions": {
+                "Append_Processed_Sku": {
+                  "runAfter": {},
+                  "type": "AppendToArrayVariable",
+                  "inputs": {
+                    "name": "processedSkus",
+                    "value": "@outputs('Compose_Sku_Part_Number')"
+                  }
+                },
+                "Filter_Existing_License_Cost": {
+                  "runAfter": {
+                    "Append_Processed_Sku": [
+                      "Succeeded"
+                    ]
+                  },
+                  "type": "Query",
+                  "inputs": {
+                    "from": "@body('Get_License_Costs')?['value']",
+                    "where": "@equals(item()?['SkuPartNumber'], outputs('Compose_Sku_Part_Number'))"
+                  }
+                },
+                "If_Existing_Row": {
+                  "actions": {
+                    "Update_Existing_License_Cost": {
+                      "runAfter": {},
+                      "type": "OpenApiConnection",
+                      "inputs": {
+                        "host": {
+                          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                          "connectionName": "shared_sharepointonline",
+                          "operationId": "PatchItem"
+                        },
+                        "parameters": {
+                          "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+                          "table": "License Costs",
+                          "id": "@first(body('Filter_Existing_License_Cost'))?['ID']",
+                          "item/Title": "@first(body('Filter_Existing_License_Cost'))?['Title']",
+                          "item/SkuPartNumber": "@outputs('Compose_Sku_Part_Number')",
+                          "item/OfficialProductName": "@outputs('Compose_Product_Name')",
+                          "item/SkuId": "@outputs('Compose_Sku_Id')",
+                          "item/LastVerified": "@utcNow()"
+                        },
+                        "authentication": "@parameters('$authentication')"
+                      },
+                      "description": "Preserves tenant-maintained Title, pricing fields, SourceUrl, and Notes. Only sync metadata is updated."
+                    }
+                  },
+                  "runAfter": {
+                    "Filter_Existing_License_Cost": [
+                      "Succeeded"
+                    ]
+                  },
+                  "else": {
+                    "actions": {
+                      "Create_New_License_Cost": {
+                        "runAfter": {},
+                        "type": "OpenApiConnection",
+                        "inputs": {
+                          "host": {
+                            "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                            "connectionName": "shared_sharepointonline",
+                            "operationId": "PostItem"
+                          },
+                          "parameters": {
+                            "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+                            "table": "License Costs",
+                            "item/Title": "@outputs('Compose_Product_Name')",
+                            "item/SkuPartNumber": "@outputs('Compose_Sku_Part_Number')",
+                            "item/OfficialProductName": "@outputs('Compose_Product_Name')",
+                            "item/SkuId": "@outputs('Compose_Sku_Id')",
+                            "item/LastVerified": "@utcNow()",
+                            "item/Notes": "@concat('Created by ITSM-Scheduled-License-Costs-Sync from Microsoft official SKU reference: ', outputs('Compose_Microsoft_Reference_Url'))"
+                          },
+                          "authentication": "@parameters('$authentication')"
+                        }
+                      }
+                    }
+                  },
+                  "expression": {
+                    "and": [
+                      {
+                        "greater": [
+                          "@length(body('Filter_Existing_License_Cost'))",
+                          0
+                        ]
+                      }
+                    ]
+                  },
+                  "type": "If"
+                }
+              },
+              "runAfter": {
+                "Compose_Sku_Id": [
+                  "Succeeded"
+                ]
+              },
+              "else": {
+                "actions": {}
+              },
+              "expression": {
+                "and": [
+                  {
+                    "not": {
+                      "contains": [
+                        "@variables('processedSkus')",
+                        "@outputs('Compose_Sku_Part_Number')"
+                      ]
+                    }
+                  },
+                  {
+                    "not": {
+                      "equals": [
+                        "@outputs('Compose_Sku_Part_Number')",
+                        ""
+                      ]
+                    }
+                  }
+                ]
+              },
+              "type": "If"
+            }
+          },
+          "runAfter": {
+            "Compose_Line": [
+              "Succeeded"
+            ]
+          },
+          "else": {
+            "actions": {}
+          },
+          "expression": {
+            "and": [
+              {
+                "not": {
+                  "equals": [
+                    "@outputs('Compose_Line')",
+                    ""
+                  ]
+                }
+              }
+            ]
+          },
+          "type": "If"
+        }
+      },
+      "runAfter": {
+        "Initialize_Processed_Skus": [
+          "Succeeded"
+        ]
+      },
+      "type": "Foreach",
+      "runtimeConfiguration": {
+        "concurrency": {
+          "repetitions": 1
+        }
+      },
+      "description": "Serial execution prevents duplicate creates because the Microsoft CSV has multiple service-plan rows per SKU."
+    }
+  },
+  "outputs": {}
+}

@@ -1,0 +1,26 @@
+mcs.metadata:
+  componentName: Thank You
+  description: Triggered when the user expresses thanks.
+kind: AdaptiveDialog
+beginDialog:
+  kind: OnRecognizedIntent
+  id: main
+  intent:
+    displayName: Thank You
+    includeInOnSelectIntent: false
+    triggerQueries:
+      - Thank you
+      - Thanks
+      - Thanks a lot
+      - Cheers
+      - Much appreciated
+      - Ta
+
+  actions:
+    - kind: SendActivity
+      id: sendMessage_ty
+      activity:
+        text:
+          - You're welcome. Anything else?
+        speak:
+          - You're welcome.

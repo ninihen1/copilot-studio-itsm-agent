@@ -1,0 +1,917 @@
+{
+  "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "$connections": {
+      "defaultValue": {},
+      "type": "Object"
+    },
+    "$authentication": {
+      "defaultValue": {},
+      "type": "SecureObject"
+    }
+  },
+  "triggers": {
+    "When_a_Ticket_is_Created": {
+      "recurrence": {
+        "frequency": "Minute",
+        "interval": 3
+      },
+      "conditions": [
+        {
+          "expression": "@and(not(equals(triggerOutputs()?['body/TicketType/Value'], 'Request')), not(equals(coalesce(triggerOutputs()?['body/TicketSource/Value'], ''), 'ProposeAction')), equals(coalesce(triggerOutputs()?['body/TicketTypeValidated'], false), true), not(equals(coalesce(triggerOutputs()?['body/TicketTypeValidationStatus/Value'], ''), 'NeedsConfirmation')), equals(coalesce(triggerOutputs()?['body/TicketState/Value'], 'New'), 'New'))"
+        }
+      ],
+      "evaluatedRecurrence": {
+        "frequency": "Minute",
+        "interval": 3
+      },
+      "splitOn": "@triggerOutputs()?['body/value']",
+      "type": "OpenApiConnection",
+      "inputs": {
+        "host": {
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+          "connectionName": "shared_sharepointonline",
+          "operationId": "GetOnUpdatedItems"
+        },
+        "parameters": {
+          "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+          "table": "Tickets"
+        },
+        "authentication": "@parameters('$authentication')"
+      }
+    }
+  },
+  "actions": {
+    "Init_AgentOutcome": {
+      "runAfter": {},
+      "type": "InitializeVariable",
+      "inputs": {
+        "variables": [
+          {
+            "name": "agentOutcome",
+            "type": "string",
+            "value": "stop_and_ask"
+          }
+        ]
+      }
+    },
+    "Init_AccumulatedContext": {
+      "runAfter": {},
+      "type": "InitializeVariable",
+      "inputs": {
+        "variables": [
+          {
+            "name": "accumulatedContext",
+            "type": "string",
+            "value": ""
+          }
+        ]
+      }
+    },
+    "Init_AgentRawReply": {
+      "runAfter": {},
+      "type": "InitializeVariable",
+      "inputs": {
+        "variables": [
+          {
+            "name": "agentRawReply",
+            "type": "string",
+            "value": ""
+          }
+        ]
+      }
+    },
+    "Init_LastMoreInfoNeeded": {
+      "runAfter": {},
+      "type": "InitializeVariable",
+      "inputs": {
+        "variables": [
+          {
+            "name": "lastMoreInfoNeeded",
+            "type": "string",
+            "value": ""
+          }
+        ]
+      }
+    },
+    "Init_LastTicketType": {
+      "runAfter": {},
+      "type": "InitializeVariable",
+      "inputs": {
+        "variables": [
+          {
+            "name": "lastTicketType",
+            "type": "string",
+            "value": "Incident"
+          }
+        ]
+      }
+    },
+    "Init_LastImpact": {
+      "runAfter": {},
+      "type": "InitializeVariable",
+      "inputs": {
+        "variables": [
+          {
+            "name": "lastImpactLabel",
+            "type": "string",
+            "value": "3 - Low"
+          }
+        ]
+      }
+    },
+    "Init_LastUrgency": {
+      "runAfter": {},
+      "type": "InitializeVariable",
+      "inputs": {
+        "variables": [
+          {
+            "name": "lastUrgencyLabel",
+            "type": "string",
+            "value": "3 - Low"
+          }
+        ]
+      }
+    },
+    "Init_LastParsedJson": {
+      "runAfter": {},
+      "type": "InitializeVariable",
+      "inputs": {
+        "variables": [
+          {
+            "name": "lastParsedJson",
+            "type": "string",
+            "value": "{}"
+          }
+        ]
+      }
+    },
+    "Triage_Loop": {
+      "actions": {
+        "Compose_TriagePrompt": {
+          "runAfter": {},
+          "type": "Compose",
+          "inputs": "@concat('Triage this ticket from the automated intake flow.\n\n[TRIAGE_REQUEST]\nticketId: ', coalesce(triggerOutputs()?['body/Title'], triggerOutputs()?['body/Title']), '\nticketSpItemId: ', string(triggerOutputs()?['body/ID']), '\ncallerUpn: ', coalesce(triggerOutputs()?['body/Caller/Email'], last(split(coalesce(triggerOutputs()?['body/Caller/Claims'],'|'),'|')), ''), '\ncallerName: ', coalesce(triggerOutputs()?['body/Caller/DisplayName'], ''), '\nshortDescription: ', coalesce(triggerOutputs()?['body/ShortDescription'], triggerOutputs()?['body/Title'], ''), '\ndescription: ', coalesce(triggerOutputs()?['body/Description'], ''), '\nopenedDate: ', coalesce(triggerOutputs()?['body/Created'], ''), variables('accumulatedContext'), '\n\nApply your standard ITSM classification. Reply with EXACTLY the tagged JSON block in this format and NOTHING ELSE \u2014 no chat, no preamble, no follow-up question:\\n\\n<<<TRIAGE_BEGIN>>>\\n{ \"outcome\": \"...\", ... }\\n<<<TRIAGE_END>>>')"
+        },
+        "Execute_Agent_Triage": {
+          "runAfter": {
+            "Compose_TriagePrompt": [
+              "Succeeded"
+            ]
+          },
+          "type": "OpenApiConnectionWebhook",
+          "inputs": {
+            "host": {
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_microsoftcopilotstudio",
+              "connectionName": "shared_microsoftcopilotstudio",
+              "operationId": "ExecuteCopilotAsyncV2"
+            },
+            "parameters": {
+              "Copilot": "cre79_agent",
+              "body/message": "@{outputs('Compose_TriagePrompt')}"
+            },
+            "authentication": "@parameters('$authentication')"
+          }
+        },
+        "Set_AgentRawReply": {
+          "runAfter": {
+            "Execute_Agent_Triage": [
+              "Succeeded"
+            ]
+          },
+          "type": "SetVariable",
+          "inputs": {
+            "name": "agentRawReply",
+            "value": "@{coalesce(outputs('Execute_Agent_Triage')?['body/lastResponse'], '')}"
+          }
+        },
+        "Compose_ExtractedBlock": {
+          "runAfter": {
+            "Set_AgentRawReply": [
+              "Succeeded"
+            ]
+          },
+          "type": "Compose",
+          "inputs": "@if(and(contains(variables('agentRawReply'), '<<<TRIAGE_BEGIN>>>'), contains(variables('agentRawReply'), '<<<TRIAGE_END>>>')), trim(substring(variables('agentRawReply'), add(indexOf(variables('agentRawReply'), '<<<TRIAGE_BEGIN>>>'), 19), sub(indexOf(variables('agentRawReply'), '<<<TRIAGE_END>>>'), add(indexOf(variables('agentRawReply'), '<<<TRIAGE_BEGIN>>>'), 19)))), '{}')"
+        },
+        "Scope_ParseTriage": {
+          "actions": {
+            "Parse_TriageJson": {
+              "runAfter": {},
+              "type": "ParseJson",
+              "inputs": {
+                "content": "@outputs('Compose_ExtractedBlock')",
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "outcome": {
+                      "type": "string"
+                    },
+                    "ticketType": {
+                      "type": "string"
+                    },
+                    "category": {
+                      "type": "string"
+                    },
+                    "subcategory": {
+                      "type": "string"
+                    },
+                    "impact": {
+                      "type": "integer"
+                    },
+                    "urgency": {
+                      "type": "integer"
+                    },
+                    "callerUpn": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "targetUserUpn": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "ciId": {},
+                    "kbArticleIds": {
+                      "type": "array"
+                    },
+                    "deflectionMessage": {},
+                    "moreInfoNeeded": {},
+                    "proposedAction": {
+                      "type": [
+                        "object",
+                        "null"
+                      ]
+                    },
+                    "confidence": {
+                      "type": "number"
+                    },
+                    "risk": {
+                      "type": "string"
+                    },
+                    "rationale": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "runAfter": {
+            "Compose_ExtractedBlock": [
+              "Succeeded"
+            ]
+          },
+          "type": "Scope"
+        },
+        "Set_AgentOutcome": {
+          "runAfter": {
+            "Scope_ParseTriage": [
+              "Succeeded"
+            ]
+          },
+          "type": "SetVariable",
+          "inputs": {
+            "name": "agentOutcome",
+            "value": "@{coalesce(body('Parse_TriageJson')?['outcome'], 'unknown')}"
+          }
+        },
+        "Set_LastParsedJson": {
+          "runAfter": {
+            "Set_AgentOutcome": [
+              "Succeeded"
+            ]
+          },
+          "type": "SetVariable",
+          "inputs": {
+            "name": "lastParsedJson",
+            "value": "@{string(body('Parse_TriageJson'))}"
+          }
+        },
+        "Set_LastMoreInfoNeeded": {
+          "runAfter": {
+            "Set_LastParsedJson": [
+              "Succeeded"
+            ]
+          },
+          "type": "SetVariable",
+          "inputs": {
+            "name": "lastMoreInfoNeeded",
+            "value": "@{coalesce(body('Parse_TriageJson')?['moreInfoNeeded'], '')}"
+          }
+        },
+        "Set_LastTicketType": {
+          "runAfter": {
+            "Set_LastMoreInfoNeeded": [
+              "Succeeded"
+            ]
+          },
+          "type": "SetVariable",
+          "inputs": {
+            "name": "lastTicketType",
+            "value": "@{coalesce(body('Parse_TriageJson')?['ticketType'], 'Incident')}"
+          }
+        },
+        "Set_LastImpactLabel": {
+          "runAfter": {
+            "Set_LastTicketType": [
+              "Succeeded"
+            ]
+          },
+          "type": "SetVariable",
+          "inputs": {
+            "name": "lastImpactLabel",
+            "value": "@{concat(string(coalesce(body('Parse_TriageJson')?['impact'], 3)), ' - ', if(equals(coalesce(body('Parse_TriageJson')?['impact'], 3), 1), 'High', if(equals(coalesce(body('Parse_TriageJson')?['impact'], 3), 2), 'Medium', 'Low')))}"
+          }
+        },
+        "Set_LastUrgencyLabel": {
+          "runAfter": {
+            "Set_LastImpactLabel": [
+              "Succeeded"
+            ]
+          },
+          "type": "SetVariable",
+          "inputs": {
+            "name": "lastUrgencyLabel",
+            "value": "@{concat(string(coalesce(body('Parse_TriageJson')?['urgency'], 3)), ' - ', if(equals(coalesce(body('Parse_TriageJson')?['urgency'], 3), 1), 'High', if(equals(coalesce(body('Parse_TriageJson')?['urgency'], 3), 2), 'Medium', 'Low')))}"
+          }
+        },
+        "If_StopAndAsk": {
+          "actions": {
+            "Update_Ticket_AwaitingCaller": {
+              "runAfter": {},
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": {
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                  "connectionName": "shared_sharepointonline",
+                  "operationId": "PatchItem"
+                },
+                "parameters": {
+                  "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+                  "table": "Tickets",
+                  "id": "@triggerOutputs()?['body/ID']",
+                  "item/Title": "@triggerOutputs()?['body/Title']",
+                  "item/TicketType/Value": "@variables('lastTicketType')",
+                  "item/ShortDescription": "@triggerOutputs()?['body/ShortDescription']",
+                  "item/Description": "@{concat('Triage Agent asked caller for clarification: ', variables('lastMoreInfoNeeded'))}",
+                  "item/TicketState/Value": "On Hold",
+                  "item/HoldReason/Value": "Awaiting Caller",
+                  "item/Caller/Claims": "@triggerOutputs()?['body/Caller/Claims']",
+                  "item/Impact/Value": "@variables('lastImpactLabel')",
+                  "item/Urgency/Value": "@variables('lastUrgencyLabel')",
+                  "item/ConfidentialityLevel/Value": "@coalesce(triggerOutputs()?['body/ConfidentialityLevel/Value'], 'Public')"
+                },
+                "authentication": "@parameters('$authentication')"
+              }
+            },
+            "Compose_QuestionDetails": {
+              "runAfter": {
+                "Update_Ticket_AwaitingCaller": [
+                  "Succeeded"
+                ]
+              },
+              "type": "Compose",
+              "inputs": "@{concat('Hi \u2014 the Helpdesk Triage Agent reviewed your ticket but needs more info before it can take action.\n\n**Your ticket:** ', triggerOutputs()?['body/Title'], ' \u2014 ', triggerOutputs()?['body/ShortDescription'], '\n\n**Question from the agent:**\n\n> ', variables('lastMoreInfoNeeded'), '\n\n---\n\nClick **I have an answer** and type your reply in the comments box. The agent will use your reply and re-triage. If you want to drop the request, click **Cancel ticket**.')}"
+            },
+            "Ask_Caller_Approval": {
+              "runAfter": {
+                "Compose_QuestionDetails": [
+                  "Succeeded"
+                ]
+              },
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": {
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_approvals",
+                  "connectionName": "shared_approvals",
+                  "operationId": "CreateAnApproval"
+                },
+                "parameters": {
+                  "approvalType": "CustomResponse",
+                  "ApprovalCreationInput/title": "@{concat('More info needed \u2014 ', triggerOutputs()?['body/Title'])}",
+                  "ApprovalCreationInput/assignedTo": "@coalesce(triggerOutputs()?['body/Caller/Email'], 'catherine.han@flowstudio.app')",
+                  "ApprovalCreationInput/details": "@outputs('Compose_QuestionDetails')",
+                  "ApprovalCreationInput/itemLink": "@{concat('https://contoso.sharepoint.com/sites/ITSM/Lists/Tickets/DispForm.aspx?ID=', string(triggerOutputs()?['body/ID']))}",
+                  "ApprovalCreationInput/itemLinkDescription": "Open ticket in SharePoint",
+                  "ApprovalCreationInput/responseOptions": [
+                    "I have an answer",
+                    "Cancel ticket"
+                  ],
+                  "ApprovalCreationInput/enableNotifications": true,
+                  "ApprovalCreationInput/enableReassignment": false
+                },
+                "authentication": "@parameters('$authentication')"
+              }
+            },
+            "Wait_For_Caller_Reply": {
+              "runAfter": {
+                "Ask_Caller_Approval": [
+                  "Succeeded"
+                ]
+              },
+              "type": "OpenApiConnectionWebhook",
+              "inputs": {
+                "host": {
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_approvals",
+                  "connectionName": "shared_approvals",
+                  "operationId": "WaitForAnApproval"
+                },
+                "parameters": {
+                  "approvalName": "@body('Ask_Caller_Approval')?['name']"
+                },
+                "authentication": "@parameters('$authentication')"
+              }
+            },
+            "If_CallerCancelled": {
+              "actions": {
+                "Set_Outcome_Cancelled": {
+                  "runAfter": {},
+                  "type": "SetVariable",
+                  "inputs": {
+                    "name": "agentOutcome",
+                    "value": "cancelled"
+                  }
+                }
+              },
+              "runAfter": {
+                "Wait_For_Caller_Reply": [
+                  "Succeeded"
+                ]
+              },
+              "else": {
+                "actions": {
+                  "Append_AnswerToContext": {
+                    "runAfter": {},
+                    "type": "AppendToStringVariable",
+                    "inputs": {
+                      "name": "accumulatedContext",
+                      "value": "@{concat('\n\n--- Caller clarification ---\n[Q] ', variables('lastMoreInfoNeeded'), '\n[A] ', coalesce(body('Wait_For_Caller_Reply')?['responses']?[0]?['comments'], '(no answer text)'))}"
+                    }
+                  }
+                }
+              },
+              "expression": {
+                "and": [
+                  {
+                    "equals": [
+                      "@body('Wait_For_Caller_Reply')?['responses']?[0]?['approverResponse']",
+                      "Cancel ticket"
+                    ]
+                  }
+                ]
+              },
+              "type": "If"
+            }
+          },
+          "runAfter": {
+            "Set_LastUrgencyLabel": [
+              "Succeeded"
+            ]
+          },
+          "expression": {
+            "and": [
+              {
+                "equals": [
+                  "@variables('agentOutcome')",
+                  "stop_and_ask"
+                ]
+              }
+            ]
+          },
+          "type": "If"
+        }
+      },
+      "runAfter": {
+        "Init_AgentOutcome": [
+          "Succeeded"
+        ],
+        "Init_AccumulatedContext": [
+          "Succeeded"
+        ],
+        "Init_AgentRawReply": [
+          "Succeeded"
+        ],
+        "Init_LastMoreInfoNeeded": [
+          "Succeeded"
+        ],
+        "Init_LastTicketType": [
+          "Succeeded"
+        ],
+        "Init_LastImpact": [
+          "Succeeded"
+        ],
+        "Init_LastUrgency": [
+          "Succeeded"
+        ],
+        "Init_LastParsedJson": [
+          "Succeeded"
+        ]
+      },
+      "expression": "@not(equals(variables('agentOutcome'), 'stop_and_ask'))",
+      "limit": {
+        "count": 4,
+        "timeout": "P1D"
+      },
+      "type": "Until"
+    },
+    "Compose_FinalImpactLabel": {
+      "runAfter": {
+        "Triage_Loop": [
+          "Succeeded"
+        ]
+      },
+      "type": "Compose",
+      "inputs": "@variables('lastImpactLabel')"
+    },
+    "Compose_FinalUrgencyLabel": {
+      "runAfter": {
+        "Triage_Loop": [
+          "Succeeded"
+        ]
+      },
+      "type": "Compose",
+      "inputs": "@variables('lastUrgencyLabel')"
+    },
+    "Parse_FinalTriageJson": {
+      "runAfter": {
+        "Triage_Loop": [
+          "Succeeded"
+        ]
+      },
+      "type": "ParseJson",
+      "inputs": {
+        "content": "@variables('lastParsedJson')",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "outcome": {
+              "type": "string"
+            },
+            "ticketType": {
+              "type": "string"
+            },
+            "category": {
+              "type": "string"
+            },
+            "subcategory": {
+              "type": "string"
+            },
+            "impact": {
+              "type": "integer"
+            },
+            "urgency": {
+              "type": "integer"
+            },
+            "callerUpn": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "targetUserUpn": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "ciId": {},
+            "kbArticleIds": {
+              "type": "array"
+            },
+            "deflectionMessage": {},
+            "moreInfoNeeded": {},
+            "proposedAction": {
+              "type": [
+                "object",
+                "null"
+              ]
+            },
+            "confidence": {
+              "type": "number"
+            },
+            "risk": {
+              "type": "string"
+            },
+            "rationale": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "Branch_FinalOutcome": {
+      "runAfter": {
+        "Get_PriorityFromMatrix": [
+          "Succeeded"
+        ],
+        "Compose_FinalImpactLabel": [
+          "Succeeded"
+        ],
+        "Compose_FinalUrgencyLabel": [
+          "Succeeded"
+        ]
+      },
+      "cases": {
+        "Outcome_Cancelled": {
+          "case": "cancelled",
+          "actions": {
+            "Update_Ticket_OnCallerCancel": {
+              "runAfter": {},
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": {
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                  "connectionName": "shared_sharepointonline",
+                  "operationId": "PatchItem"
+                },
+                "parameters": {
+                  "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+                  "table": "Tickets",
+                  "id": "@triggerOutputs()?['body/ID']",
+                  "item/Title": "@triggerOutputs()?['body/Title']",
+                  "item/TicketType/Value": "@variables('lastTicketType')",
+                  "item/ShortDescription": "@triggerOutputs()?['body/ShortDescription']",
+                  "item/Description": "@{concat('Caller cancelled the ticket while the Triage Agent was awaiting clarification.\n\nQ&A so far:', variables('accumulatedContext'))}",
+                  "item/TicketState/Value": "Cancelled",
+                  "item/Caller/Claims": "@triggerOutputs()?['body/Caller/Claims']",
+                  "item/Impact/Value": "@variables('lastImpactLabel')",
+                  "item/Urgency/Value": "@variables('lastUrgencyLabel')",
+                  "item/ClosedDate": "@utcNow()",
+                  "item/ConfidentialityLevel/Value": "@coalesce(triggerOutputs()?['body/ConfidentialityLevel/Value'], 'Public')",
+                  "item/CloseCode/Value": "Closed/Resolved by Caller"
+                },
+                "authentication": "@parameters('$authentication')"
+              }
+            }
+          }
+        },
+        "Outcome_Deflect": {
+          "case": "deflect",
+          "actions": {
+            "Update_Ticket_OnDeflect": {
+              "runAfter": {},
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": {
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                  "connectionName": "shared_sharepointonline",
+                  "operationId": "PatchItem"
+                },
+                "parameters": {
+                  "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+                  "table": "Tickets",
+                  "id": "@triggerOutputs()?['body/ID']",
+                  "item/Title": "@triggerOutputs()?['body/Title']",
+                  "item/TicketType/Value": "@variables('lastTicketType')",
+                  "item/ShortDescription": "@triggerOutputs()?['body/ShortDescription']",
+                  "item/Description": "@{concat(coalesce(body('Parse_FinalTriageJson')?['rationale'], ''), variables('accumulatedContext'))}",
+                  "item/TicketState/Value": "Resolved",
+                  "item/Caller/Claims": "@triggerOutputs()?['body/Caller/Claims']",
+                  "item/Impact/Value": "@variables('lastImpactLabel')",
+                  "item/Urgency/Value": "@variables('lastUrgencyLabel')",
+                  "item/ResolvedDate": "@utcNow()",
+                  "item/ConfidentialityLevel/Value": "@coalesce(triggerOutputs()?['body/ConfidentialityLevel/Value'], 'Public')",
+                  "item/CloseCode/Value": "Closed/Resolved by Caller",
+                  "item/CategoryRef/Id": "@coalesce(first(body('Get_CategoryId')?['value'])?['ID'], 6)",
+                  "item/Priority/Value": "@coalesce(first(body('Get_PriorityFromMatrix')?['value'])?['Priority']?['Value'], '5 - Planning')"
+                },
+                "authentication": "@parameters('$authentication')"
+              }
+            }
+          }
+        },
+        "Outcome_Propose": {
+          "case": "propose",
+          "actions": {
+            "Update_Ticket_OnPropose": {
+              "runAfter": {},
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": {
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                  "connectionName": "shared_sharepointonline",
+                  "operationId": "PatchItem"
+                },
+                "parameters": {
+                  "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+                  "table": "Tickets",
+                  "id": "@triggerOutputs()?['body/ID']",
+                  "item/Title": "@triggerOutputs()?['body/Title']",
+                  "item/TicketType/Value": "@variables('lastTicketType')",
+                  "item/ShortDescription": "@triggerOutputs()?['body/ShortDescription']",
+                  "item/Description": "@{concat(coalesce(triggerOutputs()?['body/Description'], ''), variables('accumulatedContext'))}",
+                  "item/TicketState/Value": "In Progress",
+                  "item/Caller/Claims": "@triggerOutputs()?['body/Caller/Claims']",
+                  "item/Impact/Value": "@variables('lastImpactLabel')",
+                  "item/Urgency/Value": "@variables('lastUrgencyLabel')",
+                  "item/ConfidentialityLevel/Value": "@coalesce(triggerOutputs()?['body/ConfidentialityLevel/Value'], 'Public')",
+                  "item/CategoryRef/Id": "@coalesce(first(body('Get_CategoryId')?['value'])?['ID'], 6)",
+                  "item/Priority/Value": "@coalesce(first(body('Get_PriorityFromMatrix')?['value'])?['Priority']?['Value'], '5 - Planning')"
+                },
+                "authentication": "@parameters('$authentication')"
+              }
+            },
+            "Generate_JobId": {
+              "runAfter": {
+                "Update_Ticket_OnPropose": [
+                  "Succeeded"
+                ]
+              },
+              "type": "Compose",
+              "inputs": "@concat('PJ-',toUpper(replace(guid(),'-','')))"
+            },
+            "Generate_IdempotencyKey": {
+              "runAfter": {
+                "Generate_JobId": [
+                  "Succeeded"
+                ]
+              },
+              "type": "Compose",
+              "inputs": "@concat('IK-',toUpper(replace(guid(),'-','')))"
+            },
+            "Create_ProvisioningJob_Row": {
+              "runAfter": {
+                "Generate_IdempotencyKey": [
+                  "Succeeded"
+                ]
+              },
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": {
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                  "connectionName": "shared_sharepointonline",
+                  "operationId": "PostItem"
+                },
+                "parameters": {
+                  "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+                  "table": "Provisioning Jobs",
+                  "item/Title": "@outputs('Generate_JobId')",
+                  "item/JobType": "@body('Parse_FinalTriageJson')?['proposedAction']?['jobType']",
+                  "item/JobStatus/Value": "AwaitingApproval",
+                  "item/ParentTicket/Id": "@triggerOutputs()?['body/ID']",
+                  "item/CallerUpn": "@coalesce(body('Parse_FinalTriageJson')?['callerUpn'], triggerOutputs()?['body/Caller/Email'], '')",
+                  "item/TargetJson": "@string(json(concat('{\"type\":\"user\",\"upn\":\"',coalesce(body('Parse_FinalTriageJson')?['targetUserUpn'], body('Parse_FinalTriageJson')?['callerUpn'], ''),'\"}')))",
+                  "item/ArgsJson": "@string(coalesce(body('Parse_FinalTriageJson')?['proposedAction']?['args'], json('{}')))",
+                  "item/IdempotencyKey": "@outputs('Generate_IdempotencyKey')",
+                  "item/CorrelationId": "@coalesce(triggerOutputs()?['body/Title'], triggerOutputs()?['body/Title'])",
+                  "item/Confidence": "@body('Parse_FinalTriageJson')?['confidence']",
+                  "item/Risk/Value": "@body('Parse_FinalTriageJson')?['risk']",
+                  "item/Rationale": "@body('Parse_FinalTriageJson')?['rationale']"
+                },
+                "authentication": "@parameters('$authentication')"
+              }
+            },
+            "Generate_ApprovalSessionId": {
+              "runAfter": {
+                "Create_ProvisioningJob_Row": [
+                  "Succeeded"
+                ]
+              },
+              "type": "Compose",
+              "inputs": "@{concat('AS-', toUpper(replace(guid(),'-','')))}"
+            },
+            "Create_Approvals_Row": {
+              "runAfter": {
+                "Get_PolicyId": [
+                  "Succeeded"
+                ]
+              },
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": {
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                  "connectionName": "shared_sharepointonline",
+                  "operationId": "PostItem"
+                },
+                "parameters": {
+                  "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+                  "table": "Approvals",
+                  "item/Title": "@outputs('Generate_ApprovalSessionId')",
+                  "item/ParentTicket/Id": "@triggerOutputs()?['body/ID']",
+                  "item/LinkedJobId": "@outputs('Generate_JobId')",
+                  "item/PolicyVersionUsed": 1,
+                  "item/SessionState/Value": "InProgress",
+                  "item/PolicyApplied/Id": "@first(body('Get_PolicyId')?['value'])?['ID']"
+                },
+                "authentication": "@parameters('$authentication')"
+              }
+            },
+            "Get_PolicyId": {
+              "runAfter": {
+                "Generate_ApprovalSessionId": [
+                  "Succeeded"
+                ]
+              },
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": {
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                  "connectionName": "shared_sharepointonline",
+                  "operationId": "GetItems"
+                },
+                "parameters": {
+                  "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+                  "table": "Approval Policies",
+                  "$filter": "Title eq 'AP-LOW-RISK-V1'",
+                  "$top": 1
+                },
+                "authentication": "@parameters('$authentication')"
+              }
+            }
+          }
+        }
+      },
+      "default": {
+        "actions": {
+          "Update_Ticket_OnUnknownOutcome": {
+            "runAfter": {},
+            "type": "OpenApiConnection",
+            "inputs": {
+              "host": {
+                "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                "connectionName": "shared_sharepointonline",
+                "operationId": "PatchItem"
+              },
+              "parameters": {
+                "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+                "table": "Tickets",
+                "id": "@triggerOutputs()?['body/ID']",
+                "item/Title": "@triggerOutputs()?['body/Title']",
+                "item/TicketType/Value": "@variables('lastTicketType')",
+                "item/ShortDescription": "@triggerOutputs()?['body/ShortDescription']",
+                "item/TicketState/Value": "On Hold",
+                "item/HoldReason/Value": "Awaiting Caller",
+                "item/Caller/Claims": "@triggerOutputs()?['body/Caller/Claims']",
+                "item/Impact/Value": "@variables('lastImpactLabel')",
+                "item/Urgency/Value": "@variables('lastUrgencyLabel')",
+                "item/ConfidentialityLevel/Value": "@coalesce(triggerOutputs()?['body/ConfidentialityLevel/Value'], 'Public')",
+                "item/Description": "@{concat('Triage loop exited with outcome=', variables('agentOutcome'), '. Routed to human queue.\n\n=== Q&A history ===', variables('accumulatedContext'), '\n\n=== Last agent reply ===\n', variables('agentRawReply'))}"
+              },
+              "authentication": "@parameters('$authentication')"
+            }
+          }
+        }
+      },
+      "expression": "@variables('agentOutcome')",
+      "type": "Switch"
+    },
+    "Compose_PriorityMatrixKey": {
+      "runAfter": {
+        "Parse_FinalTriageJson": [
+          "Succeeded"
+        ]
+      },
+      "type": "Compose",
+      "inputs": "@{concat(string(coalesce(body('Parse_FinalTriageJson')?['impact'], 3)),'-',string(coalesce(body('Parse_FinalTriageJson')?['urgency'], 3)))}"
+    },
+    "Get_CategoryId": {
+      "runAfter": {
+        "Compose_PriorityMatrixKey": [
+          "Succeeded"
+        ]
+      },
+      "type": "OpenApiConnection",
+      "inputs": {
+        "host": {
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+          "connectionName": "shared_sharepointonline",
+          "operationId": "GetItems"
+        },
+        "parameters": {
+          "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+          "table": "Categories",
+          "$filter": "@{concat('Title eq ''', coalesce(body('Parse_FinalTriageJson')?['category'], 'General Inquiry'), '''')}",
+          "$top": 1
+        },
+        "authentication": "@parameters('$authentication')"
+      }
+    },
+    "Get_PriorityFromMatrix": {
+      "runAfter": {
+        "Get_CategoryId": [
+          "Succeeded"
+        ]
+      },
+      "type": "OpenApiConnection",
+      "inputs": {
+        "host": {
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+          "connectionName": "shared_sharepointonline",
+          "operationId": "GetItems"
+        },
+        "parameters": {
+          "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+          "table": "Priority Matrix",
+          "$filter": "@{concat('Title eq ''', outputs('Compose_PriorityMatrixKey'), '''')}",
+          "$top": 1
+        },
+        "authentication": "@parameters('$authentication')"
+      }
+    }
+  }
+}

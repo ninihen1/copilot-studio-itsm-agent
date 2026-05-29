@@ -1,0 +1,12 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/heft-typescript-plugin/heft-typescript-plugin.schema.json",
+  "staticAssetsToCopy": {
+    "fileExtensions": [
+      ".js",
+      ".json"
+    ],
+    "excludeGlobs": [
+      "config/**/*"
+    ]
+  }
+}

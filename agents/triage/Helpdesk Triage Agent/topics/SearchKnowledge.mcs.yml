@@ -1,0 +1,37 @@
+mcs.metadata:
+  componentName: Search Knowledge
+  description: User wants to look up a how-to or KB article without raising a ticket. Pure deflection.
+kind: AdaptiveDialog
+beginDialog:
+  kind: OnRecognizedIntent
+  id: main
+  intent:
+    displayName: Search Knowledge
+    # Keep this topic out of the model-callable topic list so automated triage cannot
+    # accidentally redirect into an interactive "Did that help?" path.
+    includeInOnSelectIntent: false
+    triggerQueries:
+      - How do I
+      - How to
+      - Is there an article on
+      - Show me the KB on
+      - Find a guide for
+      - Documentation for
+      - I'm looking for help on
+
+  actions:
+    - kind: AnswerQuestionWithAI
+      id: ai_searchKnowledgeGuidedAnswer
+      userInput: =System.Activity.Text
+      additionalInstructions: |-
+        Before creating a ticket or giving general troubleshooting guidance, use the Search knowledge base tool to look for relevant internal ITSM Knowledge Base articles. Use the user's exact request as the search query and request up to 3 results.
+
+        If the Search knowledge base tool returns matching articles, answer with the best matching article first. Include the article number, title, short summary, and URL when available. Then ask whether the article helped or whether the user wants to raise a ticket.
+
+        If the Search knowledge base tool returns no matching articles, say that no matching internal KB article was found, give a brief general IT answer if you can, and ask whether the user wants to raise a ticket.
+      variable: init:Topic.KnowledgeAnswer
+
+    - kind: SendActivity
+      id: sendMessage_knowledgeAnswer
+      conversationOutcome: ResolvedImplied
+      activity: ={Topic.KnowledgeAnswer}

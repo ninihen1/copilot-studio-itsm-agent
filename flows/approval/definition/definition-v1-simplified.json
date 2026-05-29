@@ -1,0 +1,218 @@
+{
+  "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "$connections": { "defaultValue": {}, "type": "Object" },
+    "$authentication": { "defaultValue": {}, "type": "SecureObject" }
+  },
+  "triggers": {
+    "When_ProvisioningJob_Created": {
+      "type": "OpenApiConnection",
+      "inputs": {
+        "host": {
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+          "connectionName": "shared_sharepointonline",
+          "operationId": "GetOnNewItems"
+        },
+        "parameters": {
+          "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+          "table": "Provisioning Jobs"
+        },
+        "authentication": "@parameters('$authentication')"
+      },
+      "recurrence": { "frequency": "Minute", "interval": 3 },
+      "splitOn": "@triggerOutputs()?['body/value']"
+    }
+  },
+  "actions": {
+    "Skip_If_Not_Proposed": {
+      "runAfter": {},
+      "type": "If",
+      "expression": {
+        "and": [
+          { "equals": [ "@triggerOutputs()?['body/JobStatus/Value']", "Proposed" ] }
+        ]
+      },
+      "actions": {
+        "Update_To_AwaitingApproval": {
+          "runAfter": {},
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+              "connectionName": "shared_sharepointonline",
+              "operationId": "PatchItem"
+            },
+            "parameters": {
+              "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+              "table": "Provisioning Jobs",
+              "id": "@triggerOutputs()?['body/ID']",
+              "item/Title": "@triggerOutputs()?['body/Title']",
+              "item/JobId": "@triggerOutputs()?['body/JobId']",
+              "item/JobType": "@triggerOutputs()?['body/JobType']",
+              "item/JobStatus/Value": "AwaitingApproval",
+              "item/CallerUpn": "@triggerOutputs()?['body/CallerUpn']",
+              "item/TargetJson": "@triggerOutputs()?['body/TargetJson']",
+              "item/IdempotencyKey": "@triggerOutputs()?['body/IdempotencyKey']",
+              "item/CorrelationId": "@triggerOutputs()?['body/CorrelationId']",
+              "item/ProposedAt": "@triggerOutputs()?['body/ProposedAt']",
+              "item/AwaitingApprovalAt": "@utcNow()"
+            },
+            "authentication": "@parameters('$authentication')"
+          }
+        },
+        "Compose_ApprovalDetails": {
+          "runAfter": { "Update_To_AwaitingApproval": ["Succeeded"] },
+          "type": "Compose",
+          "inputs": "@{concat('## Proposed action\n\n**Job Type:** `', triggerOutputs()?['body/JobType'], '`\n\n**Caller:** ', triggerOutputs()?['body/CallerUpn'], '\n\n**Target:** `', triggerOutputs()?['body/TargetJson'], '`\n\n**Args:**\n```json\n', coalesce(triggerOutputs()?['body/ArgsJson'], '{}'), '\n```\n\n**Confidence:** ', string(coalesce(triggerOutputs()?['body/Confidence'], 0)), '   **Risk:** ', coalesce(triggerOutputs()?['body/Risk/Value'], 'unknown'), '\n\n**Rationale (from Triage Agent):**\n> ', coalesce(triggerOutputs()?['body/Rationale'], '(none provided)'), '\n\n---\n\n**Ticket:** ', triggerOutputs()?['body/CorrelationId'], '\n\n**JobId:** ', triggerOutputs()?['body/JobId'], '\n\n**Proposed at:** ', triggerOutputs()?['body/ProposedAt'])}"
+        },
+        "Create_Approval": {
+          "runAfter": { "Compose_ApprovalDetails": ["Succeeded"] },
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_approvals",
+              "connectionName": "shared_approvals",
+              "operationId": "CreateAnApproval"
+            },
+            "parameters": {
+              "approvalType": "CustomResponse",
+              "ApprovalCreationInput/title": "@{concat('Approve ', triggerOutputs()?['body/JobType'], '? — ', triggerOutputs()?['body/CorrelationId'])}",
+              "ApprovalCreationInput/assignedTo": "catherine.han@flowstudio.app",
+              "ApprovalCreationInput/details": "@outputs('Compose_ApprovalDetails')",
+              "ApprovalCreationInput/itemLink": "@{concat('https://contoso.sharepoint.com/sites/ITSM/Lists/Provisioning%20Jobs/DispForm.aspx?ID=', string(triggerOutputs()?['body/ID']))}",
+              "ApprovalCreationInput/itemLinkDescription": "Open Provisioning Job in SharePoint",
+              "ApprovalCreationInput/responseOptions": [ "Approve", "Reject" ],
+              "ApprovalCreationInput/enableNotifications": true,
+              "ApprovalCreationInput/enableReassignment": false
+            },
+            "authentication": "@parameters('$authentication')"
+          }
+        },
+        "Wait_For_Approval": {
+          "runAfter": { "Create_Approval": ["Succeeded"] },
+          "type": "OpenApiConnectionWebhook",
+          "inputs": {
+            "host": {
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_approvals",
+              "connectionName": "shared_approvals",
+              "operationId": "WaitForAnApproval"
+            },
+            "parameters": {
+              "approvalName": "@body('Create_Approval')?['name']"
+            },
+            "authentication": "@parameters('$authentication')"
+          }
+        },
+        "Switch_Approval_Outcome": {
+          "runAfter": { "Wait_For_Approval": ["Succeeded"] },
+          "type": "Switch",
+          "expression": "@body('Wait_For_Approval')?['responses']?[0]?['approverResponse']",
+          "default": {
+            "actions": {
+              "Update_Unknown_Response": {
+                "runAfter": {},
+                "type": "OpenApiConnection",
+                "inputs": {
+                  "host": {
+                    "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                    "connectionName": "shared_sharepointonline",
+                    "operationId": "PatchItem"
+                  },
+                  "parameters": {
+                    "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+                    "table": "Provisioning Jobs",
+                    "id": "@triggerOutputs()?['body/ID']",
+                    "item/Title": "@triggerOutputs()?['body/Title']",
+                    "item/JobId": "@triggerOutputs()?['body/JobId']",
+                    "item/JobType": "@triggerOutputs()?['body/JobType']",
+                    "item/JobStatus/Value": "Cancelled",
+                    "item/CallerUpn": "@triggerOutputs()?['body/CallerUpn']",
+                    "item/TargetJson": "@triggerOutputs()?['body/TargetJson']",
+                    "item/IdempotencyKey": "@triggerOutputs()?['body/IdempotencyKey']",
+                    "item/CorrelationId": "@triggerOutputs()?['body/CorrelationId']",
+                    "item/ProposedAt": "@triggerOutputs()?['body/ProposedAt']",
+                    "item/CompletedAt": "@utcNow()",
+                    "item/ErrorJson": "@{concat('{\"reason\":\"unknown_approval_response\",\"raw\":\"', coalesce(body('Wait_For_Approval')?['responses']?[0]?['approverResponse'], 'null'), '\"}')}"
+                  },
+                  "authentication": "@parameters('$authentication')"
+                }
+              }
+            }
+          },
+          "cases": {
+            "Approved": {
+              "case": "Approve",
+              "actions": {
+                "Update_To_Dispatched": {
+                  "runAfter": {},
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "host": {
+                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                      "connectionName": "shared_sharepointonline",
+                      "operationId": "PatchItem"
+                    },
+                    "parameters": {
+                      "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+                      "table": "Provisioning Jobs",
+                      "id": "@triggerOutputs()?['body/ID']",
+                      "item/Title": "@triggerOutputs()?['body/Title']",
+                      "item/JobId": "@triggerOutputs()?['body/JobId']",
+                      "item/JobType": "@triggerOutputs()?['body/JobType']",
+                      "item/JobStatus/Value": "Dispatched",
+                      "item/CallerUpn": "@triggerOutputs()?['body/CallerUpn']",
+                      "item/TargetJson": "@triggerOutputs()?['body/TargetJson']",
+                      "item/IdempotencyKey": "@triggerOutputs()?['body/IdempotencyKey']",
+                      "item/CorrelationId": "@triggerOutputs()?['body/CorrelationId']",
+                      "item/ProposedAt": "@triggerOutputs()?['body/ProposedAt']",
+                      "item/AwaitingApprovalAt": "@triggerOutputs()?['body/AwaitingApprovalAt']",
+                      "item/DispatchedAt": "@utcNow()",
+                      "item/ResultJson": "@{concat('{\"approverUpn\":\"', body('Wait_For_Approval')?['responses']?[0]?['responder']?['email'], '\",\"approvedAt\":\"', body('Wait_For_Approval')?['responses']?[0]?['responseDateTime'], '\",\"comments\":\"', coalesce(body('Wait_For_Approval')?['responses']?[0]?['comments'], ''), '\"}')}"
+                    },
+                    "authentication": "@parameters('$authentication')"
+                  }
+                }
+              }
+            },
+            "Rejected": {
+              "case": "Reject",
+              "actions": {
+                "Update_To_Rejected": {
+                  "runAfter": {},
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "host": {
+                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                      "connectionName": "shared_sharepointonline",
+                      "operationId": "PatchItem"
+                    },
+                    "parameters": {
+                      "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+                      "table": "Provisioning Jobs",
+                      "id": "@triggerOutputs()?['body/ID']",
+                      "item/Title": "@triggerOutputs()?['body/Title']",
+                      "item/JobId": "@triggerOutputs()?['body/JobId']",
+                      "item/JobType": "@triggerOutputs()?['body/JobType']",
+                      "item/JobStatus/Value": "Rejected",
+                      "item/CallerUpn": "@triggerOutputs()?['body/CallerUpn']",
+                      "item/TargetJson": "@triggerOutputs()?['body/TargetJson']",
+                      "item/IdempotencyKey": "@triggerOutputs()?['body/IdempotencyKey']",
+                      "item/CorrelationId": "@triggerOutputs()?['body/CorrelationId']",
+                      "item/ProposedAt": "@triggerOutputs()?['body/ProposedAt']",
+                      "item/AwaitingApprovalAt": "@triggerOutputs()?['body/AwaitingApprovalAt']",
+                      "item/CompletedAt": "@utcNow()",
+                      "item/ErrorJson": "@{concat('{\"reason\":\"rejected_by_approver\",\"approverUpn\":\"', body('Wait_For_Approval')?['responses']?[0]?['responder']?['email'], '\",\"comments\":\"', coalesce(body('Wait_For_Approval')?['responses']?[0]?['comments'], ''), '\"}')}"
+                    },
+                    "authentication": "@parameters('$authentication')"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "else": { "actions": {} }
+    }
+  }
+}

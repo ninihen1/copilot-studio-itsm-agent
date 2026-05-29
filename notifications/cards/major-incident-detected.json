@@ -1,0 +1,61 @@
+{
+  "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+  "type": "AdaptiveCard",
+  "version": "1.5",
+  "body": [
+    {
+      "type": "TextBlock",
+      "text": "Major Incident detected",
+      "weight": "Bolder",
+      "size": "Large",
+      "color": "Attention",
+      "wrap": true
+    },
+    {
+      "type": "FactSet",
+      "facts": [
+        { "title": "Parent ticket",   "value": "${parentTicket}" },
+        { "title": "CI affected",     "value": "${ciName}" },
+        { "title": "Category",        "value": "${category}" },
+        { "title": "Distinct callers","value": "${callerCount}" },
+        { "title": "Detection window","value": "${windowMinutes} min" },
+        { "title": "First reported",  "value": "${firstReportedAt}" }
+      ]
+    },
+    {
+      "type": "TextBlock",
+      "text": "Linked tickets:",
+      "weight": "Bolder",
+      "spacing": "Medium",
+      "wrap": true
+    },
+    {
+      "type": "Container",
+      "items": [
+        {
+          "type": "TextBlock",
+          "text": "${childTicketsList}",
+          "wrap": true
+        }
+      ]
+    }
+  ],
+  "actions": [
+    {
+      "type": "Action.OpenUrl",
+      "title": "Open Major Incident",
+      "url": "${parentTicketUrl}"
+    },
+    {
+      "type": "Action.Submit",
+      "title": "Take ownership",
+      "style": "positive",
+      "data": { "decision": "own", "ticketId": "${parentTicketId}" }
+    },
+    {
+      "type": "Action.OpenUrl",
+      "title": "Open Major Incidents Teams channel",
+      "url": "${majorIncidentChannelUrl}"
+    }
+  ]
+}

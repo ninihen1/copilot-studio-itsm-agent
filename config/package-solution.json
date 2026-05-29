@@ -1,0 +1,40 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/spfx-build/package-solution.schema.json",
+  "solution": {
+    "name": "itsm-frontend-client-side-solution",
+    "id": "00000000-0000-4000-8000-000000000005",
+    "version": "1.0.0.0",
+    "includeClientSideAssets": true,
+    "skipFeatureDeployment": true,
+    "isDomainIsolated": false,
+    "developer": {
+      "name": "",
+      "websiteUrl": "",
+      "privacyUrl": "",
+      "termsOfUseUrl": "",
+      "mpnId": "Undefined-1.22.2"
+    },
+    "metadata": {
+      "shortDescription": {
+        "default": "ITSM Service Portal"
+      },
+      "longDescription": {
+        "default": "SharePoint-hosted ITSM frontend for tickets, catalog, approvals, knowledge, and admin operations."
+      },
+      "screenshotPaths": [],
+      "videoUrl": "",
+      "categories": []
+    },
+    "features": [
+      {
+        "title": "ITSM Frontend Feature",
+        "description": "Activates the ITSM frontend SPFx solution.",
+        "id": "00000000-0000-4000-8000-000000000040",
+        "version": "1.0.0.0"
+      }
+    ]
+  },
+  "paths": {
+    "zippedPackage": "solution/itsm-frontend.sppkg"
+  }
+}

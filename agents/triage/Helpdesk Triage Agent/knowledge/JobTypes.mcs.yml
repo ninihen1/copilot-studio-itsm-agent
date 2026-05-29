@@ -1,0 +1,7 @@
+mcs.metadata:
+  componentName: Job Types
+  description: Registry of automatable job types. Each row defines a JobType, its Category, RiskTier, default Approval Policy, InputSchema (JSON Schema for args), and required Graph scopes. The agent reads this to know what it can propose.
+kind: KnowledgeSourceConfiguration
+source:
+  kind: SharePointSearchSource
+  site: https://contoso.sharepoint.com/sites/ITSM/Lists/JobTypes

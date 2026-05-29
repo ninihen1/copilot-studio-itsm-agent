@@ -1,0 +1,7 @@
+mcs.metadata:
+  componentName: Categories
+  description: Active category and subcategory taxonomy. Used during classification.
+kind: KnowledgeSourceConfiguration
+source:
+  kind: SharePointSearchSource
+  site: https://contoso.sharepoint.com/sites/ITSM/Lists/Categories

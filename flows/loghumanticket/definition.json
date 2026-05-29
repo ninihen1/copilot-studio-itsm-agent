@@ -1,0 +1,139 @@
+{
+  "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "$connections": {
+      "defaultValue": {},
+      "type": "Object"
+    },
+    "$authentication": {
+      "defaultValue": {},
+      "type": "SecureObject"
+    },
+    "ItsmSiteUrl": {
+      "defaultValue": "https://contoso.sharepoint.com/sites/ITSM",
+      "type": "String"
+    },
+    "AppInsightsInstrumentationKey": {
+      "defaultValue": "@parameters('AppInsightsInstrumentationKey')",
+      "type": "SecureString"
+    }
+  },
+  "triggers": {
+    "manual": {
+      "type": "Request",
+      "kind": "Http",
+      "inputs": {
+        "schema": {
+          "type": "object",
+          "required": [
+            "callerUpn",
+            "shortDescription",
+            "classificationResult",
+            "correlationId"
+          ],
+          "properties": {
+            "callerUpn": {
+              "type": "string"
+            },
+            "shortDescription": {
+              "type": "string"
+            },
+            "classificationResult": {
+              "type": "string"
+            },
+            "correlationId": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    }
+  },
+  "actions": {
+    "Generate_TicketNumber": {
+      "runAfter": {},
+      "type": "Compose",
+      "inputs": "@concat('INC', formatDateTime(utcNow(),'yyMMdd'), substring(replace(guid(),'-',''),0,6))"
+    },
+    "Create_HumanTicket_Row": {
+      "runAfter": {
+        "Generate_TicketNumber": [
+          "Succeeded"
+        ]
+      },
+      "type": "ApiConnection",
+      "inputs": {
+        "host": {
+          "connection": {
+            "name": "@parameters('$connections')['shared_sharepointonline']['connectionId']"
+          }
+        },
+        "method": "post",
+        "path": "/datasets/@{encodeURIComponent(encodeURIComponent(parameters('ItsmSiteUrl')))}/tables/@{encodeURIComponent(encodeURIComponent('Tickets'))}/items",
+        "body": {
+          "Title": "@outputs('Generate_TicketNumber')",
+          "TicketNumber": "@outputs('Generate_TicketNumber')",
+          "TicketType": "Incident",
+          "ShortDescription": "@triggerBody()?['shortDescription']",
+          "Description": "@triggerBody()?['classificationResult']",
+          "TicketState": "New",
+          "Caller": "@triggerBody()?['callerUpn']",
+          "Impact": "3 - Low",
+          "Urgency": "3 - Low",
+          "OpenedDate": "@utcNow()",
+          "ConfidentialityLevel": "Public"
+        }
+      }
+    },
+    "Emit_AppInsights": {
+      "runAfter": {
+        "Create_HumanTicket_Row": [
+          "Succeeded"
+        ]
+      },
+      "type": "Http",
+      "inputs": {
+        "method": "POST",
+        "uri": "https://dc.services.visualstudio.com/v2/track",
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "body": {
+          "name": "Microsoft.ApplicationInsights.Event",
+          "time": "@utcNow()",
+          "iKey": "@parameters('AppInsightsInstrumentationKey')",
+          "data": {
+            "baseType": "EventData",
+            "baseData": {
+              "name": "loghumanticket.received",
+              "properties": {
+                "correlationId": "@triggerBody()?['correlationId']",
+                "ticketNumber": "@outputs('Generate_TicketNumber')",
+                "callerUpn": "@triggerBody()?['callerUpn']"
+              }
+            }
+          }
+        }
+      }
+    },
+    "Return_Success": {
+      "runAfter": {
+        "Emit_AppInsights": [
+          "Succeeded",
+          "Failed"
+        ]
+      },
+      "type": "Response",
+      "kind": "Http",
+      "inputs": {
+        "statusCode": 200,
+        "body": {
+          "ticketNumber": "@outputs('Generate_TicketNumber')",
+          "status": "New",
+          "errorMessage": ""
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,65 @@
+[
+  {
+    "Tag": "reset-pw",
+    "TicketNumber": "INC2604302211reset",
+    "SpItemId": 5,
+    "BusinessKey": "00000000-0000-4000-8000-000000000034",
+    "ExpectedOutcome": "propose",
+    "ExpectedJobType": "identity.resetPassword",
+    "ShortDescription": "I forgot my password and locked out of my account"
+  },
+  {
+    "Tag": "disable-user",
+    "TicketNumber": "INC2604302211disab",
+    "SpItemId": 6,
+    "BusinessKey": "00000000-0000-4000-8000-000000000049",
+    "ExpectedOutcome": "propose",
+    "ExpectedJobType": "identity.disableUser",
+    "ShortDescription": "Please disable John Smith's account, he left the company today"
+  },
+  {
+    "Tag": "add-to-group",
+    "TicketNumber": "INC2604302211add-t",
+    "SpItemId": 7,
+    "BusinessKey": "00000000-0000-4000-8000-000000000031",
+    "ExpectedOutcome": "propose",
+    "ExpectedJobType": "groups.addMember",
+    "ShortDescription": "Add me to the Marketing security group"
+  },
+  {
+    "Tag": "assign-license",
+    "TicketNumber": "INC2604302211assig",
+    "SpItemId": 8,
+    "BusinessKey": "00000000-0000-4000-8000-000000000007",
+    "ExpectedOutcome": "propose",
+    "ExpectedJobType": "licensing.assign",
+    "ShortDescription": "Need a Power BI Pro license for our new analyst Jane Doe"
+  },
+  {
+    "Tag": "vague",
+    "TicketNumber": "INC2604302211vague",
+    "SpItemId": 9,
+    "BusinessKey": "00000000-0000-4000-8000-000000000018",
+    "ExpectedOutcome": "stop_and_ask",
+    "ExpectedJobType": null,
+    "ShortDescription": "I need help"
+  },
+  {
+    "Tag": "ambiguous-target",
+    "TicketNumber": "INC2604302211ambig",
+    "SpItemId": 10,
+    "BusinessKey": "00000000-0000-4000-8000-000000000011",
+    "ExpectedOutcome": "stop_and_ask",
+    "ExpectedJobType": null,
+    "ShortDescription": "Bob's email isn't working"
+  },
+  {
+    "Tag": "bulk-refusal",
+    "TicketNumber": "INC2604302211bulk-",
+    "SpItemId": 11,
+    "BusinessKey": "00000000-0000-4000-8000-000000000015",
+    "ExpectedOutcome": "stop_and_ask",
+    "ExpectedJobType": null,
+    "ShortDescription": "Reset passwords for the entire engineering team"
+  }
+]

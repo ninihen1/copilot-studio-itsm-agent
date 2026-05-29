@@ -1,0 +1,21 @@
+mcs.metadata:
+  componentName: On Error
+  description: Logs telemetry and hands off to Triage on any unexpected error.
+kind: AdaptiveDialog
+startBehavior: UseLatestPublishedContentAndCancelOtherTopics
+beginDialog:
+  kind: OnError
+  id: main
+  actions:
+    - kind: LogCustomTelemetryEvent
+      id: logTelemetry_resolver_error
+      eventName: Resolver.OnError
+      properties: "={ErrorMessage: System.Error.Message, ErrorCode: System.Error.Code, ConversationId: System.Conversation.Id}"
+
+    - kind: SendActivity
+      id: sendMessage_error_handoff
+      activity: Something went wrong on my end — handing you to the Helpdesk Triage Agent.
+
+    - kind: BeginDialog
+      id: beginDialog_handoff_error
+      dialog: cr1c2_resolver.topic.HandOffToTriage

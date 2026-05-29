@@ -1,0 +1,90 @@
+{
+  "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+  "type": "AdaptiveCard",
+  "version": "1.5",
+  "body": [
+    {
+      "type": "TextBlock",
+      "text": "Approval needed: ${jobType}",
+      "weight": "Bolder",
+      "size": "Large",
+      "color": "Accent",
+      "wrap": true
+    },
+    {
+      "type": "FactSet",
+      "facts": [
+        { "title": "Caller",   "value": "${callerUpn}" },
+        { "title": "Target",   "value": "${targetUpn}" },
+        { "title": "Action",   "value": "${actionDescription}" },
+        { "title": "Stage",    "value": "${stageNumber} of ${totalStages} - ${stageName}" },
+        { "title": "Risk",     "value": "${risk}" },
+        { "title": "Confidence","value": "${confidence}" },
+        { "title": "Ticket",   "value": "${ticketNumber}" },
+        { "title": "Rationale","value": "${rationale}" }
+      ]
+    },
+    {
+      "type": "Container",
+      "spacing": "Medium",
+      "items": [
+        {
+          "type": "TextBlock",
+          "text": "Args",
+          "weight": "Bolder",
+          "wrap": true
+        },
+        {
+          "type": "TextBlock",
+          "text": "${argsPretty}",
+          "fontType": "Monospace",
+          "wrap": true,
+          "size": "Small"
+        }
+      ]
+    }
+  ],
+  "actions": [
+    {
+      "type": "Action.Submit",
+      "title": "Approve",
+      "style": "positive",
+      "data": { "decision": "approve", "jobId": "${jobId}", "stageName": "${stageName}" }
+    },
+    {
+      "type": "Action.ShowCard",
+      "title": "Reject",
+      "card": {
+        "type": "AdaptiveCard",
+        "body": [
+          {
+            "type": "Input.Text",
+            "id": "rejectReason",
+            "label": "Reason (required)",
+            "isMultiline": true,
+            "isRequired": true,
+            "errorMessage": "A reason is required to reject."
+          }
+        ],
+        "actions": [
+          {
+            "type": "Action.Submit",
+            "title": "Submit rejection",
+            "style": "destructive",
+            "data": { "decision": "reject", "jobId": "${jobId}", "stageName": "${stageName}" }
+          }
+        ]
+      }
+    },
+    {
+      "type": "Action.Submit",
+      "title": "Defer 1 hour",
+      "data": { "decision": "defer", "jobId": "${jobId}", "stageName": "${stageName}" }
+    },
+    {
+      "type": "Action.OpenUrl",
+      "title": "Open ticket",
+      "url": "${ticketUrl}"
+    }
+  ]
+}

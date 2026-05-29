@@ -1,0 +1,28 @@
+mcs.metadata:
+  componentName: Start Over
+  description: Lets the user restart the conversation from scratch.
+kind: AdaptiveDialog
+startBehavior: CancelOtherTopics
+beginDialog:
+  kind: OnRecognizedIntent
+  id: main
+  intent:
+    displayName: Start Over
+    includeInOnSelectIntent: false
+    triggerQueries:
+      - Start over
+      - Start again
+      - Restart
+      - Reset
+      - Begin again
+
+  actions:
+    - kind: SendActivity
+      id: sendMessage_reset
+      activity: Okay, starting over. What do you need?
+
+    - kind: ClearAllVariables
+      id: clearVariables_reset
+
+    - kind: CancelAllDialogs
+      id: cancelAllDialogs_reset

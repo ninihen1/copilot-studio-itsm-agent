@@ -1,0 +1,363 @@
+{
+  "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "$connections": {
+      "defaultValue": {},
+      "type": "Object"
+    },
+    "$authentication": {
+      "defaultValue": {},
+      "type": "SecureObject"
+    }
+  },
+  "triggers": {
+    "manual": {
+      "type": "Request",
+      "kind": "Http",
+      "inputs": {
+        "schema": {
+          "type": "object",
+          "properties": {
+            "query": {
+              "type": "string",
+              "description": "License name, partNumber, or alias to search. Empty/missing returns all SKUs in the tenant."
+            }
+          }
+        }
+      }
+    }
+  },
+  "actions": {
+    "Get_KV_Secret": {
+      "runAfter": {},
+      "type": "OpenApiConnection",
+      "inputs": {
+        "host": {
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_keyvault",
+          "connectionName": "shared_keyvault",
+          "operationId": "GetSecret"
+        },
+        "parameters": {
+          "secretName": "SP-IT-Identity-ClientSecret"
+        },
+        "authentication": "@parameters('$authentication')"
+      },
+      "runtimeConfiguration": {
+        "secureData": {
+          "properties": [
+            "inputs",
+            "outputs"
+          ]
+        }
+      }
+    },
+    "Get_Graph_Token": {
+      "runAfter": {
+        "Get_KV_Secret": [
+          "Succeeded"
+        ]
+      },
+      "type": "Http",
+      "inputs": {
+        "method": "POST",
+        "uri": "https://login.microsoftonline.com/00000000-0000-4000-8000-000000000009/oauth2/v2.0/token",
+        "headers": {
+          "Content-Type": "application/x-www-form-urlencoded"
+        },
+        "body": "@{concat('grant_type=client_credentials&client_id=00000000-0000-4000-8000-000000000014&scope=https%3A%2F%2Fgraph.microsoft.com%2F.default&client_secret=', encodeUriComponent(body('Get_KV_Secret')?['value']))}"
+      },
+      "runtimeConfiguration": {
+        "secureData": {
+          "properties": [
+            "inputs",
+            "outputs"
+          ]
+        }
+      }
+    },
+    "Parse_Token": {
+      "runAfter": {
+        "Get_Graph_Token": [
+          "Succeeded"
+        ]
+      },
+      "type": "ParseJson",
+      "inputs": {
+        "content": "@body('Get_Graph_Token')",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "access_token": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "Call_SubscribedSkus": {
+      "runAfter": {
+        "Parse_Token": [
+          "Succeeded"
+        ]
+      },
+      "type": "Http",
+      "inputs": {
+        "method": "GET",
+        "uri": "https://graph.microsoft.com/v1.0/subscribedSkus",
+        "headers": {
+          "Authorization": "@{concat('Bearer ', body('Parse_Token')?['access_token'])}"
+        }
+      }
+    },
+    "Compose_PartNumberToDisplayName": {
+      "runAfter": {
+        "Call_SubscribedSkus": [
+          "Succeeded"
+        ]
+      },
+      "type": "Compose",
+      "inputs": {
+        "ENTERPRISEPACK": "Office 365 E3",
+        "ENTERPRISEPREMIUM": "Office 365 E5",
+        "ENTERPRISEPACKPLUS": "Office 365 E3 Plus",
+        "STANDARDPACK": "Office 365 E1",
+        "DESKLESSPACK": "Office 365 F3",
+        "SPB": "Microsoft 365 Business Premium",
+        "O365_BUSINESS_ESSENTIALS": "Microsoft 365 Business Basic",
+        "O365_BUSINESS_PREMIUM": "Microsoft 365 Business Standard",
+        "M365_F1": "Microsoft 365 F1",
+        "SPE_F1": "Microsoft 365 F3",
+        "SPE_E3": "Microsoft 365 E3",
+        "SPE_E5": "Microsoft 365 E5",
+        "EMS": "Enterprise Mobility + Security E3",
+        "EMSPREMIUM": "Enterprise Mobility + Security E5",
+        "AAD_PREMIUM": "Azure AD Premium P1",
+        "AAD_PREMIUM_P2": "Microsoft Entra ID P2",
+        "POWER_BI_STANDARD": "Power BI (Free)",
+        "POWER_BI_PRO": "Power BI Pro",
+        "PBI_PREMIUM_PER_USER": "Power BI Premium Per User",
+        "FLOW_FREE": "Power Automate Free",
+        "FLOW_P2": "Power Automate Premium",
+        "POWERAUTOMATE_ATTENDED_RPA": "Power Automate Premium with Attended RPA",
+        "POWERAPPS_PER_USER": "Power Apps Premium Per User",
+        "POWERAPPS_DEV": "Power Apps Developer Plan",
+        "POWERAPPS_VIRAL": "Power Apps (Trial)",
+        "Microsoft_365_Copilot": "Microsoft 365 Copilot",
+        "MICROSOFT_365_COPILOT_FOR_BUSINESS": "Microsoft 365 Copilot for Business",
+        "Microsoft_Teams_Enterprise_New": "Microsoft Teams Enterprise",
+        "Microsoft_365_ Business_ Premium_(no Teams)": "Microsoft 365 Business Premium (no Teams)",
+        "WINDOWS_STORE": "Windows Store for Business",
+        "SMB_APPS": "Microsoft 365 Apps for Business",
+        "EXCHANGESTANDARD": "Exchange Online (Plan 1)",
+        "EXCHANGEENTERPRISE": "Exchange Online (Plan 2)"
+      }
+    },
+    "Select_Skus": {
+      "runAfter": {
+        "Compose_PartNumberToDisplayName": [
+          "Succeeded"
+        ]
+      },
+      "type": "Select",
+      "inputs": {
+        "from": "@body('Call_SubscribedSkus')?['value']",
+        "select": {
+          "displayName": "@coalesce(outputs('Compose_PartNumberToDisplayName')?[item()?['skuPartNumber']], item()?['skuPartNumber'])",
+          "skuPartNumber": "@item()?['skuPartNumber']",
+          "skuId": "@item()?['skuId']",
+          "totalSeats": "@item()?['prepaidUnits']?['enabled']",
+          "consumedSeats": "@item()?['consumedUnits']",
+          "availableSeats": "@sub(item()?['prepaidUnits']?['enabled'], item()?['consumedUnits'])"
+        }
+      }
+    },
+    "Filter_Matches": {
+      "runAfter": {
+        "Select_Skus": [
+          "Succeeded"
+        ]
+      },
+      "type": "Query",
+      "inputs": {
+        "from": "@body('Select_Skus')",
+        "where": "@or(empty(coalesce(triggerBody()?['query'],'')), or(contains(toLower(coalesce(item()?['skuPartNumber'],'')), toLower(coalesce(triggerBody()?['query'],''))), contains(toLower(coalesce(item()?['displayName'],'')), toLower(coalesce(triggerBody()?['query'],'')))))"
+      }
+    },
+    "Response": {
+      "runAfter": {
+        "Apply_To_Each_Match": [
+          "Succeeded"
+        ]
+      },
+      "type": "Response",
+      "kind": "Http",
+      "inputs": {
+        "statusCode": 200,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "body": {
+          "count": "@length(body('Filter_Matches'))",
+          "query": "@coalesce(triggerBody()?['query'], '')",
+          "matches": "@variables('enrichedMatches')"
+        },
+        "schema": {
+          "type": "object",
+          "properties": {
+            "count": {
+              "type": "integer"
+            },
+            "query": {
+              "type": "string"
+            },
+            "matches": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "displayName": {
+                    "type": "string"
+                  },
+                  "skuPartNumber": {
+                    "type": "string"
+                  },
+                  "skuId": {
+                    "type": "string"
+                  },
+                  "totalSeats": {
+                    "type": "integer"
+                  },
+                  "consumedSeats": {
+                    "type": "integer"
+                  },
+                  "availableSeats": {
+                    "type": "integer"
+                  },
+                  "pricingSource": {
+                    "type": "string"
+                  },
+                  "listPriceMonthly": {
+                    "type": "number"
+                  },
+                  "negotiatedPriceMonthly": {
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "currency": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "billingCycle": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "lastVerified": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "sourceUrl": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "Get_LicenseCosts": {
+      "runAfter": {},
+      "type": "OpenApiConnection",
+      "inputs": {
+        "host": {
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+          "connectionName": "shared_sharepointonline",
+          "operationId": "GetItems"
+        },
+        "parameters": {
+          "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+          "table": "License Costs",
+          "$top": 500
+        },
+        "authentication": "@parameters('$authentication')"
+      }
+    },
+    "Initialize_EnrichedMatches": {
+      "runAfter": {
+        "Filter_Matches": [
+          "Succeeded"
+        ],
+        "Get_LicenseCosts": [
+          "Succeeded"
+        ]
+      },
+      "type": "InitializeVariable",
+      "inputs": {
+        "variables": [
+          {
+            "name": "enrichedMatches",
+            "type": "array",
+            "value": []
+          }
+        ]
+      }
+    },
+    "Apply_To_Each_Match": {
+      "runAfter": {
+        "Initialize_EnrichedMatches": [
+          "Succeeded"
+        ]
+      },
+      "type": "Foreach",
+      "foreach": "@body('Filter_Matches')",
+      "actions": {
+        "Filter_Cost_Row": {
+          "runAfter": {},
+          "type": "Query",
+          "inputs": {
+            "from": "@body('Get_LicenseCosts')?['value']",
+            "where": "@equals(item()?['SkuPartNumber'], items('Apply_To_Each_Match')?['skuPartNumber'])"
+          }
+        },
+        "Append_Enriched": {
+          "runAfter": {
+            "Filter_Cost_Row": [
+              "Succeeded"
+            ]
+          },
+          "type": "AppendToArrayVariable",
+          "inputs": {
+            "name": "enrichedMatches",
+            "value": {
+              "displayName": "@items('Apply_To_Each_Match')?['displayName']",
+              "skuPartNumber": "@items('Apply_To_Each_Match')?['skuPartNumber']",
+              "skuId": "@items('Apply_To_Each_Match')?['skuId']",
+              "totalSeats": "@items('Apply_To_Each_Match')?['totalSeats']",
+              "consumedSeats": "@items('Apply_To_Each_Match')?['consumedSeats']",
+              "availableSeats": "@items('Apply_To_Each_Match')?['availableSeats']",
+              "pricingSource": "@if(greater(length(body('Filter_Cost_Row')), 0), 'catalog', 'not_in_catalog')",
+              "listPriceMonthly": "@first(body('Filter_Cost_Row'))?['ListPriceMonthly']",
+              "negotiatedPriceMonthly": "@first(body('Filter_Cost_Row'))?['NegotiatedPriceMonthly']",
+              "currency": "@first(body('Filter_Cost_Row'))?['Currency']?['Value']",
+              "billingCycle": "@first(body('Filter_Cost_Row'))?['BillingCycle']?['Value']",
+              "lastVerified": "@first(body('Filter_Cost_Row'))?['LastVerified']",
+              "sourceUrl": "@first(body('Filter_Cost_Row'))?['SourceUrl']"
+            }
+          }
+        }
+      }
+    }
+  }
+}

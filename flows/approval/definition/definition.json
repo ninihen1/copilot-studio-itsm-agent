@@ -1,0 +1,203 @@
+{
+  "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "$connections":                  { "defaultValue": {}, "type": "Object" },
+    "$authentication":               { "defaultValue": {}, "type": "SecureObject" },
+    "ItsmSiteUrl":                   { "defaultValue": "https://contoso.sharepoint.com/sites/ITSM", "type": "String" },
+    "AppInsightsInstrumentationKey": { "defaultValue": "@parameters('AppInsightsInstrumentationKey')", "type": "SecureString" },
+    "DispatcherEndpoint":            { "defaultValue": "https://CHANGE_ME.azure-apim.net/itsm/provisioning/jobs", "type": "String" },
+    "JwtSigningKeyVaultUrl":         { "defaultValue": "https://kv-itsm-dev.vault.azure.net/keys/itsm-approval-signing-dev/CHANGE_ME", "type": "String" },
+    "ItsmIssuer":                    { "defaultValue": "https://approvals.itsm.CHANGE_ME.com", "type": "String" },
+    "ItsmAudience":                  { "defaultValue": "https://dispatcher.itsm.CHANGE_ME.com", "type": "String" }
+  },
+  "triggers": {
+    "When_ProvisioningJob_Created_Proposed": {
+      "type": "ApiConnection",
+      "inputs": {
+        "host": { "connection": { "name": "@parameters('$connections')['shared_sharepointonline']['connectionId']" } },
+        "method": "get",
+        "path": "/datasets/@{encodeURIComponent(encodeURIComponent(parameters('ItsmSiteUrl')))}/tables/@{encodeURIComponent(encodeURIComponent('Provisioning Jobs'))}/onnewitems",
+        "queries": { "$filter": "JobStatus eq 'Proposed'" }
+      },
+      "recurrence": { "frequency": "Minute", "interval": 1 }
+    }
+  },
+  "actions": {
+    "Update_To_AwaitingApproval": {
+      "runAfter": {},
+      "type": "ApiConnection",
+      "inputs": {
+        "host": { "connection": { "name": "@parameters('$connections')['shared_sharepointonline']['connectionId']" } },
+        "method": "patch",
+        "path": "/datasets/@{encodeURIComponent(encodeURIComponent(parameters('ItsmSiteUrl')))}/tables/@{encodeURIComponent(encodeURIComponent('Provisioning Jobs'))}/items/@{triggerBody()?['ID']}",
+        "body": { "JobStatus": "AwaitingApproval", "AwaitingApprovalAt": "@utcNow()" }
+      }
+    },
+    "Lookup_JobType_For_Policy": {
+      "runAfter": { "Update_To_AwaitingApproval": ["Succeeded"] },
+      "type": "ApiConnection",
+      "inputs": {
+        "host": { "connection": { "name": "@parameters('$connections')['shared_sharepointonline']['connectionId']" } },
+        "method": "get",
+        "path": "/datasets/@{encodeURIComponent(encodeURIComponent(parameters('ItsmSiteUrl')))}/tables/@{encodeURIComponent(encodeURIComponent('JobTypes'))}/items",
+        "queries": { "$filter": "JobType eq '@{triggerBody()?['JobType']}'", "$top": 1 }
+      }
+    },
+    "Lookup_ApprovalPolicy": {
+      "runAfter": { "Lookup_JobType_For_Policy": ["Succeeded"] },
+      "type": "ApiConnection",
+      "inputs": {
+        "host": { "connection": { "name": "@parameters('$connections')['shared_sharepointonline']['connectionId']" } },
+        "method": "get",
+        "path": "/datasets/@{encodeURIComponent(encodeURIComponent(parameters('ItsmSiteUrl')))}/tables/@{encodeURIComponent(encodeURIComponent('Approval Policies'))}/items/@{first(body('Lookup_JobType_For_Policy')?['value'])?['DefaultPolicy']?['Id']}"
+      }
+    },
+    "Parse_PolicyStages": {
+      "runAfter": { "Lookup_ApprovalPolicy": ["Succeeded"] },
+      "type": "ParseJson",
+      "inputs": {
+        "content": "@body('Lookup_ApprovalPolicy')?['Stages']",
+        "schema": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name":             { "type": "string" },
+              "approverResolver": { "type": "object" },
+              "rule":             { "type": "string" },
+              "timeoutHours":     { "type": "integer" },
+              "onTimeout":        { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "Resolve_Manager_Of_Caller": {
+      "runAfter": { "Parse_PolicyStages": ["Succeeded"] },
+      "type": "Http",
+      "inputs": {
+        "method": "GET",
+        "uri": "https://graph.microsoft.com/v1.0/users/@{triggerBody()?['CallerUpn']}/manager",
+        "authentication": "@parameters('$authentication')"
+      }
+    },
+    "ForEach_Stage": {
+      "runAfter": { "Resolve_Manager_Of_Caller": ["Succeeded","Failed"] },
+      "type": "Foreach",
+      "foreach": "@body('Parse_PolicyStages')",
+      "actions": {
+        "Send_Approval_Card": {
+          "type": "ApiConnectionWebhook",
+          "inputs": {
+            "host": { "connection": { "name": "@parameters('$connections')['shared_approvals']['connectionId']" } },
+            "body": {
+              "NotificationUrl": "@listCallbackUrl()",
+              "approvalType":     "PendingResponse",
+              "title":            "Approval needed: @{triggerBody()?['JobType']}",
+              "details":          "Caller: @{triggerBody()?['CallerUpn']}\\nTarget: @{triggerBody()?['TargetJson']}\\nArgs: @{triggerBody()?['ArgsJson']}\\nTicket: @{triggerBody()?['ParentTicket']?['Value']}\\nStage: @{items('ForEach_Stage')?['name']}\\nRationale: @{triggerBody()?['Rationale']}",
+              "assignedTo":       "@if(equals(items('ForEach_Stage')?['approverResolver']?['type'],'manager_of_target'), body('Resolve_Manager_Of_Caller')?['userPrincipalName'], items('ForEach_Stage')?['approverResolver']?['fallback']?['value'])",
+              "options":          "Approve, Reject"
+            },
+            "path": "/approvals/$subscriptions"
+          }
+        },
+        "Record_Stage_Decision": {
+          "runAfter": { "Send_Approval_Card": ["Succeeded"] },
+          "type": "ApiConnection",
+          "inputs": {
+            "host": { "connection": { "name": "@parameters('$connections')['shared_sharepointonline']['connectionId']" } },
+            "method": "post",
+            "path": "/datasets/@{encodeURIComponent(encodeURIComponent(parameters('ItsmSiteUrl')))}/tables/@{encodeURIComponent(encodeURIComponent('ApprovalStages'))}/items",
+            "body": {
+              "Title":              "@concat(triggerBody()?['JobId'],'-',items('ForEach_Stage')?['name'])",
+              "ApprovalSessionId":  "@triggerBody()?['JobId']",
+              "LinkedJobId":        "@triggerBody()?['JobId']",
+              "StageName":          "@items('ForEach_Stage')?['name']",
+              "StageOrder":         "@iterationIndexes('ForEach_Stage')",
+              "ApproversResolved":  "@string(items('ForEach_Stage')?['approverResolver'])",
+              "ApproversWhoActed":  "@string(body('Send_Approval_Card'))",
+              "Rule":               "@items('ForEach_Stage')?['rule']",
+              "Outcome":            "@if(equals(body('Send_Approval_Card')?['outcome'],'Approve'),'approved','rejected')",
+              "StartedAt":          "@utcNow()",
+              "CompletedAt":        "@utcNow()"
+            }
+          }
+        },
+        "If_Rejected_Stop": {
+          "runAfter": { "Record_Stage_Decision": ["Succeeded"] },
+          "type": "If",
+          "expression": { "and": [ { "not": { "equals": [ "@body('Send_Approval_Card')?['outcome']", "Approve" ] } } ] },
+          "actions": {
+            "Update_To_Rejected": {
+              "type": "ApiConnection",
+              "inputs": {
+                "host": { "connection": { "name": "@parameters('$connections')['shared_sharepointonline']['connectionId']" } },
+                "method": "patch",
+                "path": "/datasets/@{encodeURIComponent(encodeURIComponent(parameters('ItsmSiteUrl')))}/tables/@{encodeURIComponent(encodeURIComponent('Provisioning Jobs'))}/items/@{triggerBody()?['ID']}",
+                "body": { "JobStatus": "Rejected" }
+              }
+            },
+            "Terminate_Run": {
+              "runAfter": { "Update_To_Rejected": ["Succeeded"] },
+              "type": "Terminate",
+              "inputs": { "runStatus": "Cancelled" }
+            }
+          }
+        }
+      }
+    },
+    "Sign_JWT_And_Dispatch": {
+      "runAfter": { "ForEach_Stage": ["Succeeded"] },
+      "type": "Compose",
+      "inputs": {
+        "note": "Implementation pattern: call out to Azure Function 'jwt-sign' with the claims object. Function uses Key Vault key to sign and returns the bearer token. Then HTTP POST to DispatcherEndpoint with Authorization: Bearer <token>.",
+        "claims_template": {
+          "iss": "@parameters('ItsmIssuer')",
+          "aud": "@parameters('ItsmAudience')",
+          "sub": "@triggerBody()?['ParentTicket']?['Value']",
+          "jti": "@triggerBody()?['JobId']",
+          "iat": "@addToTime(utcNow(),0,'second')",
+          "exp": "@addToTime(utcNow(),1,'hour')",
+          "jobType":     "@triggerBody()?['JobType']",
+          "targetHash":  "sha256:CHANGE_ME",
+          "argsHash":    "sha256:CHANGE_ME",
+          "approvers":   [],
+          "policyId":         "@body('Lookup_ApprovalPolicy')?['PolicyId']",
+          "policyVersion":    "@body('Lookup_ApprovalPolicy')?['PolicyVersion']"
+        }
+      }
+    },
+    "POST_To_Dispatcher": {
+      "runAfter": { "Sign_JWT_And_Dispatch": ["Succeeded"] },
+      "type": "Http",
+      "inputs": {
+        "method": "POST",
+        "uri": "@parameters('DispatcherEndpoint')",
+        "headers": {
+          "Content-Type":        "application/json",
+          "X-Idempotency-Key":  "@triggerBody()?['IdempotencyKey']",
+          "Authorization":       "Bearer JWT_FROM_FUNCTION"
+        },
+        "body": {
+          "jobType":         "@triggerBody()?['JobType']",
+          "target":          "@json(triggerBody()?['TargetJson'])",
+          "args":            "@json(triggerBody()?['ArgsJson'])",
+          "ticketId":        "@triggerBody()?['ParentTicket']?['Value']",
+          "callerUpn":       "@triggerBody()?['CallerUpn']",
+          "correlationId":   "@triggerBody()?['CorrelationId']"
+        }
+      }
+    },
+    "Update_To_Dispatched": {
+      "runAfter": { "POST_To_Dispatcher": ["Succeeded"] },
+      "type": "ApiConnection",
+      "inputs": {
+        "host": { "connection": { "name": "@parameters('$connections')['shared_sharepointonline']['connectionId']" } },
+        "method": "patch",
+        "path": "/datasets/@{encodeURIComponent(encodeURIComponent(parameters('ItsmSiteUrl')))}/tables/@{encodeURIComponent(encodeURIComponent('Provisioning Jobs'))}/items/@{triggerBody()?['ID']}",
+        "body": { "JobStatus": "Dispatched", "DispatchedAt": "@utcNow()" }
+      }
+    }
+  }
+}

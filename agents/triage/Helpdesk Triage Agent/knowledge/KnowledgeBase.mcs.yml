@@ -1,0 +1,7 @@
+mcs.metadata:
+  componentName: Knowledge Base
+  description: Published KB articles for self-help and deflection. Source of truth for "how do I" questions. Filtered to Status=Published in the underlying list.
+kind: KnowledgeSourceConfiguration
+source:
+  kind: SharePointSearchSource
+  site: https://contoso.sharepoint.com/sites/ITSM/Lists/Knowledge%20Base

@@ -1,0 +1,157 @@
+mcs.metadata:
+  componentName: Create Ticket
+  description: Primary intake topic. Triggered when the user describes an IT issue or request. Classifies, attempts deflection, then either resolves via KB or proposes an action.
+kind: AdaptiveDialog
+beginDialog:
+  kind: OnRecognizedIntent
+  id: main
+  intent:
+    displayName: Create Ticket
+    includeInOnSelectIntent: true
+    triggerQueries:
+      - I have a problem
+      - I need help with
+      - Something is broken
+      - I can't access
+      - I forgot my password
+      - Reset my password
+      - I need access to
+      - I need a license
+      - My computer is slow
+      - My laptop won't connect
+      - VPN isn't working
+      - Email isn't sending
+      - I need to add someone to a group
+      - Onboarding new user
+      - Offboarding user
+      - Set up a new mailbox
+      - Restore deleted file
+      - I lost my phone
+      - I need software installed
+      - Can't print
+      - Wifi is down
+
+  actions:
+    # Step 1 — capture short description from the user's first utterance
+    - kind: SetVariable
+      id: setVar_caller
+      variable: init:Topic.CallerUpn
+      value: =System.User.PrincipalName
+
+    - kind: SetVariable
+      id: setVar_correlationId
+      variable: init:Topic.CorrelationId
+      value: =GUID()
+
+    - kind: Question
+      id: q_shortDescription
+      variable: init:Topic.ShortDescription
+      prompt: |-
+        Describe what's happening in one sentence. For example: "I can't sign in to Salesforce", "I need a Power BI Pro license", or "Bob from Sales is starting Monday and needs a laptop and accounts".
+      entity: StringPrebuiltEntity
+
+    # Step 2 — classify with the AI builder. Falls back to user input on low confidence.
+    - kind: SearchAndSummarizeContent
+      id: classify_via_kb
+      userInput: =Topic.ShortDescription
+      additionalInstructions: |-
+        Classify this IT request. Determine:
+        - TicketType: Incident (something is broken) | Request (catalog item) | Change (planned modification) | Problem (recurring root-cause investigation)
+        - Category and Subcategory from the Categories knowledge source
+        - Impact (1-3) and Urgency (1-3) — be conservative; use 3 unless there's clear evidence of broader impact
+
+        Then search the Knowledge Base for a matching published article. If you find one with confidence >= 0.85, propose it as a deflection. Otherwise, recommend a job type from JobTypes if the action is automatable, or note that this needs a human queue.
+
+        Return: classification, KB match (if any), recommended next step.
+      moderationLevel: Medium
+      responseCaptureType: FullResponse
+      variable: init:Topic.ClassificationResult
+
+    # Step 3 — confirm with the user before doing anything
+    - kind: SendActivity
+      id: sendMessage_classification
+      activity: |-
+        Here's what I understand:
+
+        {Topic.ClassificationResult}
+
+        Does that look right?
+
+    - kind: Question
+      id: q_classificationOk
+      alwaysPrompt: true
+      variable: init:Topic.ClassificationOk
+      prompt: Should I proceed?
+      entity: BooleanPrebuiltEntity
+
+    - kind: ConditionGroup
+      id: condition_classificationOk
+      conditions:
+        - id: condition_classificationOk_no
+          condition: =Topic.ClassificationOk = false
+          actions:
+            - kind: SendActivity
+              id: sendMessage_clarify
+              activity: Tell me what I got wrong, or rephrase the issue.
+
+            - kind: BeginDialog
+              id: beginDialog_restart
+              dialog: cre79_agent.topic.CreateTicket
+
+      elseActions:
+        # Step 4 — KB deflection check. If a high-confidence KB article was found, send it and ask "did this resolve it?"
+        # The agent uses the model's reasoning over Topic.ClassificationResult to drive this branch.
+        - kind: AnswerQuestionWithAI
+          id: ai_deflection_attempt
+          userInput: =Topic.ShortDescription
+          additionalInstructions: |-
+            If the Knowledge Base contains an article that answers this question with high confidence, summarise the article in 2-3 sentences and link to it. End with: "Did this resolve it? (yes / no)"
+
+            If no high-confidence article exists, respond: "NO_KB_MATCH" — and stop.
+          variable: init:Topic.DeflectionResponse
+
+        - kind: ConditionGroup
+          id: condition_deflection
+          conditions:
+            - id: condition_deflection_match
+              condition: =!IsBlank(Topic.DeflectionResponse) And Topic.DeflectionResponse <> "NO_KB_MATCH"
+              actions:
+                - kind: SendActivity
+                  id: sendMessage_kbReply
+                  activity: ={Topic.DeflectionResponse}
+
+                - kind: Question
+                  id: q_deflectionResolved
+                  alwaysPrompt: true
+                  variable: init:Topic.DeflectionResolved
+                  prompt: Did that resolve it?
+                  entity: BooleanPrebuiltEntity
+
+                - kind: ConditionGroup
+                  id: condition_deflectionResolved
+                  conditions:
+                    - id: condition_deflectionResolved_yes
+                      condition: =Topic.DeflectionResolved = true
+                      actions:
+                        - kind: SendActivity
+                          id: sendMessage_resolved
+                          conversationOutcome: ResolvedConfirmed
+                          activity: |-
+                            Glad that worked. I'm logging this as resolved-by-KB so we can track which articles are useful — no further action needed from you.
+
+                        - kind: EndDialog
+                          id: endDialog_resolved
+
+                  elseActions:
+                    - kind: SendActivity
+                      id: sendMessage_proposalUnavailable_afterKb
+                      conversationOutcome: Escalated
+                      activity: |-
+                        I can classify this request, but automated approval submission is temporarily unavailable. Please contact the helpdesk directly at helpdesk@contoso.onmicrosoft.com.
+
+          elseActions:
+            - kind: SendActivity
+              id: sendMessage_proposalUnavailable_noDeflection
+              conversationOutcome: Escalated
+              activity: |-
+                I can classify this request, but automated approval submission is temporarily unavailable. Please contact the helpdesk directly at helpdesk@contoso.onmicrosoft.com.

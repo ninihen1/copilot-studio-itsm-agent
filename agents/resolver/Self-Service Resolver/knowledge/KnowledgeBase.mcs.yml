@@ -1,0 +1,7 @@
+mcs.metadata:
+  componentName: Knowledge Base
+  description: The single read source for the Self-Service Resolver. Same SharePoint list as the Triage Agent's KB knowledge source. Filtered to Status=Published in the underlying list.
+kind: KnowledgeSourceConfiguration
+source:
+  kind: SharePointSearchSource
+  site: https://contoso.sharepoint.com/sites/ITSM/Lists/Knowledge%20Base

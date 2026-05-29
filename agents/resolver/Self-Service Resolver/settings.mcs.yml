@@ -1,0 +1,31 @@
+displayName: Self-Service Resolver
+schemaName: cr1c2_resolver
+accessControlPolicy: GroupMembership
+authenticationMode: Integrated
+authenticationTrigger: Always
+configuration:
+  channels:
+    - channelId: MsTeams
+
+    - channelId: Microsoft365Copilot
+
+  settings:
+    GenerativeActionsEnabled: false
+
+  isAgentConnectable: true
+  publishOnImport: false
+  gPTSettings:
+    defaultSchemaName: cr1c2_resolver.gpt.default
+
+  isLightweightBot: true
+  aISettings:
+    useModelKnowledge: false
+    isFileAnalysisEnabled: false
+    isSemanticSearchEnabled: true
+    optInUseLatestModels: false
+
+  recognizer:
+    kind: GenerativeAIRecognizer
+
+template: default-2.1.0
+language: 1033

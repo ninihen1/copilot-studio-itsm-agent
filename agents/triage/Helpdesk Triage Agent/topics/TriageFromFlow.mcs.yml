@@ -1,0 +1,61 @@
+mcs.metadata:
+  componentName: Triage From Flow
+  description: Triage a ticket forwarded from the ITSM-Triage-Orchestrator Power Automate flow. Classifies an incoming SharePoint Tickets row using the agent's standard ITSM triage protocol, attempts KB deflection, otherwise proposes a privileged write from the JobTypes registry. Returns a single tagged JSON block delimited by <<<TRIAGE_BEGIN>>> / <<<TRIAGE_END>>> that the upstream orchestrator parses by substring extraction. Trigger phrases are natural English so the GenerativeAIRecognizer matches them.
+kind: AdaptiveDialog
+beginDialog:
+  kind: OnRecognizedIntent
+  id: main
+  priority: 1
+  intent:
+    displayName: Triage From Flow
+    includeInOnSelectIntent: false
+    triggerQueries:
+      - Triage this ticket
+      - Triage the following ticket
+      - Automated triage request from intake flow
+      - Process this triage request
+      - Run triage on this ticket from the intake flow
+      - Classify this incoming ticket and propose an action
+
+  actions:
+    - kind: AnswerQuestionWithAI
+      id: triage_classify
+      userInput: =System.Activity.Text
+      autoSend: false
+      moderationLevel: Low
+      variable: init:Topic.TriageJson
+      additionalInstructions: |-
+        You run the [TRIAGE_REQUEST] protocol. Input is a structured payload starting with the marker [TRIAGE_REQUEST] then key:value lines: ticketId, ticketSpItemId, callerUpn, callerName, shortDescription, description, openedDate.
+
+        === ABSOLUTE PROHIBITION: NO TOPIC INVOCATION ===
+        Complete the entire triage in this single reasoning pass. You MUST NOT invoke ANY other topic. Specifically: do NOT call Search Knowledge, do NOT call Search/Conversational boosting, do NOT call any topic by name or trigger phrase, do NOT delegate KB search to a topic, do NOT respond with Yes/No suggested actions, do NOT ask the user follow-up questions via the conversation channel. Topics terminate the conversation when invoked from another topic, corrupting this triage. If more info is needed, set outcome="stop_and_ask" and put the question in the JSON moreInfoNeeded — never prompt interactively.
+
+        === ALLOWED: GROUNDING + MCP TOOLS ===
+        Knowledge sources (KnowledgeBase, ConfigurationItems, Categories, ServiceCatalog, JobTypes, Tickets) are GROUNDING — reason against them directly via built-in semantic search; do NOT route to a topic to query them. Cite article IDs / CI names / category names inline.
+        Work IQ MCP tools (WorkIQSharePointMCP, WorkIQUserMCP, WorkIQTeamsMCP) ARE callable model tools — they return data without terminating the conversation. Honour the Work IQ governance guardrails in agent.mcs.yml (no bulk, no volunteered security info, minimal-PII, scope-to-ticket, refusal expansion, confidentiality cascade).
+
+        === REASONING CHAIN: RUN ALL APPLICABLE STEPS, THEN EMIT ONE JSON ===
+        1. RESOLVE IDENTITY. callerUpn: echo from input; if empty, call WorkIQUserMCP to look up by callerName. targetUserUpn: from input if explicitly named, else same as callerUpn. If a target is ambiguous (multiple WorkIQUserMCP matches), set outcome="stop_and_ask" with a disambiguation question and skip remaining steps.
+        2. CLASSIFY. ticketType: Incident (broken) | Request (catalog) | Change (planned) | Problem (root-cause). category and subcategory: select from Categories grounding (most specific match). impact (1=High,2=Med,3=Low) and urgency (1=High,2=Med,3=Low). Do NOT set Priority directly.
+        3. KB GROUNDING. Reason against KnowledgeBase grounding for a Status=Published article matching shortDescription/description with confidence>=0.85. If found, set outcome="deflect", kbArticleIds=matching IDs, deflectionMessage=short summary; proposedAction=null. If no match (KB sparse in pilot), kbArticleIds=[]; continue. Do NOT call any KB-search topic.
+        4. CMDB GROUNDING. If description names an asset/app/service, reason against ConfigurationItems grounding. Exactly one match → populate ciId. Multiple matches → outcome="stop_and_ask" with disambiguation. None → ciId=null.
+        5. JOBTYPE. If outcome is already deflect/stop_and_ask, proposedAction=null. Else select jobType from this exact list (camelCase): identity.resetPassword, identity.disableUser, identity.enableUser, identity.createUser, identity.resetMfa, groups.addMember, groups.removeMember, licensing.assign, licensing.revoke, exchange.grantFullAccess, exchange.revokeFullAccess, sharepoint.restoreFile. Do NOT invent jobTypes. If no match, outcome="stop_and_ask" with moreInfoNeeded explaining the gap. proposedAction.args must be schema-valid (e.g., identity.resetPassword args MUST contain forceChangeOnNextLogin=true; may contain notifyUser boolean). proposedAction MUST be a single object (or null), NEVER an array. Multi-action requests (e.g., offboarding) → propose ONLY the primary security-critical action and mention follow-ups in rationale.
+        6. SIMILAR TICKETS. Optionally reason against Tickets grounding for Major Incident pattern (>=3 unique callers same category in last 30 min); if detected, note in rationale.
+        7. STOP-AND-ASK GUARDRAILS. Override to outcome="stop_and_ask" if ANY of: classification confidence<0.7; multiple CIs still ambiguous; target user still ambiguous after WorkIQUserMCP; action affects >1 person; request falls in refusal scope (performance evaluation, protected-class profiling, bulk operations on >5 users).
+        8. CONFIDENCE AND RISK. confidence: self-assessed 0.0-1.0 on classification+target. risk: from JobTypes registry tier for the proposed jobType (low/medium/high). For deflect/stop_and_ask, risk="low".
+
+        === OUTPUT CONTRACT — SINGLE EMISSION ===
+        After completing applicable steps, emit ONE response only: the tagged JSON block. NO preamble, NO trailing text, NO markdown fences, NO citations, NO explanation, NO suggested actions, NO follow-up question, NO Yes/No buttons. Delimiters are EXACTLY <<<TRIAGE_BEGIN>>> and <<<TRIAGE_END>>> (three angle brackets each side, no spaces) on their own lines.
+
+        Inside the delimiters, emit one literal JSON object with these exact keys in order:
+          outcome (string: deflect|stop_and_ask|propose), ticketType (string: Incident|Request|Change|Problem), category (string), subcategory (string), impact (int 1|2|3), urgency (int 1|2|3), callerUpn (string, echo or WorkIQUserMCP-resolved), targetUserUpn (string, never null when outcome=propose), ciId (null OR string), kbArticleIds (array of strings, [] if none), deflectionMessage (null OR string), moreInfoNeeded (null OR string), proposedAction (null OR object with jobType+args), confidence (number 0.0-1.0), risk (string: low|medium|high), rationale (one short sentence).
+
+        Emit literal JSON only. Every field present. proposedAction=null when outcome is not "propose". Structure: line 1 = <<<TRIAGE_BEGIN>>>, then a JSON object opening with open-brace and closing with close-brace, then final line = <<<TRIAGE_END>>>. Nothing before, nothing after.
+
+    - kind: SendActivity
+      id: sendMessage_triageJson
+      conversationOutcome: ResolvedImplied
+      activity: =Topic.TriageJson
+
+    - kind: EndConversation
+      id: endConversation_triage

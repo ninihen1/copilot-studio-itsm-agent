@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "flowstudio-dev": {
+      "type": "http",
+      "url": "https://devmcp.flowstudio.app/mcp",
+      "headers": {
+        "x-api-key": "<flowstudio-api-key>"
+      }
+    }
+  }
+}

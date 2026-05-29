@@ -1,0 +1,142 @@
+{
+  "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "$connections": { "defaultValue": {}, "type": "Object" },
+    "$authentication": { "defaultValue": {}, "type": "SecureObject" },
+    "ItsmSiteUrl": {
+      "defaultValue": "https://contoso.sharepoint.com/sites/ITSM",
+      "type": "String"
+    }
+  },
+  "triggers": {
+    "When_TicketsItem_Created_Or_Modified": {
+      "type": "ApiConnectionWebhook",
+      "inputs": {
+        "host": { "connection": { "name": "@parameters('$connections')['shared_sharepointonline']['connectionId']" } },
+        "body": {
+          "NotificationUrl": "@listCallbackUrl()"
+        },
+        "path": "/datasets/@{encodeURIComponent(encodeURIComponent(parameters('ItsmSiteUrl')))}/tables/@{encodeURIComponent(encodeURIComponent('Tickets'))}/onnewormodifieditems"
+      }
+    }
+  },
+  "actions": {
+    "Get_Item_Detail": {
+      "runAfter": {},
+      "type": "ApiConnection",
+      "inputs": {
+        "host": { "connection": { "name": "@parameters('$connections')['shared_sharepointonline']['connectionId']" } },
+        "method": "get",
+        "path": "/datasets/@{encodeURIComponent(encodeURIComponent(parameters('ItsmSiteUrl')))}/tables/@{encodeURIComponent(encodeURIComponent('Tickets'))}/items/@{encodeURIComponent(triggerBody()?['ID'])}"
+      }
+    },
+    "Branch_On_ConfidentialityLevel": {
+      "runAfter": { "Get_Item_Detail": ["Succeeded"] },
+      "type": "Switch",
+      "expression": "@body('Get_Item_Detail')?['ConfidentialityLevel']?['Value']",
+      "cases": {
+        "Public": {
+          "case": "Public",
+          "actions": {
+            "Restore_Inheritance": {
+              "type": "Http",
+              "inputs": {
+                "method": "POST",
+                "uri": "@{parameters('ItsmSiteUrl')}/_api/web/lists/getbytitle('Tickets')/items(@{triggerBody()?['ID']})/resetroleinheritance",
+                "headers": {
+                  "Accept": "application/json;odata=verbose",
+                  "Content-Type": "application/json;odata=verbose"
+                },
+                "authentication": "@parameters('$authentication')"
+              }
+            },
+            "Stamp_PermSyncedAt_Public": {
+              "runAfter": { "Restore_Inheritance": ["Succeeded","Failed"] },
+              "type": "ApiConnection",
+              "inputs": {
+                "host": { "connection": { "name": "@parameters('$connections')['shared_sharepointonline']['connectionId']" } },
+                "method": "patch",
+                "path": "/datasets/@{encodeURIComponent(encodeURIComponent(parameters('ItsmSiteUrl')))}/tables/@{encodeURIComponent(encodeURIComponent('Tickets'))}/items/@{encodeURIComponent(triggerBody()?['ID'])}",
+                "body": { "PermSyncedAt": "@utcNow()" }
+              }
+            }
+          }
+        },
+        "Restricted": {
+          "case": "Restricted",
+          "actions": {
+            "Break_Inheritance_Restricted": {
+              "type": "Http",
+              "inputs": {
+                "method": "POST",
+                "uri": "@{parameters('ItsmSiteUrl')}/_api/web/lists/getbytitle('Tickets')/items(@{triggerBody()?['ID']})/breakroleinheritance(copyRoleAssignments=false,clearSubscopes=true)",
+                "headers": {
+                  "Accept": "application/json;odata=verbose",
+                  "Content-Type": "application/json;odata=verbose"
+                },
+                "authentication": "@parameters('$authentication')"
+              }
+            },
+            "Grant_Caller_Read": {
+              "runAfter": { "Break_Inheritance_Restricted": ["Succeeded"] },
+              "type": "Http",
+              "inputs": {
+                "method": "POST",
+                "uri": "@{parameters('ItsmSiteUrl')}/_api/web/lists/getbytitle('Tickets')/items(@{triggerBody()?['ID']})/roleassignments/addroleassignment(principalid=@{body('Get_Item_Detail')?['Caller']?['Claims']},roledefid=1073741826)",
+                "headers": { "Accept": "application/json;odata=verbose" },
+                "authentication": "@parameters('$authentication')"
+              }
+            },
+            "Grant_AssignedTo_Read": {
+              "runAfter": { "Grant_Caller_Read": ["Succeeded","Failed","Skipped"] },
+              "type": "If",
+              "expression": { "and": [ { "not": { "equals": [ "@body('Get_Item_Detail')?['AssignedTo']", null ] } } ] },
+              "actions": {
+                "Add_AssignedTo_Reader": {
+                  "type": "Http",
+                  "inputs": {
+                    "method": "POST",
+                    "uri": "@{parameters('ItsmSiteUrl')}/_api/web/lists/getbytitle('Tickets')/items(@{triggerBody()?['ID']})/roleassignments/addroleassignment(principalid=@{body('Get_Item_Detail')?['AssignedTo']?['Claims']},roledefid=1073741826)",
+                    "headers": { "Accept": "application/json;odata=verbose" },
+                    "authentication": "@parameters('$authentication')"
+                  }
+                }
+              }
+            },
+            "Stamp_PermSyncedAt_Restricted": {
+              "runAfter": { "Grant_AssignedTo_Read": ["Succeeded","Skipped"] },
+              "type": "ApiConnection",
+              "inputs": {
+                "host": { "connection": { "name": "@parameters('$connections')['shared_sharepointonline']['connectionId']" } },
+                "method": "patch",
+                "path": "/datasets/@{encodeURIComponent(encodeURIComponent(parameters('ItsmSiteUrl')))}/tables/@{encodeURIComponent(encodeURIComponent('Tickets'))}/items/@{encodeURIComponent(triggerBody()?['ID'])}",
+                "body": { "PermSyncedAt": "@utcNow()" }
+              }
+            }
+          }
+        },
+        "Confidential": {
+          "case": "Confidential",
+          "actions": {
+            "Apply_Confidential_Perms": {
+              "type": "Compose",
+              "inputs": "TODO: same as Restricted but additionally read-restricted to AuthorizedReaders multi-person field. Implementation pattern: break inheritance, grant ITSM-Confidential-Admins SP group + caller + AssignedTo + each user in AuthorizedReaders. Implementation deferred — pilot tickets default to Public; Restricted covers most cases."
+            },
+            "Stamp_PermSyncedAt_Confidential": {
+              "runAfter": { "Apply_Confidential_Perms": ["Succeeded"] },
+              "type": "ApiConnection",
+              "inputs": {
+                "host": { "connection": { "name": "@parameters('$connections')['shared_sharepointonline']['connectionId']" } },
+                "method": "patch",
+                "path": "/datasets/@{encodeURIComponent(encodeURIComponent(parameters('ItsmSiteUrl')))}/tables/@{encodeURIComponent(encodeURIComponent('Tickets'))}/items/@{encodeURIComponent(triggerBody()?['ID'])}",
+                "body": { "PermSyncedAt": "@utcNow()" }
+              }
+            }
+          }
+        }
+      },
+      "default": { "actions": {} }
+    }
+  }
+}

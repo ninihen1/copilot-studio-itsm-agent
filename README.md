@@ -1,0 +1,144 @@
+# Autonomous IT Service Desk for Small & Medium Business
+
+**A ServiceNow-style IT help desk that runs entirely on the Microsoft 365 you already pay for — no separate ticketing subscription, no per-agent SaaS fees.**
+
+Most ITSM platforms (ServiceNow, Jira Service Management, Zendesk) charge per seat, per month, and quickly run into the thousands a year. For a small or medium business, that's hard to justify for what is mostly password resets, group adds, and license requests. This project does the same job on tools an M365 tenant already has — **SharePoint, Power Automate, and Copilot Studio** — and automates the routine work end to end.
+
+> 🎥 **See it in action:** _<add demo video link>_
+
+## Who this is for
+
+A small-to-medium business that:
+- Already runs on Microsoft 365 and doesn't want another expensive SaaS subscription.
+- Wants to stay **under the Microsoft umbrella** — one vendor, one identity model, one security boundary.
+- Has **one person** — comfortable directing an AI agent, not necessarily a developer — to stand it up and look after it. You don't need an IT team, a SharePoint specialist, or a ServiceNow consultant.
+
+## The idea: one person + an AI coworker
+
+You don't build all of this by hand. The whole system is designed to be **co-worked with an AI agent**:
+
+- **Copilot Studio (CP)** — you build the help-desk triage agent here. The AI does the topic and knowledge wiring; you review.
+- **Flow Studio MCP** ([mcp.flowstudio.app](https://mcp.flowstudio.app)) — an MCP server that lets your AI agent **build, read, and debug the Power Automate flows directly**, reading action-level run outputs to find and fix problems instead of clicking through the portal.
+- **Coding agent** — this can be Copilot Cowork, GitHub Copilot, Claude Code, or a Codex agent. In my build, I used both Copilot Cowork and the Claude Code agent.
+
+The human's job is to **shepherd the agent** — describe the intent, review what it produces, approve the changes. One person, paired with an AI coworker, can stand up and maintain what would normally take a team. You don't even have to know how to do the work yourself: the person who ran this build had never deployed an SPFx package by hand and didn't need to learn — the agent did it. The point is that the labour shifts from "build and operate a ticketing platform" to "supervise an agent that does."
+
+## What it does
+
+A user submits a ticket — *"I forgot my password,"* *"Please add me to the Marketing group,"* *"I need a Power BI license"* — through the **ITSM Service Portal**, a custom SharePoint-hosted app (a full-screen single-page app, not a list form — more on it below). 
+
+The moment the ticket is saved, a Power Automate flow fires on that new item and hands the ticket to the Copilot Studio triage agent. The agent reads it, classifies it, checks the knowledge base, and decides what happens next: **resolve it from the KB, send it back to the user for more detail, or propose an action.** If it proposes a change, a manager approves in one tap, a scoped executor performs it in Microsoft 365, and the ticket is closed with an audit record.
+
+**There is no chatbot to converse with.** The agent isn't a front door users talk to — it's a triage brain the flow calls in the background, working on the submitted ticket.
+
+## How it works — a walkthrough
+
+```
+1. INTAKE      A user submits a ticket in the ITSM Service Portal (SPFx app) → a Ticket row is created
+2. TYPE GATE   Is it an Incident or a Request? Route accordingly before any automation runs
+3. AI TRIAGE   A flow fires on the new ticket and calls the Copilot Studio agent to classify it
+               and try a knowledge-base answer (read-only — it can't make a change here)
+4. APPROVAL    If it needs a change, a Teams Adaptive Card goes to the manager. One tap to approve
+5. DISPATCH    An approved job is validated and handed to the dispatcher (a broadcast router)
+6. EXECUTION   One of six "executor" flows picks it up and makes the actual change:
+               · Microsoft Graph for identity, groups, licenses
+               · an Azure Function for Exchange mailbox permissions
+   AUDIT       The result is logged, the ticket is closed, and the requester is notified
+```
+
+Walk through it step by step:
+
+1. **A ticket is submitted.** A user logs the request in the **ITSM Service Portal** — a full-screen SPFx app hosted on a SharePoint page (see below) — and it lands as a row in a SharePoint list. SharePoint is the system of record; there's no separate database to run.
+2. **A flow picks it up and calls the agent.** The instant the ticket is saved, a Power Automate flow fires on the new item and passes it to the Copilot Studio triage agent. The agent classifies the ticket against your service catalog, tries to deflect it with a knowledge-base answer, and returns one of three outcomes — *resolve from KB*, *ask for more detail*, or *propose an action*. It has **read-only** access — it proposes, never changes.
+3. **A human approves.** Anything that changes the tenant pauses for a manager's approval in Teams. Nothing privileged happens without that tap.
+4. **A scoped robot does the work.** Once approved, one narrowly-scoped service principal — and only that one — performs the change through Microsoft Graph (or Exchange, via an Azure Function). The agent itself holds no power to make changes.
+5. **Everything is recorded.** The outcome is written to an audit log, the ticket is closed, and the requester is told what happened.
+
+## The front end — a custom SharePoint-hosted portal
+
+The portal isn't a SharePoint list form. It's the **ITSM Service Portal**, a full-screen **SPFx (SharePoint Framework) web part** — a React single-page app, built with SPFx 1.22 / Heft / TypeScript — hosted as a SharePoint page and backed by a dozen-plus SharePoint lists behind it. It follows the open-source [vibe-sharepoint-template](https://github.com/johnnliu/vibe-sharepoint-template) pattern, which treats SharePoint Online as a Vercel-like host for internal apps (CSS injection hides the SharePoint chrome for an app-like feel). The direction to the agent was essentially *"point at this template and follow it"* — it produced the ITSM-specific app from there. One web part hosts the whole experience:
+
+- **Home** dashboard, **Service Catalog** with item detail dialogs, **Knowledge Base** with inline articles, **My Tickets** + ticket detail, **Approvals**, and an **Admin** view.
+- A typed service layer (`TicketService`, `CatalogService`, `KnowledgeService`, `ApprovalService`, …) reads and writes those SharePoint lists directly — **read-only except explicit user actions, and no privileged Graph calls ever run in the browser.**
+- It's packaged to an `.sppkg` and deployed to the tenant **app catalog via a certificate-authenticated GitHub Actions CI/CD pipeline** (`skipFeatureDeployment` → available tenant-wide). See [`docs/SPFX-DEPLOYMENT.md`](docs/SPFX-DEPLOYMENT.md).
+
+The cool part: **this SPFx portal was built and shipped by AI agents, not a front-end team.** The IDE agent (Claude Code) wrote the React/TypeScript front end and first deployed it to SharePoint directly. Copilot Cowork later took over patching it, packaging and shipping each change to the app catalog through the certificate-authenticated CI/CD pipeline. A real production SharePoint app — built and maintained by AI agents under one person's supervision.
+
+## Build it yourself — the co-worked walkthrough
+
+This is the path a single human follows, pairing with AI coworkers — and it's how this repo was actually built. **The agents created the whole stack: the SharePoint lists, all the Power Automate flows, and the SPFx portal** — almost nothing here was hand-built. Two kinds of agent split the work:
+
+- **Copilot Cowork** (the track this project is entered in) — equipped with Flow Studio MCP, it authors the Power Automate flows and helper flows and reaches the GitHub repo and workflow to deploy the SPFx package to SharePoint. With the right helper flows it can also create SharePoint lists, pages, and list items.
+- **An IDE agent in VS Code** (in this build, Claude Code — the cloud agent) — does the parts Cowork can't do directly: provisioning the SharePoint lists through a scoped service principal, and authoring the Copilot Studio agent via the Microsoft Copilot Studio extension. It also wrote a share of the Power Automate flows — both agents can, through Flow Studio MCP.
+
+The human directs and reviews; both agents were used together. Each step below notes which agent does it.
+
+1. **Provision the SharePoint lists.** *(IDE agent, or Cowork via helper flows.)* Run the PnP PowerShell scripts in [`infra/sharepoint/`](infra/sharepoint/) to create the 18 solution lists (Tickets, Service Catalog, Approval Policies, Provisioning Jobs, License Costs, etc.) and seed the taxonomy. In this build the IDE agent ran them, authenticating as a scoped service principal (`SP-IT-Provisioning`, `Sites.FullControl.All`, certificate in Key Vault) — no standing admin account.
+2. **Author the help-desk agent in Copilot Studio.** *(IDE agent — not Cowork.)* This step needs an IDE agent with the **Microsoft Copilot Studio extension**; Copilot Cowork can't author Copilot Studio agents. Use the topic and knowledge definitions in [`agents/triage/`](agents/triage/) as the blueprint.
+3. **Build the flows with Flow Studio.** *(Copilot Cowork and Claude Code — both wrote flows.)* Through the Flow Studio MCP server, the agents create the flows in [`flows/`](flows/) — orchestrator, approval, dispatcher, and the six executors — some authored by Copilot Cowork, others by the Claude Code agent; when a run fails, the agent reads the action outputs and fixes the definition. **Every flow was agent-written; none of the flow JSON was hand-authored** — and it's fast: ~20 production flows ship in this repo, and 40-plus counting helper flows and earlier iterations retired along the way.
+4. **Set up the scoped service principals.** One Entra app per executor (identity, groups, licensing, exchange, sharepoint, teams), each with a single Graph permission family. Secrets live in Azure Key Vault.
+5. **Wire and test.** *(Cowork and human.)* Connect the agent's action to the flow, then run one real request — *"reset a password"* — end to end. Cowork drives the test; the human approves the manager card in Teams (that approval is part of the loop), and both confirm the change actually landed in the tenant.
+
+Full detail is in [`IMPLEMENTATION-PLAYBOOK.md`](IMPLEMENTATION-PLAYBOOK.md) and [`DEPLOYMENT.md`](DEPLOYMENT.md).
+
+### What Cowork did — from research to running the project
+
+Cowork's involvement started before any code. Asked to research the field, it read the technical documentation of established ITSM platforms (ServiceNow and the like) to understand how they structure their backends, data tables, and UI — then turned that genuine research into the implementation plan and the SharePoint list design this repo follows (the research baseline is in [`servicenow-itsm-ticketing-report.md`](servicenow-itsm-ticketing-report.md)).
+
+From there it kept going. Cowork created a **project Kanban** — a SharePoint list of task items — and keeps it updated as work moves. On a schedule, Cowork wakes **every hour** to:
+
+1. look at the Kanban to see where things stand,
+2. pick an open task to work on, and
+3. do it, then update the board.
+
+A lot of the build progressed on its own while no one was watching. It isn't fully hands-off — left unsupervised for about a week it drifted and needed a course-correct — but as a way to grind through a backlog with light human oversight, it's genuinely useful.
+
+Cowork also documented what it built. The system grew to **20-plus Power Automate flows**, so Cowork created a **flow inventory** — a SharePoint list with each flow's key details — and then generated a dedicated **SharePoint page for every flow**, one at a time. The whole automation estate ends up self-documented, by the same agent that built it.
+
+And it tested its own work — to a discipline it **wrote itself**. After a few rounds of testing together, the human and Cowork agreed on what "done" should mean, and Cowork captured that as a reusable testing **skill**: the entire business chain must complete and the real-world change be confirmed live — a flow that merely reports "Succeeded," or an approval card still sitting in the queue, does **not** count. Holding itself to the bar it had written, it then ran live end-to-end requests and verified every link — triage → approval → execution → the actual change in the tenant — before calling anything done.
+
+## How it stays safe
+
+The whole design assumes an AI is in the loop, so the guardrails are deliberate. **Enforced in the pilot today:**
+
+- **A human approves every privileged change.** No auto-approve in v1 — anything that writes to the tenant goes through a manager approval first. (A low-risk auto-approve path is designed and the data model reserves it, but it's deliberately switched off in v1 — see [`flows/approval/spec.md`](flows/approval/spec.md) §1.)
+- **The privilege boundary is at the executor, not the agent.** Six service principals each cover one service area (identity, groups, licensing, exchange, sharepoint, teams). The triage agent is read-only, and the dispatcher and approval flow hold no Graph write permissions — so a compromised executor can only affect its own area.
+- **An immutable audit row per privileged action.** Every change writes a Provisioning Jobs record in SharePoint — requester, approver, timestamps, the Graph request ID, and the result — with a stable GUID on each record so the data is portable to Dataverse later.
+- **Idempotency keys** stop a retried job from running the same change twice.
+- **State commits only after the work succeeds** — a failed change never leaves an orphaned "approved but never done" record.
+- **A kill switch** — one Config flag halts all dispatch instantly.
+
+**Designed and specced, but not yet wired in the pilot** (the repo is explicit about this — see the "Pilot deviations" tables in [`flows/dispatcher/contract.md`](flows/dispatcher/contract.md) and [`flows/approval/spec.md`](flows/approval/spec.md)):
+
+- **Signed approval tokens (JWT).** Today the dispatcher trusts a hard-to-guess signed trigger URL; production has the approval flow mint a Key-Vault-signed JWT the dispatcher validates.
+- **Azure Table idempotency** with ETag — the pilot's SharePoint-based check is race-vulnerable under truly concurrent callers.
+- **Application Insights** as the structured, system-wide audit/telemetry log — today only the SharePoint audit row and Power Automate run history exist; App Insights is provisioned but only lightly wired.
+- **Service Bus** between the dispatcher and executors — today the executors poll the list.
+
+## What's in the repo
+
+```
+agents/      Copilot Studio agents — Helpdesk Triage (primary) + Self-Service Resolver
+flows/       Power Automate: dispatcher, approval, six executors, SLA timer, archival, more
+infra/       SharePoint provisioning scripts + Azure (Functions, Key Vault, Service Bus)
+notifications/cards/   Teams Adaptive Cards (approval, SLA breach, resolution)
+src/         ITSM Service Portal — full-screen SPFx React SPA (home, catalog, KB, my tickets, approvals, admin) over the SharePoint lists
+tests/e2e/   Playwright end-to-end checks
+docs + *.md  Design memo, deployment runbook, admin & user guides, troubleshooting
+```
+
+| Read next | For |
+|---|---|
+| [`WHAT_IT_DOES.md`](WHAT_IT_DOES.md) | Plain-English overview, examples, and ROI |
+| [`IMPLEMENTATION-PLAYBOOK.md`](IMPLEMENTATION-PLAYBOOK.md) | The full build — identities, order, every gotcha |
+| [`DEPLOYMENT.md`](DEPLOYMENT.md) | Deployment runbook and validation checklist |
+| [`USER_GUIDE.md`](USER_GUIDE.md) · [`ADMIN_GUIDE.md`](ADMIN_GUIDE.md) | Day-to-day use and operations |
+| [`decisions/0001-dispatcher-host.md`](decisions/0001-dispatcher-host.md) | Why the dispatcher is built the way it is |
+
+## A note on the code
+
+This is a public, sanitized copy of a system running in a private Microsoft 365 tenant. Tenant names, mailbox addresses, certificate thumbprints, and resource IDs have been replaced with `contoso` / placeholder values. **No credentials are stored in the repo** — service-principal secrets are read from Azure Key Vault at runtime.
+
+---
+
+*Architecture and design by Catherine Han. Built AI-assisted: the Power Automate flows were authored and debugged through the [Flow Studio MCP server](https://mcp.flowstudio.app). Submitted to the Microsoft Agent Academy Hackathon (Special Ops track).*

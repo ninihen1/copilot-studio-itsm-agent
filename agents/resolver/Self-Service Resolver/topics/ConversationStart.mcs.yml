@@ -1,0 +1,18 @@
+mcs.metadata:
+  componentName: Conversation Start
+  description: Greets the user and frames the resolver as a quick-answer KB lookup.
+kind: AdaptiveDialog
+beginDialog:
+  kind: OnConversationStart
+  id: main
+  actions:
+    - kind: SendActivity
+      id: sendMessage_intro
+      activity:
+        text:
+          - |-
+            Hi — I'm the Self-Service Resolver. I look up published IT articles and try to answer quickly. If your question needs a ticket or a privileged action, I'll hand you to the Helpdesk Triage Agent.
+
+            What are you trying to do?
+        speak:
+          - Hi, I'm the Self-Service Resolver. What are you looking for?

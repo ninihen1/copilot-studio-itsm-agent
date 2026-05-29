@@ -1,0 +1,25 @@
+mcs.metadata:
+  componentName: Escalate
+  description: User explicitly asks for a ticket or a human. Hands off to Triage immediately, no KB attempt.
+kind: AdaptiveDialog
+startBehavior: CancelOtherTopics
+beginDialog:
+  kind: OnEscalate
+  id: main
+  intent:
+    displayName: Escalate
+    includeInOnSelectIntent: false
+    triggerQueries:
+      - I want to raise a ticket
+      - Log a ticket
+      - Talk to a human
+      - This isn't working
+      - I need real help
+      - Get me an agent
+      - Speak to support
+      - The article didn't help
+
+  actions:
+    - kind: BeginDialog
+      id: beginDialog_handoff_explicit
+      dialog: cr1c2_resolver.topic.HandOffToTriage

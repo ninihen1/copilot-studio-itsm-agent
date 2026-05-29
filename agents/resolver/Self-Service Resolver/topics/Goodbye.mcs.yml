@@ -1,0 +1,21 @@
+mcs.metadata:
+  componentName: Goodbye
+kind: AdaptiveDialog
+beginDialog:
+  kind: OnRecognizedIntent
+  id: main
+  intent:
+    displayName: Goodbye
+    includeInOnSelectIntent: false
+    triggerQueries:
+      - Bye
+      - Goodbye
+      - Thanks bye
+
+  actions:
+    - kind: SendActivity
+      id: sendMessage_bye
+      activity: Bye.
+
+    - kind: EndConversation
+      id: endConversation_bye

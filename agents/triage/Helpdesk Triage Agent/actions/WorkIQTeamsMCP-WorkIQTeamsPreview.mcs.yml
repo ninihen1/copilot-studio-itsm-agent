@@ -1,0 +1,26 @@
+mcs.metadata:
+  componentName: Work IQ Teams MCP - Work IQ Teams (Preview)
+kind: TaskDialog
+modelDisplayName: Work IQ Teams (Preview)
+modelDescription: "Work IQ MCP server for Microsoft Teams operations. This feature is in preview and is part of the Work IQ tools, providing shared work intelligence and actions for agents. Availability and capabilities are subject to change. Learn more: https://aka.ms/AboutWorkIQ"
+action:
+  kind: InvokeExternalAgentTaskAction
+  connectionReference: cre79_agent.shared_a365teamsmcp.947026f54f554de5bcf537e09eb741aa
+  connectionProperties:
+    mode: Invoker
+
+  operationDetails:
+    kind: ModelContextProtocolMetadata
+    operationId: mcp_TeamsServer
+    tools:
+      kind: UseSpecificTools
+      tools:
+        - ListTeams
+        - ListChats
+        - ListChannels
+        - GetTeam
+        - GetChannel
+        - ListChatMembers
+        - ListChannelMembers
+        - UpdateChannelMember
+        - ListChannelFiles

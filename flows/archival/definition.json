@@ -1,0 +1,140 @@
+{
+  "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "$connections": {
+      "defaultValue": {},
+      "type": "Object"
+    },
+    "$authentication": {
+      "defaultValue": {},
+      "type": "SecureObject"
+    },
+    "ArchiveAfterDays": {
+      "defaultValue": 90,
+      "type": "Int"
+    }
+  },
+  "triggers": {
+    "Run_Daily_2am": {
+      "type": "Recurrence",
+      "recurrence": {
+        "frequency": "Day",
+        "interval": 1,
+        "schedule": {
+          "hours": [
+            "2"
+          ],
+          "minutes": [
+            0
+          ]
+        },
+        "timeZone": "AUS Eastern Standard Time"
+      }
+    }
+  },
+  "actions": {
+    "Get_Closed_Old_Tickets": {
+      "runAfter": {},
+      "type": "OpenApiConnection",
+      "inputs": {
+        "host": {
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+          "connectionName": "shared_sharepointonline",
+          "operationId": "GetItems"
+        },
+        "parameters": {
+          "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+          "table": "Tickets",
+          "$filter": "@{concat('(TicketState eq ''Closed'' or TicketState eq ''Resolved'') and Archived ne 1 and ClosedDate lt ''', addDays(utcNow(), mul(-1, parameters('ArchiveAfterDays'))), '''')}",
+          "$top": 500
+        },
+        "authentication": "@parameters('$authentication')"
+      }
+    },
+    "ForEach_Ticket": {
+      "runAfter": {
+        "Get_Closed_Old_Tickets": [
+          "Succeeded"
+        ]
+      },
+      "type": "Foreach",
+      "foreach": "@body('Get_Closed_Old_Tickets')?['value']",
+      "actions": {
+        "Copy_To_Archive": {
+          "runAfter": {},
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+              "connectionName": "shared_sharepointonline",
+              "operationId": "PostItem"
+            },
+            "parameters": {
+              "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+              "table": "Tickets-Archive",
+              "item/Title": "@items('ForEach_Ticket')?['Title']",
+              "item/TicketNumber": "@items('ForEach_Ticket')?['Title']",
+              "item/TicketType/Value": "@items('ForEach_Ticket')?['TicketType']?['Value']",
+              "item/Caller/Claims": "@items('ForEach_Ticket')?['Caller']?['Claims']",
+              "item/TicketState/Value": "@items('ForEach_Ticket')?['TicketState']?['Value']",
+              "item/Impact/Value": "@coalesce(items('ForEach_Ticket')?['Impact']?['Value'], '3 - Low')",
+              "item/Urgency/Value": "@coalesce(items('ForEach_Ticket')?['Urgency']?['Value'], '3 - Low')",
+              "item/Priority/Value": "@coalesce(items('ForEach_Ticket')?['Priority']?['Value'], '4 - Low')",
+              "item/ShortDescription": "@items('ForEach_Ticket')?['ShortDescription']",
+              "item/Description": "@items('ForEach_Ticket')?['Description']",
+              "item/WorkNotes": "@items('ForEach_Ticket')?['WorkNotes']",
+              "item/Comments": "@items('ForEach_Ticket')?['Comments']",
+              "item/CloseCode": "@items('ForEach_Ticket')?['CloseCode']?['Value']",
+              "item/CloseNotes": "@items('ForEach_Ticket')?['CloseNotes']",
+              "item/OpenedDate": "@items('ForEach_Ticket')?['OpenedDate']",
+              "item/ResolvedDate": "@items('ForEach_Ticket')?['ResolvedDate']",
+              "item/ClosedDate": "@items('ForEach_Ticket')?['ClosedDate']",
+              "item/ArchivedAt": "@utcNow()",
+              "item/OriginalSourceId": "@items('ForEach_Ticket')?['ID']",
+              "item/ConfidentialityLevel/Value": "@coalesce(items('ForEach_Ticket')?['ConfidentialityLevel']?['Value'], 'Public')",
+              "item/MadeSla": "@items('ForEach_Ticket')?['MadeSla']",
+              "item/ReopenCount": "@coalesce(items('ForEach_Ticket')?['ReopenCount'], 0)",
+              "item/ArchivedByFlow": "ITSM-Scheduled-Archival"
+            },
+            "authentication": "@parameters('$authentication')"
+          }
+        },
+        "Mark_Original_Archived": {
+          "runAfter": {
+            "Copy_To_Archive": [
+              "Succeeded"
+            ]
+          },
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+              "connectionName": "shared_sharepointonline",
+              "operationId": "PatchItem"
+            },
+            "parameters": {
+              "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+              "table": "Tickets",
+              "id": "@items('ForEach_Ticket')?['ID']",
+              "item/Title": "@items('ForEach_Ticket')?['Title']",
+              "item/TicketType/Value": "@items('ForEach_Ticket')?['TicketType']?['Value']",
+              "item/CategoryRef/Id": "@items('ForEach_Ticket')?['CategoryRef']?['Id']",
+              "item/Caller/Claims": "@items('ForEach_Ticket')?['Caller']?['Claims']",
+              "item/TicketState/Value": "@items('ForEach_Ticket')?['TicketState']?['Value']",
+              "item/Impact/Value": "@items('ForEach_Ticket')?['Impact']?['Value']",
+              "item/Urgency/Value": "@items('ForEach_Ticket')?['Urgency']?['Value']",
+              "item/ShortDescription": "@items('ForEach_Ticket')?['ShortDescription']",
+              "item/ConfidentialityLevel/Value": "@items('ForEach_Ticket')?['ConfidentialityLevel']?['Value']",
+              "item/Priority/Value": "@coalesce(items('ForEach_Ticket')?['Priority']?['Value'], '4 - Low')",
+              "item/Archived": true,
+              "item/ArchivedAt": "@utcNow()",
+              "item/WorkNotes": "@{concat(coalesce(items('ForEach_Ticket')?['WorkNotes'], ''), decodeUriComponent('%0A'), 'Archival Flow: copied to Tickets-Archive at ', utcNow(), '; original marked archived.')}"
+            },
+            "authentication": "@parameters('$authentication')"
+          }
+        }
+      }
+    }
+  }
+}

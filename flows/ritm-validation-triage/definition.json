@@ -1,0 +1,462 @@
+{
+  "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "$connections": {
+      "defaultValue": {},
+      "type": "Object"
+    },
+    "$authentication": {
+      "defaultValue": {},
+      "type": "SecureObject"
+    }
+  },
+  "triggers": {
+    "When_a_RITM_is_Created": {
+      "recurrence": {
+        "frequency": "Minute",
+        "interval": 1
+      },
+      "evaluatedRecurrence": {
+        "frequency": "Minute",
+        "interval": 1
+      },
+      "splitOn": "@triggerOutputs()?['body/value']",
+      "type": "OpenApiConnection",
+      "inputs": {
+        "host": {
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+          "connectionName": "shared_sharepointonline",
+          "operationId": "GetOnNewItems"
+        },
+        "parameters": {
+          "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+          "table": "Request Items"
+        },
+        "authentication": "@parameters('$authentication')"
+      }
+    }
+  },
+  "actions": {
+    "If_RITM_Pending_Validation": {
+      "runAfter": {},
+      "type": "If",
+      "expression": {
+        "and": [
+          {
+            "equals": [
+              "@triggerOutputs()?['body/RitmState/Value']",
+              "Pending Validation"
+            ]
+          }
+        ]
+      },
+      "actions": {
+        "Get_Parent_Ticket": {
+          "runAfter": {},
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+              "connectionName": "shared_sharepointonline",
+              "operationId": "GetItem"
+            },
+            "parameters": {
+              "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+              "table": "Tickets",
+              "id": "@triggerOutputs()?['body/ParentTicket/Id']"
+            },
+            "authentication": "@parameters('$authentication')"
+          }
+        },
+        "Get_Catalog_Item": {
+          "runAfter": {
+            "Get_Parent_Ticket": [
+              "Succeeded"
+            ]
+          },
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+              "connectionName": "shared_sharepointonline",
+              "operationId": "GetItem"
+            },
+            "parameters": {
+              "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+              "table": "Service Catalog",
+              "id": "@triggerOutputs()?['body/CatalogItem/Id']"
+            },
+            "authentication": "@parameters('$authentication')"
+          }
+        },
+        "AI_Builder_Create_Text_With_GPT": {
+          "runAfter": {
+            "Get_Catalog_Item": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "flowSystemMetadata": {
+              "portalOperationId": "PredictV2",
+              "portalOperationGroup": "aibuilder",
+              "portalOperationApiDisplayNameOverride": "AI Builder",
+              "portalOperationIconOverride": "https://content.powerapps.com/resource/makerx/static/pauto/images/designeroperations/aibuilderIcon2026.8e878397.png",
+              "portalOperationBrandColorOverride": "#0A76C4",
+              "portalOperationApiTierOverride": "Standard"
+            },
+            "operationMetadataId": "ritm-validation-triage-ai-builder-gpt"
+          },
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+              "connectionName": "shared_commondataserviceforapps",
+              "operationId": "PredictV2"
+            },
+            "parameters": {
+              "recordId": "00000000-0000-4000-8000-000000000035",
+              "item/requestv2/prompt": "@{concat('Extract the ITSM group membership intent from this request. Return JSON only, with no markdown, no code fence, and no explanation. The JSON schema is exactly {\"user\":\"...\",\"resource\":\"...\",\"action\":\"add|remove|unknown\",\"confidence\":\"high|medium|low\"}. Use confidence high only when the user name, group/resource name, and action are explicit in the request text. RITM: ', triggerOutputs()?['body/RitmNumber'], '. Catalog item: ', body('Get_Catalog_Item')?['ItemName'], '. Request text: ', coalesce(triggerOutputs()?['body/Variables'], body('Get_Parent_Ticket')?['Description'], body('Get_Parent_Ticket')?['ShortDescription'], ''))}",
+              "item/requestv2/parameters": "{\"temperature\":0}"
+            },
+            "authentication": "@parameters('$authentication')"
+          },
+          "runtimeConfiguration": {
+            "secureData": {
+              "properties": [
+                "inputs",
+                "outputs"
+              ]
+            }
+          }
+        },
+        "Parse_AI_Intent": {
+          "runAfter": {
+            "AI_Builder_Create_Text_With_GPT": [
+              "Succeeded"
+            ]
+          },
+          "type": "ParseJson",
+          "inputs": {
+            "content": "@coalesce(outputs('AI_Builder_Create_Text_With_GPT')?['body/responsev2/predictionOutput/text'], outputs('AI_Builder_Create_Text_With_GPT')?['body/responsev2/predictionOutput/Text'])",
+            "schema": {
+              "type": "object",
+              "required": [
+                "action",
+                "user",
+                "resource",
+                "confidence"
+              ],
+              "properties": {
+                "action": {
+                  "type": "string"
+                },
+                "user": {
+                  "type": "string"
+                },
+                "resource": {
+                  "type": "string"
+                },
+                "justification": {
+                  "type": "string"
+                },
+                "confidence": {
+                  "type": "string",
+                  "enum": [
+                    "high",
+                    "medium",
+                    "low"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "Get_KV_Secret": {
+          "runAfter": {
+            "Parse_AI_Intent": [
+              "Succeeded"
+            ]
+          },
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_keyvault",
+              "connectionName": "shared_keyvault",
+              "operationId": "GetSecret"
+            },
+            "parameters": {
+              "secretName": "SP-IT-Groups-ClientSecret"
+            },
+            "authentication": "@parameters('$authentication')"
+          },
+          "runtimeConfiguration": {
+            "secureData": {
+              "properties": [
+                "inputs",
+                "outputs"
+              ]
+            }
+          }
+        },
+        "Get_Graph_Token": {
+          "runAfter": {
+            "Get_KV_Secret": [
+              "Succeeded"
+            ]
+          },
+          "type": "Http",
+          "inputs": {
+            "method": "POST",
+            "uri": "https://login.microsoftonline.com/00000000-0000-4000-8000-000000000009/oauth2/v2.0/token",
+            "headers": {
+              "Content-Type": "application/x-www-form-urlencoded"
+            },
+            "body": "@{concat('grant_type=client_credentials&client_id=00000000-0000-4000-8000-000000000055&scope=https%3A%2F%2Fgraph.microsoft.com%2F.default&client_secret=', encodeUriComponent(body('Get_KV_Secret')?['value']))}"
+          },
+          "runtimeConfiguration": {
+            "secureData": {
+              "properties": [
+                "inputs",
+                "outputs"
+              ]
+            }
+          }
+        },
+        "Parse_Graph_Token": {
+          "runAfter": {
+            "Get_Graph_Token": [
+              "Succeeded"
+            ]
+          },
+          "type": "ParseJson",
+          "inputs": {
+            "content": "@body('Get_Graph_Token')",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "access_token": {
+                  "type": "string"
+                },
+                "token_type": {
+                  "type": "string"
+                },
+                "expires_in": {
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "runtimeConfiguration": {
+            "secureData": {
+              "properties": [
+                "inputs"
+              ]
+            }
+          }
+        },
+        "Graph_Find_Users": {
+          "runAfter": {
+            "Parse_Graph_Token": [
+              "Succeeded"
+            ]
+          },
+          "type": "Http",
+          "inputs": {
+            "method": "GET",
+            "uri": "@{concat('https://graph.microsoft.com/v1.0/users?$search=\"displayName:', encodeUriComponent(body('Parse_AI_Intent')?['user']), '\"&$select=id,displayName,userPrincipalName,mail&$top=2')}",
+            "headers": {
+              "Authorization": "@{concat('Bearer ', body('Parse_Graph_Token')?['access_token'])}",
+              "ConsistencyLevel": "eventual"
+            }
+          }
+        },
+        "Graph_Find_Groups": {
+          "runAfter": {
+            "Graph_Find_Users": [
+              "Succeeded"
+            ]
+          },
+          "type": "Http",
+          "inputs": {
+            "method": "GET",
+            "uri": "@{concat('https://graph.microsoft.com/v1.0/groups?$search=\"displayName:', encodeUriComponent(body('Parse_AI_Intent')?['resource']), '\"&$select=id,displayName,mail&$top=2')}",
+            "headers": {
+              "Authorization": "@{concat('Bearer ', body('Parse_Graph_Token')?['access_token'])}",
+              "ConsistencyLevel": "eventual"
+            }
+          }
+        },
+        "If_Exact_Validated_Match": {
+          "runAfter": {
+            "Graph_Find_Groups": [
+              "Succeeded"
+            ]
+          },
+          "type": "If",
+          "expression": {
+            "and": [
+              {
+                "equals": [
+                  "@toLower(body('Parse_AI_Intent')?['confidence'])",
+                  "high"
+                ]
+              },
+              {
+                "equals": [
+                  "@toLower(body('Parse_AI_Intent')?['action'])",
+                  "add"
+                ]
+              },
+              {
+                "equals": [
+                  "@length(coalesce(body('Graph_Find_Users')?['value'], createArray()))",
+                  1
+                ]
+              },
+              {
+                "equals": [
+                  "@length(coalesce(body('Graph_Find_Groups')?['value'], createArray()))",
+                  1
+                ]
+              },
+              {
+                "equals": [
+                  "@first(body('Graph_Find_Groups')?['value'])?['displayName']",
+                  "@body('Parse_AI_Intent')?['resource']"
+                ]
+              }
+            ]
+          },
+          "actions": {
+            "Compose_Validated_Variables": {
+              "runAfter": {},
+              "type": "Compose",
+              "inputs": {
+                "triageStatus": "Validated",
+                "action": "@toLower(body('Parse_AI_Intent')?['action'])",
+                "groupId": "@first(body('Graph_Find_Groups')?['value'])?['id']",
+                "groupName": "@first(body('Graph_Find_Groups')?['value'])?['displayName']",
+                "userId": "@first(body('Graph_Find_Users')?['value'])?['id']",
+                "userPrincipalName": "@first(body('Graph_Find_Users')?['value'])?['userPrincipalName']",
+                "userDisplayName": "@first(body('Graph_Find_Users')?['value'])?['displayName']",
+                "justification": "@coalesce(body('Parse_AI_Intent')?['justification'], '')",
+                "validationConfidence": "@body('Parse_AI_Intent')?['confidence']",
+                "validatedAt": "@utcNow()",
+                "validationSource": "AI extraction plus Microsoft Graph exact match",
+                "originalText": "@coalesce(triggerOutputs()?['body/Variables'], '')"
+              }
+            },
+            "Patch_RITM_Pending_Approval": {
+              "runAfter": {
+                "Compose_Validated_Variables": [
+                  "Succeeded"
+                ]
+              },
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": {
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                  "connectionName": "shared_sharepointonline",
+                  "operationId": "PatchItem"
+                },
+                "parameters": {
+                  "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+                  "table": "Request Items",
+                  "id": "@triggerOutputs()?['body/ID']",
+                  "item/Title": "@triggerOutputs()?['body/Title']",
+                  "item/RitmNumber": "@triggerOutputs()?['body/RitmNumber']",
+                  "item/ParentTicket/Id": "@triggerOutputs()?['body/ParentTicket/Id']",
+                  "item/CatalogItem/Id": "@triggerOutputs()?['body/CatalogItem/Id']",
+                  "item/RequestedFor/Claims": "@triggerOutputs()?['body/RequestedFor/Claims']",
+                  "item/RitmState/Value": "Pending Approval",
+                  "item/Variables": "@string(outputs('Compose_Validated_Variables'))",
+                  "item/OpenedDate": "@triggerOutputs()?['body/OpenedDate']",
+                  "item/ConfidentialityLevel/Value": "@triggerOutputs()?['body/ConfidentialityLevel/Value']",
+                  "item/WorkNotes": "@{concat('RITM validation triage passed. User ', first(body('Graph_Find_Users')?['value'])?['userPrincipalName'], ' and group ', first(body('Graph_Find_Groups')?['value'])?['displayName'], ' resolved exactly. Released to approval.')}"
+                },
+                "authentication": "@parameters('$authentication')"
+              }
+            }
+          },
+          "else": {
+            "actions": {
+              "Compose_Hold_Variables": {
+                "runAfter": {},
+                "type": "Compose",
+                "inputs": {
+                  "triageStatus": "NeedsClarification",
+                  "reason": "AI confidence, action, user resolution, or group resolution did not meet exact-match requirements.",
+                  "extractedAction": "@body('Parse_AI_Intent')?['action']",
+                  "extractedUser": "@body('Parse_AI_Intent')?['user']",
+                  "extractedResource": "@body('Parse_AI_Intent')?['resource']",
+                  "validationConfidence": "@body('Parse_AI_Intent')?['confidence']",
+                  "userMatchCount": "@length(coalesce(body('Graph_Find_Users')?['value'], createArray()))",
+                  "groupMatchCount": "@length(coalesce(body('Graph_Find_Groups')?['value'], createArray()))",
+                  "originalText": "@coalesce(triggerOutputs()?['body/Variables'], '')"
+                }
+              },
+              "Patch_RITM_On_Hold": {
+                "runAfter": {
+                  "Compose_Hold_Variables": [
+                    "Succeeded"
+                  ]
+                },
+                "type": "OpenApiConnection",
+                "inputs": {
+                  "host": {
+                    "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                    "connectionName": "shared_sharepointonline",
+                    "operationId": "PatchItem"
+                  },
+                  "parameters": {
+                    "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+                    "table": "Request Items",
+                    "id": "@triggerOutputs()?['body/ID']",
+                    "item/Title": "@triggerOutputs()?['body/Title']",
+                    "item/RitmNumber": "@triggerOutputs()?['body/RitmNumber']",
+                    "item/ParentTicket/Id": "@triggerOutputs()?['body/ParentTicket/Id']",
+                    "item/CatalogItem/Id": "@triggerOutputs()?['body/CatalogItem/Id']",
+                    "item/RequestedFor/Claims": "@triggerOutputs()?['body/RequestedFor/Claims']",
+                    "item/RitmState/Value": "On Hold",
+                    "item/Variables": "@string(outputs('Compose_Hold_Variables'))",
+                    "item/OpenedDate": "@triggerOutputs()?['body/OpenedDate']",
+                    "item/ConfidentialityLevel/Value": "@triggerOutputs()?['body/ConfidentialityLevel/Value']",
+                    "item/WorkNotes": "@{concat('RITM validation triage put this request on hold. Catherine must clarify the user/group before approval or SCTASK generation. Details: ', string(outputs('Compose_Hold_Variables')))}"
+                  },
+                  "authentication": "@parameters('$authentication')"
+                }
+              },
+              "Notify_Catherine_Clarification": {
+                "runAfter": {
+                  "Patch_RITM_On_Hold": [
+                    "Succeeded"
+                  ]
+                },
+                "type": "OpenApiConnection",
+                "inputs": {
+                  "host": {
+                    "apiId": "/providers/Microsoft.PowerApps/apis/shared_teams",
+                    "connectionName": "shared_teams",
+                    "operationId": "PostMessageToConversation"
+                  },
+                  "parameters": {
+                    "poster": "Flow bot",
+                    "location": "Chat with Flow bot",
+                    "body/recipient": "catherine.han@flowstudio.app",
+                    "body/messageBody": "@{concat('<h2>RITM needs clarification</h2><p><b>RITM:</b> ', triggerOutputs()?['body/RitmNumber'], ' (item ID ', string(triggerOutputs()?['body/ID']), ')</p><p><b>Extracted user:</b> ', string(body('Parse_AI_Intent')?['user']), '</p><p><b>Extracted group:</b> ', string(body('Parse_AI_Intent')?['resource']), '</p><p><b>Reason:</b> exact Graph validation failed or confidence was too low.</p><p><a href=\"https://contoso.sharepoint.com/sites/ITSM/Lists/Request%20Items/DispForm.aspx?ID=', string(triggerOutputs()?['body/ID']), '\">Open request item</a></p>')}"
+                  },
+                  "authentication": "@parameters('$authentication')"
+                }
+              }
+            }
+          }
+        }
+      },
+      "else": {
+        "actions": {}
+      }
+    }
+  },
+  "description": "Validates plain-text group membership RITMs with AI extraction plus deterministic Microsoft Graph user/group resolution before approval and SCTASK generation."
+}

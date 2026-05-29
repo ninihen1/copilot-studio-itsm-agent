@@ -1,0 +1,508 @@
+{
+  "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "$connections": {
+      "defaultValue": {},
+      "type": "Object"
+    },
+    "$authentication": {
+      "defaultValue": {},
+      "type": "SecureObject"
+    }
+  },
+  "triggers": {
+    "When_a_Ticket_is_Created": {
+      "type": "OpenApiConnection",
+      "inputs": {
+        "host": {
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+          "connectionName": "shared_sharepointonline",
+          "operationId": "GetOnNewItems"
+        },
+        "parameters": {
+          "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+          "table": "Tickets"
+        },
+        "authentication": "@parameters('$authentication')"
+      },
+      "recurrence": {
+        "frequency": "Minute",
+        "interval": 1
+      },
+      "splitOn": "@triggerOutputs()?['body/value']",
+      "runtimeConfiguration": {
+        "concurrency": {
+          "runs": 1,
+          "maximumWaitingRuns": 50
+        }
+      }
+    }
+  },
+  "actions": {
+    "If_Already_Validated": {
+      "runAfter": {},
+      "type": "If",
+      "expression": {
+        "or": [
+          {
+            "equals": [
+              "@coalesce(triggerOutputs()?['body/TicketTypeValidated'], false)",
+              true
+            ]
+          },
+          {
+            "equals": [
+              "@coalesce(triggerOutputs()?['body/TicketTypeValidationStatus/Value'], '')",
+              "Validated"
+            ]
+          },
+          {
+            "equals": [
+              "@coalesce(triggerOutputs()?['body/TicketTypeValidationStatus/Value'], '')",
+              "Reclassified"
+            ]
+          },
+          {
+            "equals": [
+              "@coalesce(triggerOutputs()?['body/TicketTypeValidationStatus/Value'], '')",
+              "NeedsConfirmation"
+            ]
+          }
+        ]
+      },
+      "actions": {},
+      "else": {
+        "actions": {
+          "If_ProposeAction_Source": {
+            "runAfter": {},
+            "type": "If",
+            "expression": {
+              "equals": [
+                "@coalesce(triggerOutputs()?['body/TicketSource/Value'], '')",
+                "ProposeAction"
+              ]
+            },
+            "actions": {
+              "Patch_Skipped_ProposeAction": {
+                "runAfter": {},
+                "type": "OpenApiConnection",
+                "inputs": {
+                  "host": {
+                    "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                    "connectionName": "shared_sharepointonline",
+                    "operationId": "PatchItem"
+                  },
+                  "parameters": {
+                    "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+                    "table": "Tickets",
+                    "id": "@triggerOutputs()?['body/ID']",
+                    "item/Title": "@triggerOutputs()?['body/Title']",
+                    "item/TicketType/Value": "@triggerOutputs()?['body/TicketType/Value']",
+                    "item/TicketState/Value": "@triggerOutputs()?['body/TicketState/Value']",
+                    "item/CategoryRef/Id": "@triggerOutputs()?['body/CategoryRef/Id']",
+                    "item/Caller/Claims": "@triggerOutputs()?['body/Caller/Claims']",
+                    "item/Impact/Value": "@triggerOutputs()?['body/Impact/Value']",
+                    "item/Urgency/Value": "@triggerOutputs()?['body/Urgency/Value']",
+                    "item/ShortDescription": "@triggerOutputs()?['body/ShortDescription']",
+                    "item/ConfidentialityLevel/Value": "@coalesce(triggerOutputs()?['body/ConfidentialityLevel/Value'], 'Public')",
+                    "item/TicketTypeValidated": true,
+                    "item/TicketTypeValidationStatus/Value": "Skipped",
+                    "item/TicketTypeValidationReason": "TicketSource=ProposeAction; classification already validated by the agent action."
+                  },
+                  "authentication": "@parameters('$authentication')"
+                }
+              }
+            },
+            "else": {
+              "actions": {
+                "Find_Catalog_Matches": {
+                  "runAfter": {},
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "host": {
+                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                      "connectionName": "shared_sharepointonline",
+                      "operationId": "GetItems"
+                    },
+                    "parameters": {
+                      "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+                      "table": "Service Catalog",
+                      "$filter": "@{if(equals(coalesce(triggerOutputs()?['body/SelectedCatalogItem/Id'], 0), 0), if(equals(coalesce(triggerOutputs()?['body/Subcategory/Id'], 0), 0), 'ID eq 0', concat('SubcategoryHint/Id eq ', string(triggerOutputs()?['body/Subcategory/Id']), ' and ItemStatus eq ''active''')), concat('ID eq ', string(triggerOutputs()?['body/SelectedCatalogItem/Id']), ' and ItemStatus eq ''active'''))}",
+                      "$top": 5
+                    },
+                    "authentication": "@parameters('$authentication')"
+                  }
+                },
+                "Find_RITMs_For_Ticket": {
+                  "runAfter": {},
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "host": {
+                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                      "connectionName": "shared_sharepointonline",
+                      "operationId": "GetItems"
+                    },
+                    "parameters": {
+                      "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+                      "table": "Request Items",
+                      "$filter": "@{concat('ParentTicket/Id eq ', string(triggerOutputs()?['body/ID']))}",
+                      "$top": 1
+                    },
+                    "authentication": "@parameters('$authentication')"
+                  }
+                },
+                "Find_Provisioning_Jobs_For_Ticket": {
+                  "runAfter": {},
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "host": {
+                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                      "connectionName": "shared_sharepointonline",
+                      "operationId": "GetItems"
+                    },
+                    "parameters": {
+                      "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+                      "table": "Provisioning Jobs",
+                      "$filter": "@{concat('ParentTicket/Id eq ', string(triggerOutputs()?['body/ID']))}",
+                      "$top": 1
+                    },
+                    "authentication": "@parameters('$authentication')"
+                  }
+                },
+                "Find_Approvals_For_Ticket": {
+                  "runAfter": {},
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "host": {
+                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                      "connectionName": "shared_sharepointonline",
+                      "operationId": "GetItems"
+                    },
+                    "parameters": {
+                      "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+                      "table": "Approvals",
+                      "$filter": "@{concat('ParentTicket/Id eq ', string(triggerOutputs()?['body/ID']))}",
+                      "$top": 1
+                    },
+                    "authentication": "@parameters('$authentication')"
+                  }
+                },
+                "Compose_CatalogMatchCount": {
+                  "runAfter": {
+                    "Find_Catalog_Matches": [
+                      "Succeeded"
+                    ]
+                  },
+                  "type": "Compose",
+                  "inputs": "@length(coalesce(body('Find_Catalog_Matches')?['value'], createArray()))"
+                },
+                "Compose_HasDownstreamWork": {
+                  "runAfter": {
+                    "Find_RITMs_For_Ticket": [
+                      "Succeeded"
+                    ],
+                    "Find_Provisioning_Jobs_For_Ticket": [
+                      "Succeeded"
+                    ],
+                    "Find_Approvals_For_Ticket": [
+                      "Succeeded"
+                    ]
+                  },
+                  "type": "Compose",
+                  "inputs": "@or(greater(length(coalesce(body('Find_RITMs_For_Ticket')?['value'], createArray())), 0), greater(length(coalesce(body('Find_Provisioning_Jobs_For_Ticket')?['value'], createArray())), 0), greater(length(coalesce(body('Find_Approvals_For_Ticket')?['value'], createArray())), 0), equals(coalesce(triggerOutputs()?['body/MajorIncidentFlag'], false), true))"
+                },
+                "Switch_TicketType": {
+                  "runAfter": {
+                    "Compose_CatalogMatchCount": [
+                      "Succeeded"
+                    ],
+                    "Compose_HasDownstreamWork": [
+                      "Succeeded"
+                    ]
+                  },
+                  "type": "Switch",
+                  "expression": "@triggerOutputs()?['body/TicketType/Value']",
+                  "default": {
+                    "actions": {
+                      "Patch_Unsupported_Type_NeedsConfirmation": {
+                        "runAfter": {},
+                        "type": "OpenApiConnection",
+                        "inputs": {
+                          "host": {
+                            "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                            "connectionName": "shared_sharepointonline",
+                            "operationId": "PatchItem"
+                          },
+                          "parameters": {
+                            "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+                            "table": "Tickets",
+                            "id": "@triggerOutputs()?['body/ID']",
+                            "item/Title": "@triggerOutputs()?['body/Title']",
+                            "item/TicketType/Value": "@triggerOutputs()?['body/TicketType/Value']",
+                            "item/TicketState/Value": "On Hold",
+                            "item/CategoryRef/Id": "@triggerOutputs()?['body/CategoryRef/Id']",
+                            "item/Caller/Claims": "@triggerOutputs()?['body/Caller/Claims']",
+                            "item/Impact/Value": "@triggerOutputs()?['body/Impact/Value']",
+                            "item/Urgency/Value": "@triggerOutputs()?['body/Urgency/Value']",
+                            "item/ShortDescription": "@triggerOutputs()?['body/ShortDescription']",
+                            "item/ConfidentialityLevel/Value": "@coalesce(triggerOutputs()?['body/ConfidentialityLevel/Value'], 'Public')",
+                            "item/TicketTypeValidated": false,
+                            "item/TicketTypeValidationStatus/Value": "NeedsConfirmation",
+                            "item/TicketTypeValidationReason": "Validator handles Incident and Request only for this pilot. Service desk confirmation required."
+                          },
+                          "authentication": "@parameters('$authentication')"
+                        }
+                      }
+                    }
+                  },
+                  "cases": {
+                    "Case_Request": {
+                      "case": "Request",
+                      "actions": {
+                        "If_Request_Has_One_Catalog_Match": {
+                          "runAfter": {},
+                          "type": "If",
+                          "expression": {
+                            "equals": [
+                              "@outputs('Compose_CatalogMatchCount')",
+                              1
+                            ]
+                          },
+                          "actions": {
+                            "Patch_Request_Validated": {
+                              "runAfter": {},
+                              "type": "OpenApiConnection",
+                              "inputs": {
+                                "host": {
+                                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                                  "connectionName": "shared_sharepointonline",
+                                  "operationId": "PatchItem"
+                                },
+                                "parameters": {
+                                  "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+                                  "table": "Tickets",
+                                  "id": "@triggerOutputs()?['body/ID']",
+                                  "item/Title": "@triggerOutputs()?['body/Title']",
+                                  "item/TicketType/Value": "Request",
+                                  "item/TicketState/Value": "@triggerOutputs()?['body/TicketState/Value']",
+                                  "item/CategoryRef/Id": "@triggerOutputs()?['body/CategoryRef/Id']",
+                                  "item/Caller/Claims": "@triggerOutputs()?['body/Caller/Claims']",
+                                  "item/Impact/Value": "@triggerOutputs()?['body/Impact/Value']",
+                                  "item/Urgency/Value": "@triggerOutputs()?['body/Urgency/Value']",
+                                  "item/ShortDescription": "@triggerOutputs()?['body/ShortDescription']",
+                                  "item/ConfidentialityLevel/Value": "@coalesce(triggerOutputs()?['body/ConfidentialityLevel/Value'], 'Public')",
+                                  "item/SelectedCatalogItem/Id": "@first(body('Find_Catalog_Matches')?['value'])?['ID']",
+                                  "item/TicketTypeValidated": true,
+                                  "item/TicketTypeValidationStatus/Value": "Validated",
+                                  "item/TicketTypeValidationReason": "@{concat('Request validated against active catalog item ', first(body('Find_Catalog_Matches')?['value'])?['Title'], '.')}",
+                                  "item/SuggestedTicketType/Value": "Request"
+                                },
+                                "authentication": "@parameters('$authentication')"
+                              }
+                            }
+                          },
+                          "else": {
+                            "actions": {
+                              "Patch_Request_NeedsConfirmation": {
+                                "runAfter": {},
+                                "type": "OpenApiConnection",
+                                "inputs": {
+                                  "host": {
+                                    "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                                    "connectionName": "shared_sharepointonline",
+                                    "operationId": "PatchItem"
+                                  },
+                                  "parameters": {
+                                    "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+                                    "table": "Tickets",
+                                    "id": "@triggerOutputs()?['body/ID']",
+                                    "item/Title": "@triggerOutputs()?['body/Title']",
+                                    "item/TicketType/Value": "Request",
+                                    "item/TicketState/Value": "On Hold",
+                                    "item/CategoryRef/Id": "@triggerOutputs()?['body/CategoryRef/Id']",
+                                    "item/Caller/Claims": "@triggerOutputs()?['body/Caller/Claims']",
+                                    "item/Impact/Value": "@triggerOutputs()?['body/Impact/Value']",
+                                    "item/Urgency/Value": "@triggerOutputs()?['body/Urgency/Value']",
+                                    "item/ShortDescription": "@triggerOutputs()?['body/ShortDescription']",
+                                    "item/ConfidentialityLevel/Value": "@coalesce(triggerOutputs()?['body/ConfidentialityLevel/Value'], 'Public')",
+                                    "item/TicketTypeValidated": false,
+                                    "item/TicketTypeValidationStatus/Value": "NeedsConfirmation",
+                                    "item/TicketTypeValidationReason": "@{if(equals(coalesce(triggerOutputs()?['body/Subcategory/Id'], 0), 0), 'Request has no subcategory. Select a catalog-mapped subcategory or convert to Incident.', if(equals(outputs('Compose_CatalogMatchCount'), 0), 'Request has no active Service Catalog match. Choose a valid catalog item or convert to Incident.', 'Request has multiple active Service Catalog matches. Select the exact catalog item before fulfillment.'))}",
+                                    "item/SuggestedTicketType/Value": "Incident"
+                                  },
+                                  "authentication": "@parameters('$authentication')"
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "Case_Incident": {
+                      "case": "Incident",
+                      "actions": {
+                        "If_Incident_Maps_To_One_Request": {
+                          "runAfter": {},
+                          "type": "If",
+                          "expression": {
+                            "and": [
+                              {
+                                "equals": [
+                                  "@outputs('Compose_CatalogMatchCount')",
+                                  1
+                                ]
+                              },
+                              {
+                                "equals": [
+                                  "@outputs('Compose_HasDownstreamWork')",
+                                  false
+                                ]
+                              },
+                              {
+                                "not": {
+                                  "equals": [
+                                    "@coalesce(triggerOutputs()?['body/TypeOverrideConfirmed'], false)",
+                                    true
+                                  ]
+                                }
+                              }
+                            ]
+                          },
+                          "actions": {
+                            "Patch_Incident_Reclassified_To_Request": {
+                              "runAfter": {},
+                              "type": "OpenApiConnection",
+                              "inputs": {
+                                "host": {
+                                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                                  "connectionName": "shared_sharepointonline",
+                                  "operationId": "PatchItem"
+                                },
+                                "parameters": {
+                                  "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+                                  "table": "Tickets",
+                                  "id": "@triggerOutputs()?['body/ID']",
+                                  "item/Title": "@triggerOutputs()?['body/Title']",
+                                  "item/TicketType/Value": "Request",
+                                  "item/TicketState/Value": "@triggerOutputs()?['body/TicketState/Value']",
+                                  "item/CategoryRef/Id": "@triggerOutputs()?['body/CategoryRef/Id']",
+                                  "item/Caller/Claims": "@triggerOutputs()?['body/Caller/Claims']",
+                                  "item/Impact/Value": "@triggerOutputs()?['body/Impact/Value']",
+                                  "item/Urgency/Value": "@triggerOutputs()?['body/Urgency/Value']",
+                                  "item/ShortDescription": "@triggerOutputs()?['body/ShortDescription']",
+                                  "item/ConfidentialityLevel/Value": "@coalesce(triggerOutputs()?['body/ConfidentialityLevel/Value'], 'Public')",
+                                  "item/SelectedCatalogItem/Id": "@first(body('Find_Catalog_Matches')?['value'])?['ID']",
+                                  "item/TicketTypeValidated": true,
+                                  "item/TicketTypeValidationStatus/Value": "Reclassified",
+                                  "item/TicketTypeValidationReason": "@{concat('Auto-reclassified from Incident to Request because the selected subcategory maps to one active catalog item: ', first(body('Find_Catalog_Matches')?['value'])?['Title'], '.')}",
+                                  "item/SuggestedTicketType/Value": "Request",
+                                  "item/WorkNotes": "@{concat(coalesce(triggerOutputs()?['body/WorkNotes'], ''), decodeUriComponent('%0A'), 'Ticket Type Validator: auto-reclassified from Incident to Request at ', utcNow(), '.')}"
+                                },
+                                "authentication": "@parameters('$authentication')"
+                              }
+                            }
+                          },
+                          "else": {
+                            "actions": {
+                              "If_Incident_Ambiguous_Request": {
+                                "runAfter": {},
+                                "type": "If",
+                                "expression": {
+                                  "and": [
+                                    {
+                                      "greater": [
+                                        "@outputs('Compose_CatalogMatchCount')",
+                                        1
+                                      ]
+                                    },
+                                    {
+                                      "equals": [
+                                        "@coalesce(triggerOutputs()?['body/TypeOverrideConfirmed'], false)",
+                                        false
+                                      ]
+                                    }
+                                  ]
+                                },
+                                "actions": {
+                                  "Patch_Incident_NeedsConfirmation": {
+                                    "runAfter": {},
+                                    "type": "OpenApiConnection",
+                                    "inputs": {
+                                      "host": {
+                                        "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                                        "connectionName": "shared_sharepointonline",
+                                        "operationId": "PatchItem"
+                                      },
+                                      "parameters": {
+                                        "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+                                        "table": "Tickets",
+                                        "id": "@triggerOutputs()?['body/ID']",
+                                        "item/Title": "@triggerOutputs()?['body/Title']",
+                                        "item/TicketType/Value": "Incident",
+                                        "item/TicketState/Value": "On Hold",
+                                        "item/CategoryRef/Id": "@triggerOutputs()?['body/CategoryRef/Id']",
+                                        "item/Caller/Claims": "@triggerOutputs()?['body/Caller/Claims']",
+                                        "item/Impact/Value": "@triggerOutputs()?['body/Impact/Value']",
+                                        "item/Urgency/Value": "@triggerOutputs()?['body/Urgency/Value']",
+                                        "item/ShortDescription": "@triggerOutputs()?['body/ShortDescription']",
+                                        "item/ConfidentialityLevel/Value": "@coalesce(triggerOutputs()?['body/ConfidentialityLevel/Value'], 'Public')",
+                                        "item/TicketTypeValidated": false,
+                                        "item/TicketTypeValidationStatus/Value": "NeedsConfirmation",
+                                        "item/TicketTypeValidationReason": "Incident subcategory maps to multiple active catalog items. Caller or service desk must confirm Incident vs Request and select a catalog item if Request.",
+                                        "item/SuggestedTicketType/Value": "Request"
+                                      },
+                                      "authentication": "@parameters('$authentication')"
+                                    }
+                                  }
+                                },
+                                "else": {
+                                  "actions": {
+                                    "Patch_Incident_Validated": {
+                                      "runAfter": {},
+                                      "type": "OpenApiConnection",
+                                      "inputs": {
+                                        "host": {
+                                          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                                          "connectionName": "shared_sharepointonline",
+                                          "operationId": "PatchItem"
+                                        },
+                                        "parameters": {
+                                          "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+                                          "table": "Tickets",
+                                          "id": "@triggerOutputs()?['body/ID']",
+                                          "item/Title": "@triggerOutputs()?['body/Title']",
+                                          "item/TicketType/Value": "Incident",
+                                          "item/TicketState/Value": "@triggerOutputs()?['body/TicketState/Value']",
+                                          "item/CategoryRef/Id": "@triggerOutputs()?['body/CategoryRef/Id']",
+                                          "item/Caller/Claims": "@triggerOutputs()?['body/Caller/Claims']",
+                                          "item/Impact/Value": "@triggerOutputs()?['body/Impact/Value']",
+                                          "item/Urgency/Value": "@triggerOutputs()?['body/Urgency/Value']",
+                                          "item/ShortDescription": "@triggerOutputs()?['body/ShortDescription']",
+                                          "item/ConfidentialityLevel/Value": "@coalesce(triggerOutputs()?['body/ConfidentialityLevel/Value'], 'Public')",
+                                          "item/TicketTypeValidated": true,
+                                          "item/TicketTypeValidationStatus/Value": "Validated",
+                                          "item/TicketTypeValidationReason": "@{if(equals(coalesce(triggerOutputs()?['body/TypeOverrideConfirmed'], false), true), 'Caller confirmed this catalog-mapped item should remain an Incident.', if(equals(outputs('Compose_HasDownstreamWork'), true), 'Incident left unchanged because downstream work already exists.', 'Incident validated; no deterministic catalog reclassification required.'))}",
+                                          "item/SuggestedTicketType/Value": "Incident"
+                                        },
+                                        "authentication": "@parameters('$authentication')"
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

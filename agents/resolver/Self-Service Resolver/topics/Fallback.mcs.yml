@@ -1,0 +1,51 @@
+mcs.metadata:
+  componentName: Fallback
+  description: Searches the KB for any user input that doesn't hit a more specific topic. After 2 attempts, hands off to Triage.
+kind: AdaptiveDialog
+beginDialog:
+  kind: OnUnknownIntent
+  id: main
+  actions:
+    - kind: ConditionGroup
+      id: condition_attempts
+      conditions:
+        - id: condition_under2
+          condition: =System.FallbackCount < 2
+          actions:
+            - kind: SearchAndSummarizeContent
+              id: search_kb
+              userInput: =System.Activity.Text
+              additionalInstructions: |-
+                Search the Knowledge Base. If you find a published article that answers the question with high confidence, summarise it in 2-3 sentences and link to it. End with: "Did this help?"
+                If no relevant article, respond exactly: "NO_KB_MATCH"
+              moderationLevel: Medium
+              responseCaptureType: GenerativeAnswers
+              variable: init:Topic.KbAnswer
+
+            - kind: ConditionGroup
+              id: condition_kbMatch
+              conditions:
+                - id: condition_kbNoMatch
+                  condition: =Topic.KbAnswer = "NO_KB_MATCH"
+                  actions:
+                    - kind: SendActivity
+                      id: sendMessage_noMatch
+                      activity: I couldn't find an article on that. Let me bring in the Helpdesk Triage Agent.
+
+                    - kind: BeginDialog
+                      id: beginDialog_handoff_nomatch
+                      dialog: cr1c2_resolver.topic.HandOffToTriage
+
+              elseActions:
+                - kind: SendActivity
+                  id: sendMessage_kbAnswer
+                  activity: ={Topic.KbAnswer}
+
+      elseActions:
+        - kind: SendActivity
+          id: sendMessage_giveUp
+          activity: I've given this two tries — let me hand you to the Helpdesk Triage Agent who can log a ticket or propose an action.
+
+        - kind: BeginDialog
+          id: beginDialog_handoff_giveup
+          dialog: cr1c2_resolver.topic.HandOffToTriage
