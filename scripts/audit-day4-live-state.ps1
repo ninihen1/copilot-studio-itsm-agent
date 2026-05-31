@@ -75,7 +75,7 @@ try {
             PublishedKnowledgeArticles = @($kbRows | Where-Object { $_['ArticleStatus'] -eq 'Published' }).Count
         }
         ProposeActionDependencies = [pscustomobject]@{
-            TicketsFieldsPresent = @('TicketSource','BusinessKey','CategoryRef','Subcategory','Caller','TicketState','ShortDescription') | ForEach-Object {
+            TicketsFieldsPresent = @('TicketSource','CategoryRef','Subcategory','Caller','TicketState','ShortDescription') | ForEach-Object {
                 [pscustomobject]@{ Field = $_; Present = $_ -in $ticketFields }
             }
             ProvisioningJobFieldsPresent = @('JobType','ParentTicket','JobStatus','CallerUpn','TargetJson','ArgsJson','IdempotencyKey','CorrelationId','Risk','Rationale') | ForEach-Object {

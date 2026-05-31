@@ -10,7 +10,7 @@
   },
   "sharePoint": {
     "itsmSiteUrl": "https://contoso.sharepoint.com/sites/ITSM",
-    "appCatalogUrl": "https://contoso.sharepoint.com/sites/appcatalog"
+    "appCatalogUrl": "https://contoso.sharepoint.com/sites/ITSM"
   },
   "spfx": {
     "solutionId": "00000000-0000-4000-8000-000000000029",

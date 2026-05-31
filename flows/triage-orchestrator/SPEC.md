@@ -115,7 +115,7 @@ If the agent doesn't comply with the format, the parse fails and the ticket fall
 ## Field mappings (Tickets PatchItem)
 
 PatchItem requires every SP-required field to be present even for partial updates. The flow passes through unchanged required fields from `triggerOutputs()?['body/...']` and overrides only the ones the agent decided. Required-and-passed-through:
-- `Title`, `TicketNumber`, `Caller/Claims`, `OpenedDate`, `BusinessKey`, `ShortDescription`
+- `Title`, `TicketNumber`, `Caller/Claims`, `OpenedDate`, `ShortDescription`
 - `Impact/Value`, `Urgency/Value`, `ConfidentialityLevel/Value` (defaults to Public)
 
 Override per case:
@@ -165,7 +165,7 @@ If either connection's token is stale, the flow run will surface an `Unauthorize
 ## Test plan
 
 Manual smoke test (no automation yet):
-1. Insert a validated non-Request Tickets row via PowerShell or SharePoint UI with `ShortDescription='I forgot my password'`, valid Caller, BusinessKey, ConfidentialityLevel='Public', and `TicketTypeValidated=true` once the validator is live.
+1. Insert a validated non-Request Tickets row via PowerShell or SharePoint UI with `ShortDescription='I forgot my password'`, valid Caller, ConfidentialityLevel='Public', and `TicketTypeValidated=true` once the validator is live.
 2. Wait up to 3 minutes for the trigger to fire.
 3. Check the run history at https://make.powerautomate.com (env Flow Studio Demo).
 4. Verify: Ticket row updated with classification + TicketState=In Progress; new Provisioning Jobs row with Status=Proposed.

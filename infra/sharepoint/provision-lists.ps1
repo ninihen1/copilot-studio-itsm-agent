@@ -6,7 +6,7 @@
 Master orchestrator for ITSM SharePoint list provisioning.
 
 .DESCRIPTION
-Provisions all 16 lists in dependency order. Idempotent — re-runnable.
+Provisions all 17 lists in dependency order. Idempotent — re-runnable.
 Reads cert from Azure Key Vault and connects via app-only auth (SP-IT-Provisioning).
 
 .PARAMETER SiteUrl
@@ -78,6 +78,7 @@ $provisioningOrder = @(
     @{ Num = '14'; Title = 'Approvals';                 File = '14-approvals.ps1';             Function = 'Provision-ApprovalsList' }
     @{ Num = '15'; Title = 'Approval Stages';           File = '15-approval-stages.ps1';       Function = 'Provision-ApprovalStagesList' }
     @{ Num = '16'; Title = 'Provisioning Jobs';         File = '16-provisioning-jobs.ps1';     Function = 'Provision-ProvisioningJobsList' }
+    @{ Num = '17'; Title = 'License Costs';             File = '17-license-costs.ps1';         Function = 'Provision-LicenseCostsList' }
 )
 
 # Filter by user-supplied list numbers if any

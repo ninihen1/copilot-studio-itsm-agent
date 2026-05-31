@@ -21,7 +21,7 @@ $ErrorActionPreference = 'Stop'
 # Expected lists + their key required columns
 $expected = @{
     'Categories'           = @('ParentCategory','Description','Status')
-    'Configuration Items'  = @('CiName','CiClass','OperationalStatus','BusinessKey')
+    'Configuration Items'  = @('CiName','CiClass','OperationalStatus')
     'Assets'               = @('AssetTag','SerialNumber','AssetClass','AssetState')
     'Knowledge Base'       = @('ArticleNumber','Summary','Body','Category','Audience','ArticleStatus','KbAuthor')
     'Service Catalog'      = @('ItemName','Category','Description','ItemStatus')

@@ -151,7 +151,6 @@ async function main() {
       Priority: '1 - Critical',
       ShortDescription: 'Day 4 SLA warning regression seed',
       Description: 'Controlled SLA warning seed. Initial elapsed 165 should become 180/240 and enter Warning.',
-      BusinessKey: `D4-OPS-SLA-WARN-${runKey}`,
       SlaBusinessMinutesElapsed: 165,
       TotalPausedMinutes: 0
     });
@@ -162,7 +161,6 @@ async function main() {
       Priority: '1 - Critical',
       ShortDescription: 'Day 4 SLA breach regression seed',
       Description: 'Controlled SLA breach seed. Initial elapsed 225 should become 240/240 and breach.',
-      BusinessKey: `D4-OPS-SLA-BREACH-${runKey}`,
       SlaBusinessMinutesElapsed: 225,
       TotalPausedMinutes: 0
     });
@@ -173,7 +171,6 @@ async function main() {
       Priority: '3 - Moderate',
       ShortDescription: 'Day 4 SLA hold regression seed',
       Description: 'Controlled SLA hold seed. Flow should set OnHoldSince and avoid increasing elapsed minutes.',
-      BusinessKey: `D4-OPS-SLA-HOLD-${runKey}`,
       SlaBusinessMinutesElapsed: 30,
       TotalPausedMinutes: 7
     });
@@ -184,7 +181,6 @@ async function main() {
       Priority: '4 - Low',
       ShortDescription: 'Day 4 archival regression seed',
       Description: 'Controlled old closed ticket for archival regression.',
-      BusinessKey: `D4-OPS-ARCH-${runKey}`,
       ClosedDate: closedDate,
       MadeSla: true,
       ReopenCount: 0,
@@ -203,7 +199,6 @@ async function main() {
         Priority: '3 - Moderate',
         ShortDescription: `Day 4 MI regression ${index + 1}: Teams chat outage`,
         Description: symptom,
-        BusinessKey: `D4-OPS-MI-${index + 1}-${runKey}`,
         TicketSource: 'ProposeAction'
       }));
     }

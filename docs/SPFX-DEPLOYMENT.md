@@ -2,6 +2,14 @@
 
 This guide covers the build and deployment pipeline for the ITSM SharePoint Framework (SPFx) frontend package.
 
+## Roles: one-time setup vs. triggering a deploy
+
+Standing this pipeline up is a **one-time setup** for a human working with an IDE/coding agent. It needs a deployment **Entra app registration**, a **certificate**, **GitHub environment secrets**, and the **site-collection app catalog** (enabled on `/sites/ITSM`) — none of which a flow-based agent (e.g. Copilot Cowork) can create on its own. The GitHub Actions workflow (`.github/workflows/spfx-build-deploy.yml`) ships in this repo.
+
+Once that setup exists, a change flows through the pipeline: edit the SPFx source and push (the workflow builds it), then run the app-catalog deploy as a `workflow_dispatch`. A coding agent, **Copilot Cowork**, or a person can do this — Cowork genuinely changes the portal's code and ships through the pipeline; it's reusing the pipeline, not rebuilding it.
+
+In this build, the IDE agent (Claude Code) created the repo, authored the workflow, and ran the first deployment directly; Copilot Cowork later shipped patches — changing the portal's code and pushing through that existing workflow. So Cowork did **not** stand the pipeline up end-to-end, but it does make real code changes and ship them through the pipeline the IDE agent built.
+
 ## Defaults
 
 | Setting | Value |
@@ -10,10 +18,10 @@ This guide covers the build and deployment pipeline for the ITSM SharePoint Fram
 | Node.js | `22.14.x` or another Node `22` LTS version supported by SPFx `1.22.x` |
 | CI/CD | GitHub Actions |
 | Deployment trigger | Manual `workflow_dispatch` for app catalog deployment |
-| Deployment scope | Tenant-wide, `skipFeatureDeployment=true` |
+| Deployment scope | Site collection (`/sites/ITSM`), `--appCatalogScope sitecollection`, `skipFeatureDeployment=true` |
 | Tenant | `contoso.sharepoint.com` |
 | ITSM site | `https://contoso.sharepoint.com/sites/ITSM` |
-| App catalog | `https://contoso.sharepoint.com/sites/appcatalog` |
+| App catalog (site-collection) | `https://contoso.sharepoint.com/sites/ITSM` |
 
 ## Local Development Setup
 
@@ -91,7 +99,7 @@ When the SPFx project is scaffolded or updated, confirm `config/package-solution
 }
 ```
 
-Use `skipFeatureDeployment=true` for the pilot so the app is available tenant-wide after deployment from the app catalog.
+Use `skipFeatureDeployment=true` so the app is available across the `/sites/ITSM` site collection after deployment from its site-collection app catalog.
 
 ## GitHub Actions Pipeline
 
@@ -115,7 +123,7 @@ Deploy behavior:
 - Uses the selected GitHub environment (`pilot` or `production`) for approval and secrets.
 - Downloads the packaged artifact.
 - Logs in with certificate auth using CLI for Microsoft 365.
-- Uploads the `.sppkg` to the tenant app catalog.
+- Uploads the `.sppkg` to the site-collection app catalog (`--appCatalogScope sitecollection`).
 - Deploys with `--skipFeatureDeployment`.
 
 ## Required GitHub Secrets
@@ -132,7 +140,7 @@ Configure these in the GitHub environment used by the workflow, initially `pilot
 The workflow input `appCatalogUrl` defaults to:
 
 ```text
-https://contoso.sharepoint.com/sites/appcatalog
+https://contoso.sharepoint.com/sites/ITSM
 ```
 
 ## Certificate Handling
@@ -174,7 +182,7 @@ Deploy with CLI for Microsoft 365:
   -Tool CLI `
   -TenantId "00000000-0000-4000-8000-000000000009" `
   -AppId "<deployment-app-id>" `
-  -AppCatalogUrl "https://contoso.sharepoint.com/sites/appcatalog" `
+  -AppCatalogUrl "https://contoso.sharepoint.com/sites/ITSM" `
   -PackagePath "sharepoint/solution/itsm-frontend.sppkg" `
   -CertificatePath "<path-to-pfx>" `
   -CertificatePassword "<pfx-password>"
@@ -187,7 +195,7 @@ Deploy with PnP.PowerShell:
   -Tool PnP `
   -TenantId "00000000-0000-4000-8000-000000000009" `
   -AppId "<deployment-app-id>" `
-  -AppCatalogUrl "https://contoso.sharepoint.com/sites/appcatalog" `
+  -AppCatalogUrl "https://contoso.sharepoint.com/sites/ITSM" `
   -PackagePath "sharepoint/solution/itsm-frontend.sppkg" `
   -CertificatePath "<path-to-pfx>" `
   -CertificatePassword "<pfx-password>"
@@ -195,19 +203,19 @@ Deploy with PnP.PowerShell:
 
 ## App Catalog Setup
 
-Confirm the tenant app catalog exists:
+This build deploys to the **site-collection app catalog** on the ITSM site, not the tenant app catalog:
 
 ```text
-https://contoso.sharepoint.com/sites/appcatalog
+https://contoso.sharepoint.com/sites/ITSM
 ```
 
-If it does not exist, create it from the SharePoint admin center:
+Enable the site-collection app catalog on that site if it isn't already — for example with PnP PowerShell:
 
-```text
-https://contoso-admin.sharepoint.com
+```powershell
+Add-PnPSiteCollectionAppCatalog -Site "https://contoso.sharepoint.com/sites/ITSM"
 ```
 
-Then open **More features > Apps > App Catalog**.
+A tenant admin can also enable it from the SharePoint admin center. The site-collection app catalog scopes the app to `/sites/ITSM` rather than the whole tenant.
 
 ## Deployment Identity
 
@@ -215,7 +223,7 @@ Recommended: create a dedicated deployment app registration for SPFx package dep
 
 Minimum decision points:
 
-- Whether the app can upload/deploy to the tenant app catalog.
+- Whether the app can upload/deploy to the site-collection app catalog on `/sites/ITSM`.
 - Whether tenant admin approval is required for every package update.
 - Whether `pilot` and `production` should use separate app registrations/certificates.
 

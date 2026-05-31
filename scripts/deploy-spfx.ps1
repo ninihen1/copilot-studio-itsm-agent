@@ -2,7 +2,7 @@
 
 <#
 .SYNOPSIS
-Uploads and deploys the ITSM SPFx .sppkg package to the SharePoint tenant app catalog.
+Uploads and deploys the ITSM SPFx .sppkg package to the SharePoint site-collection app catalog (on /sites/ITSM).
 
 .DESCRIPTION
 Fallback deployment path for local/admin use when GitHub Actions is not appropriate.
@@ -22,7 +22,7 @@ param(
 
     [string] $TenantId = $env:M365_TENANT_ID,
     [string] $AppId = $env:M365_APP_ID,
-    [string] $AppCatalogUrl = $(if ($env:SPFX_APP_CATALOG_URL) { $env:SPFX_APP_CATALOG_URL } else { 'https://contoso.sharepoint.com/sites/appcatalog' }),
+    [string] $AppCatalogUrl = $(if ($env:SPFX_APP_CATALOG_URL) { $env:SPFX_APP_CATALOG_URL } else { 'https://contoso.sharepoint.com/sites/ITSM' }),
     [string] $PackagePath = $(if ($env:SPFX_PACKAGE_PATH) { $env:SPFX_PACKAGE_PATH } else { 'sharepoint/solution/itsm-frontend.sppkg' }),
     [string] $CertificatePath = $env:M365_CERT_PATH,
     [string] $CertificateBase64 = $env:M365_CERT_BASE64,
@@ -110,6 +110,7 @@ try {
 
             Write-Host "Uploading $packageName to $AppCatalogUrl..."
             & m365 spo app add `
+                --appCatalogScope sitecollection `
                 --appCatalogUrl $AppCatalogUrl `
                 --filePath $resolvedPackagePath `
                 --overwrite
@@ -117,6 +118,7 @@ try {
             Write-Host "Deploying $packageName..."
             $deployArgs = @(
                 'spo', 'app', 'deploy',
+                '--appCatalogScope', 'sitecollection',
                 '--appCatalogUrl', $AppCatalogUrl,
                 '--name', $packageName
             )
@@ -145,7 +147,7 @@ try {
                 -CertificatePassword (ConvertTo-SecureString $CertificatePassword -AsPlainText -Force)
 
             Write-Host "Uploading and publishing $packageName..."
-            Add-PnPApp -Path $resolvedPackagePath -Scope Tenant -Overwrite -Publish
+            Add-PnPApp -Path $resolvedPackagePath -Scope Site -Overwrite -Publish
         }
     }
 

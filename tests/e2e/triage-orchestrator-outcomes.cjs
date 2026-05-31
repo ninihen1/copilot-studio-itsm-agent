@@ -91,7 +91,6 @@ async function createTicket(page, title, shortDescription, description) {
     Urgency: '3 - Low',
     ShortDescription: shortDescription,
     Description: description,
-    BusinessKey: title,
     TicketSource: 'Portal',
     ConfidentialityLevel: 'Public'
   });

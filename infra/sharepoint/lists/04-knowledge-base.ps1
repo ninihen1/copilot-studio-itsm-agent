@@ -20,7 +20,7 @@ function Provision-KnowledgeBaseList {
     Ensure-PnPField -ListTitle $ListTitle -Spec @{ InternalName='ArticleStatus'; DisplayName='Status'; Type='Choice'; Choices=@('Draft','Review','Published','Retired'); Required=$true; Indexed=$true; DefaultValue='Draft' }
     # Renamed Author -> KbAuthor: SharePoint silently rejects 'Author' as a custom internal name (collision with built-in Author = item creator).
     Ensure-PnPField -ListTitle $ListTitle -Spec @{ InternalName='KbAuthor'; DisplayName='Article Author'; Type='User'; Required=$true; Description='User who authored the KB article (avoids SP system Author column collision).' }
-    Ensure-PnPField -ListTitle $ListTitle -Spec @{ InternalName='KbReviewer'; DisplayName='Article Reviewer'; Type='User' }
+    Ensure-PnPField -ListTitle $ListTitle -Spec @{ InternalName='Reviewer'; DisplayName='Reviewer'; Type='User'; Description='User who reviewed the KB article. No Kb-prefix needed — Reviewer is not an SP-reserved name (unlike Author).' }
     Ensure-PnPField -ListTitle $ListTitle -Spec @{ InternalName='PublishedDate'; DisplayName='Published Date'; Type='DateTime' }
     Ensure-PnPField -ListTitle $ListTitle -Spec @{ InternalName='RetireDate'; DisplayName='Retire Date'; Type='DateTime'; Description='When article should be reviewed for accuracy' }
     Ensure-PnPField -ListTitle $ListTitle -Spec @{ InternalName='Keywords'; DisplayName='Keywords'; Type='Text'; MaxLength=500; Description='Comma-separated terms to improve agent search match' }

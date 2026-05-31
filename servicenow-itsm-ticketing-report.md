@@ -5,6 +5,8 @@
 **Versions referenced:** Xanadu (Q3 2024) and Zurich (2025) product releases. Concepts are stable across releases unless flagged.
 **Confidence (overall):** HIGH for OOB structure (vendor docs cross-confirmed); MODERATE for organization-specific customizations (which legitimately vary).
 
+> **Note:** This is independent research summarising publicly documented, factual ServiceNow concepts from the cited public sources. It contains no ServiceNow proprietary materials, code, or screenshots, and is not affiliated with or endorsed by ServiceNow, Inc. See [`TRADEMARKS.md`](TRADEMARKS.md).
+
 ---
 
 ## Executive Summary
@@ -17,7 +19,7 @@
 
 ServiceNow ITSM ships seven core processes ([ServiceNow ITSM product page](https://www.servicenow.com/products/itsm.html)): Incident, Problem, Change, Request, Knowledge, Configuration (CMDB), and Service Level. The most-used end-user surface is the **Service Catalog** (orderable items) plus the **Incident form** (break/fix). HR Service Delivery (HRSD) is a separate but architecturally similar product that uses the `hr_case` table family and shares the Employee Center portal ([HRSD docs](https://www.servicenow.com/docs/bundle/zurich-employee-service-management/page/product/human-resources/concept/c_LifecycleEventsHRSD.html)).
 
-The **3x3 Impact x Urgency priority matrix** producing Priority 1-5 (Critical, High, Moderate, Low, Planning) is OOB and is implemented via Data Lookup Rules on the `incident` table ([ServiceNow Community OOB matrix](https://www.servicenow.com/community/virtual-agent-forum/incident-priority-matrix-current-oob/m-p/3413018), [The Snowball: Priority Matrix](https://thesnowball.co/the-servicenow-priority-matrix-impact-and-urgency)). The **incident lifecycle** (New → In Progress → On Hold → Resolved → Closed, plus Canceled) is documented verbatim by ServiceNow's Xanadu docs ([Life cycle of an Incident](https://www.servicenow.com/docs/r/xanadu/it-service-management/incident-management/c_IncidentManagementStateModel.html)). The **change lifecycle** (New → Assess → Authorize → Scheduled → Implement → Review → Closed, plus Canceled) and three change types (Standard, Normal, Emergency) are documented by ServiceNow's Zurich docs ([Change State Model](https://www.servicenow.com/docs/r/zurich/it-service-management/change-management/c_ChangeStateModel.html)).
+The **3x3 Impact x Urgency priority matrix** producing Priority 1-5 (Critical, High, Moderate, Low, Planning) is OOB and is implemented via Data Lookup Rules on the `incident` table ([ServiceNow Community OOB matrix](https://www.servicenow.com/community/virtual-agent-forum/incident-priority-matrix-current-oob/m-p/3413018), [The Snowball: Priority Matrix](https://thesnowball.co/the-servicenow-priority-matrix-impact-and-urgency)). The **incident lifecycle** (New → In Progress → On Hold → Resolved → Closed, plus Canceled) is documented by ServiceNow's Xanadu docs ([Life cycle of an Incident](https://www.servicenow.com/docs/r/xanadu/it-service-management/incident-management/c_IncidentManagementStateModel.html)). The **change lifecycle** (New → Assess → Authorize → Scheduled → Implement → Review → Closed, plus Canceled) and three change types (Standard, Normal, Emergency) are documented by ServiceNow's Zurich docs ([Change State Model](https://www.servicenow.com/docs/r/zurich/it-service-management/change-management/c_ChangeStateModel.html)).
 
 ---
 

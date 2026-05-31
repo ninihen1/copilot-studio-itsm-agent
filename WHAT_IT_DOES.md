@@ -316,7 +316,7 @@ Action taken:
 5. **SLA Timer Flow** — Business hours (Mon-Fri 9-16h Sydney), 15min intervals, pause-on-hold, 75% warning, 100% breach (Day 3, validated Tickets 66-67)
 6. **Archival Flow** — Daily 2 AM schedule, 90-day threshold, auto-copy to Tickets-Archive (Day 3, validated Ticket 68)
 7. **Major Incident Detection** — Triage Agent semantic clustering, 1-hour window, parent MI creation (Day 3, validated Tickets 78-80 → MI 81)
-8. **18 Categories + 80 Subcategories** — ServiceNow-parity taxonomy with JobTypeHints (Day 1)
+8. **18 Categories + 80 Subcategories** — ITIL-aligned taxonomy with JobTypeHints (Day 1)
 9. **Approval Workflows** — Manager approval via Approval-Bridge flow (pilot version, full multi-stage policies designed but not wired)
 10. **Full Audit Trail** — Every Provisioning Job with caller UPN, approver, timestamps, Graph request ID, result JSON
 11. **Kill Switch** — Emergency stop via Config list KillSwitch=true (tested, works)
@@ -521,7 +521,7 @@ Current Day 4 task status is tracked in `flows/CURRENT-STATUS.md`: 56 tasks tota
 ## Summary: What Problem Are We Solving?
 
 **The Problem:**
-- ServiceNow licenses cost $100-150/user/year
+- Dedicated ITSM platforms are typically licensed per agent per month, which adds up quickly for a small team
 - Level 1 helpdesk work is repetitive and automatable
 - Users struggle to find the right form or contact
 - IT staff overwhelmed with password resets and group adds
@@ -537,4 +537,4 @@ Current Day 4 task status is tracked in `flows/CURRENT-STATUS.md`: 56 tasks tota
 - **Security by design** — AI proposes, humans approve, scoped machines execute
 
 **Bottom Line:**
-Same enterprise-grade ITSM capabilities as ServiceNow, but at **10% of the cost**, fully integrated with Microsoft 365, and AI-powered from day one.
+Covers the common Level-1 ITSM workflows that small and medium businesses rely on most — ticket intake, AI triage, approvals, and automated fulfilment — running on the Microsoft 365 stack you already pay for, with no separate per-agent ITSM subscription.
