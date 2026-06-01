@@ -186,7 +186,11 @@
                   },
                   "parameters": {
                     "recordId": "00000000-0000-0000-0000-000000000003",
-                    "item/requestv2/RequestText": "@{concat('RITM: ', triggerOutputs()?['body/RitmNumber'], '. Catalog item: ', body('Get_Catalog_Item')?['ItemName'], '. Request text: ', coalesce(triggerOutputs()?['body/Variables'], body('Get_Parent_Ticket')?['Description'], body('Get_Parent_Ticket')?['ShortDescription'], ''))}"
+                    "item/requestv2/JobType": "@{coalesce(body('Get_Catalog_Item')?['JobType'], '')}",
+                    "item/requestv2/CatalogItem": "@{concat(coalesce(body('Get_Catalog_Item')?['ItemName'], ''), ' - ', coalesce(body('Get_Catalog_Item')?['Description'], ''))}",
+                    "item/requestv2/InputSchema": "@{coalesce(body('Get_Catalog_Item')?['InputSchema'], '')}",
+                    "item/requestv2/RequestedFor": "@{last(split(coalesce(triggerOutputs()?['body/RequestedFor/Claims'], ''), '|'))}",
+                    "item/requestv2/RequestText": "@{coalesce(triggerOutputs()?['body/Variables'], body('Get_Parent_Ticket')?['Description'], body('Get_Parent_Ticket')?['ShortDescription'], '')}"
                   },
                   "authentication": "@parameters('$authentication')"
                 },
@@ -265,22 +269,20 @@
                   "schema": {
                     "type": "object",
                     "required": [
-                      "action",
-                      "user",
-                      "resource",
+                      "jobType",
                       "confidence"
                     ],
                     "properties": {
-                      "action": {
+                      "jobType": {
                         "type": "string"
                       },
-                      "user": {
+                      "targetUserUpn": {
                         "type": "string"
                       },
-                      "resource": {
+                      "resourceType": {
                         "type": "string"
                       },
-                      "justification": {
+                      "resourceName": {
                         "type": "string"
                       },
                       "confidence": {
@@ -290,6 +292,15 @@
                           "medium",
                           "low"
                         ]
+                      },
+                      "missing": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "summary": {
+                        "type": "string"
                       }
                     }
                   }
@@ -303,8 +314,9 @@
                 },
                 "type": "Compose",
                 "inputs": {
-                  "userEmail": "@if(contains(coalesce(body('Parse_AI_Intent')?['user'], ''), '@'), trim(last(split(first(split(body('Parse_AI_Intent')?['user'], ')')), '('))), trim(coalesce(body('Parse_AI_Intent')?['user'], '')))",
-                  "groupName": "@if(endswith(toLower(trim(coalesce(body('Parse_AI_Intent')?['resource'], ''))), ' group'), trim(substring(trim(body('Parse_AI_Intent')?['resource']), 0, sub(length(trim(body('Parse_AI_Intent')?['resource'])), 6))), if(endswith(toLower(trim(coalesce(body('Parse_AI_Intent')?['resource'], ''))), ' team'), trim(substring(trim(body('Parse_AI_Intent')?['resource']), 0, sub(length(trim(body('Parse_AI_Intent')?['resource'])), 5))), trim(coalesce(body('Parse_AI_Intent')?['resource'], ''))))"
+                  "userEmail": "@coalesce(body('Parse_AI_Intent')?['targetUserUpn'], '')",
+                  "groupName": "@coalesce(body('Parse_AI_Intent')?['resourceName'], '')",
+                  "resourceType": "@toLower(coalesce(body('Parse_AI_Intent')?['resourceType'], ''))"
                 }
               },
               "Get_KV_Secret": {
@@ -402,7 +414,7 @@
                 "type": "Http",
                 "inputs": {
                   "method": "GET",
-                  "uri": "@{if(contains(outputs('Compose_Lookup_Keys')?['userEmail'], '@'), concat('https://graph.microsoft.com/v1.0/users?$filter=', encodeUriComponent(concat('userPrincipalName eq ''', outputs('Compose_Lookup_Keys')?['userEmail'], ''' or mail eq ''', outputs('Compose_Lookup_Keys')?['userEmail'], '''')), '&$select=id,displayName,userPrincipalName,mail&$top=2'), concat('https://graph.microsoft.com/v1.0/users?$search=\"displayName:', encodeUriComponent(outputs('Compose_Lookup_Keys')?['userEmail']), '\"&$select=id,displayName,userPrincipalName,mail&$top=2'))}",
+                  "uri": "@{if(contains(coalesce(outputs('Compose_Lookup_Keys')?['userEmail'], ''), '@'), concat('https://graph.microsoft.com/v1.0/users?$filter=', encodeUriComponent(concat('userPrincipalName eq ''', outputs('Compose_Lookup_Keys')?['userEmail'], ''' or mail eq ''', outputs('Compose_Lookup_Keys')?['userEmail'], '''')), '&$select=id,displayName,userPrincipalName,mail&$top=2'), concat('https://graph.microsoft.com/v1.0/users?$search=\"displayName:', encodeUriComponent(if(empty(trim(coalesce(outputs('Compose_Lookup_Keys')?['userEmail'], ''))), 'zzzz-no-such-user-zzzz', outputs('Compose_Lookup_Keys')?['userEmail'])), '\"&$select=id,displayName,userPrincipalName,mail&$top=2'))}",
                   "headers": {
                     "Authorization": "@{concat('Bearer ', body('Parse_Graph_Token')?['access_token'])}",
                     "ConsistencyLevel": "eventual"
@@ -418,7 +430,7 @@
                 "type": "Http",
                 "inputs": {
                   "method": "GET",
-                  "uri": "@{concat('https://graph.microsoft.com/v1.0/groups?$search=\"displayName:', encodeUriComponent(outputs('Compose_Lookup_Keys')?['groupName']), '\"&$select=id,displayName,mail&$top=2')}",
+                  "uri": "@{concat('https://graph.microsoft.com/v1.0/groups?$search=\"displayName:', encodeUriComponent(if(empty(trim(coalesce(outputs('Compose_Lookup_Keys')?['groupName'], ''))), 'zzzz-no-such-group-zzzz', outputs('Compose_Lookup_Keys')?['groupName'])), '\"&$select=id,displayName,mail&$top=2')}",
                   "headers": {
                     "Authorization": "@{concat('Bearer ', body('Parse_Graph_Token')?['access_token'])}",
                     "ConsistencyLevel": "eventual"
@@ -432,16 +444,18 @@
                     "type": "Compose",
                     "inputs": {
                       "triageStatus": "Validated",
-                      "action": "@toLower(body('Parse_AI_Intent')?['action'])",
-                      "groupId": "@first(body('Graph_Find_Groups')?['value'])?['id']",
-                      "groupName": "@first(body('Graph_Find_Groups')?['value'])?['displayName']",
+                      "jobType": "@coalesce(body('Parse_AI_Intent')?['jobType'], '')",
+                      "targetUserUpn": "@coalesce(body('Parse_AI_Intent')?['targetUserUpn'], '')",
                       "userId": "@first(body('Graph_Find_Users')?['value'])?['id']",
                       "userPrincipalName": "@first(body('Graph_Find_Users')?['value'])?['userPrincipalName']",
-                      "userDisplayName": "@first(body('Graph_Find_Users')?['value'])?['displayName']",
-                      "justification": "@coalesce(body('Parse_AI_Intent')?['justification'], '')",
-                      "validationConfidence": "@body('Parse_AI_Intent')?['confidence']",
+                      "resourceType": "@coalesce(body('Parse_AI_Intent')?['resourceType'], '')",
+                      "resourceName": "@coalesce(body('Parse_AI_Intent')?['resourceName'], '')",
+                      "groupId": "@first(body('Graph_Find_Groups')?['value'])?['id']",
+                      "groupName": "@first(body('Graph_Find_Groups')?['value'])?['displayName']",
+                      "confidence": "@body('Parse_AI_Intent')?['confidence']",
+                      "summary": "@coalesce(body('Parse_AI_Intent')?['summary'], '')",
                       "validatedAt": "@utcNow()",
-                      "validationSource": "AI extraction plus Microsoft Graph exact match",
+                      "validationSource": "AI extraction (JobType-aware) plus Microsoft Graph resolution",
                       "originalText": "@coalesce(triggerOutputs()?['body/Variables'], '')"
                     }
                   },
@@ -471,7 +485,7 @@
                         "item/Variables": "@string(outputs('Compose_Validated_Variables'))",
                         "item/OpenedDate": "@triggerOutputs()?['body/OpenedDate']",
                         "item/ConfidentialityLevel/Value": "@triggerOutputs()?['body/ConfidentialityLevel/Value']",
-                        "item/WorkNotes": "@{concat('RITM validation triage passed. User ', first(body('Graph_Find_Users')?['value'])?['userPrincipalName'], ' and group ', first(body('Graph_Find_Groups')?['value'])?['displayName'], ' resolved exactly. Released to approval.')}"
+                        "item/WorkNotes": "@{concat('RITM validation passed (JobType ', coalesce(body('Parse_AI_Intent')?['jobType'], 'n/a'), '): ', coalesce(body('Parse_AI_Intent')?['summary'], ''), ' Released to approval.')}"
                       },
                       "authentication": "@parameters('$authentication')"
                     }
@@ -489,13 +503,14 @@
                       "type": "Compose",
                       "inputs": {
                         "triageStatus": "NeedsClarification",
-                        "reason": "AI confidence, action, user resolution, or group resolution did not meet exact-match requirements.",
-                        "extractedAction": "@body('Parse_AI_Intent')?['action']",
-                        "extractedUser": "@body('Parse_AI_Intent')?['user']",
-                        "extractedResource": "@body('Parse_AI_Intent')?['resource']",
-                        "lookupUserEmail": "@outputs('Compose_Lookup_Keys')?['userEmail']",
-                        "lookupGroupName": "@outputs('Compose_Lookup_Keys')?['groupName']",
-                        "validationConfidence": "@body('Parse_AI_Intent')?['confidence']",
+                        "reason": "AI confidence was too low, a required field was missing, or the target user/group could not be resolved.",
+                        "jobType": "@coalesce(body('Parse_AI_Intent')?['jobType'], '')",
+                        "targetUserUpn": "@coalesce(body('Parse_AI_Intent')?['targetUserUpn'], '')",
+                        "resourceType": "@coalesce(body('Parse_AI_Intent')?['resourceType'], '')",
+                        "resourceName": "@coalesce(body('Parse_AI_Intent')?['resourceName'], '')",
+                        "confidence": "@coalesce(body('Parse_AI_Intent')?['confidence'], '')",
+                        "missing": "@coalesce(body('Parse_AI_Intent')?['missing'], createArray())",
+                        "summary": "@coalesce(body('Parse_AI_Intent')?['summary'], '')",
                         "userMatchCount": "@length(coalesce(body('Graph_Find_Users')?['value'], createArray()))",
                         "groupMatchCount": "@length(coalesce(body('Graph_Find_Groups')?['value'], createArray()))",
                         "originalText": "@coalesce(triggerOutputs()?['body/Variables'], '')"
@@ -527,7 +542,7 @@
                           "item/Variables": "@string(outputs('Compose_Hold_Variables'))",
                           "item/OpenedDate": "@triggerOutputs()?['body/OpenedDate']",
                           "item/ConfidentialityLevel/Value": "@triggerOutputs()?['body/ConfidentialityLevel/Value']",
-                          "item/WorkNotes": "@{concat('RITM validation triage put this request on hold. Catherine must clarify the user/group before approval or SCTASK generation. Details: ', string(outputs('Compose_Hold_Variables')))}"
+                          "item/WorkNotes": "@{concat('RITM validation triage put this request on hold. Catherine must clarify before approval. Details: ', string(outputs('Compose_Hold_Variables')))}"
                         },
                         "authentication": "@parameters('$authentication')"
                       }
@@ -549,7 +564,7 @@
                           "poster": "Flow bot",
                           "location": "Chat with Flow bot",
                           "body/recipient": "catherine.han@flowstudio.app",
-                          "body/messageBody": "@{concat('<h2>RITM needs clarification</h2><p><b>RITM:</b> ', triggerOutputs()?['body/RitmNumber'], ' (item ID ', string(triggerOutputs()?['body/ID']), ')</p><p><b>Extracted user:</b> ', string(body('Parse_AI_Intent')?['user']), '</p><p><b>Extracted group:</b> ', string(body('Parse_AI_Intent')?['resource']), '</p><p><b>Reason:</b> exact Graph validation failed or confidence was too low.</p><p><a href=\"https://contoso.sharepoint.com/sites/ITSM/Lists/Request%20Items/DispForm.aspx?ID=', string(triggerOutputs()?['body/ID']), '\">Open request item</a></p>')}"
+                          "body/messageBody": "@{concat('<h2>RITM needs clarification</h2><p><b>RITM:</b> ', triggerOutputs()?['body/RitmNumber'], ' (item ID ', string(triggerOutputs()?['body/ID']), ')</p><p><b>Operation:</b> ', coalesce(body('Parse_AI_Intent')?['jobType'], 'n/a'), '</p><p><b>Target user:</b> ', coalesce(body('Parse_AI_Intent')?['targetUserUpn'], '(none)'), '</p><p><b>Resource:</b> ', coalesce(body('Parse_AI_Intent')?['resourceName'], '(none)'), '</p><p><b>Confidence:</b> ', coalesce(body('Parse_AI_Intent')?['confidence'], ''), ' &middot; <b>Missing:</b> ', join(coalesce(body('Parse_AI_Intent')?['missing'], createArray()), ', '), '</p><p>', coalesce(body('Parse_AI_Intent')?['summary'], ''), '</p><p><a href=\"https://contoso.sharepoint.com/sites/ITSM/Lists/Request%20Items/DispForm.aspx?ID=', string(triggerOutputs()?['body/ID']), '\">Open request item</a></p>')}"
                         },
                         "authentication": "@parameters('$authentication')"
                       }
@@ -560,32 +575,8 @@
                   "and": [
                     {
                       "equals": [
-                        "@toLower(body('Parse_AI_Intent')?['confidence'])",
-                        "high"
-                      ]
-                    },
-                    {
-                      "equals": [
-                        "@toLower(body('Parse_AI_Intent')?['action'])",
-                        "add"
-                      ]
-                    },
-                    {
-                      "equals": [
-                        "@length(coalesce(body('Graph_Find_Users')?['value'], createArray()))",
-                        1
-                      ]
-                    },
-                    {
-                      "equals": [
-                        "@length(coalesce(body('Graph_Find_Groups')?['value'], createArray()))",
-                        1
-                      ]
-                    },
-                    {
-                      "equals": [
-                        "@toLower(first(body('Graph_Find_Groups')?['value'])?['displayName'])",
-                        "@toLower(outputs('Compose_Lookup_Keys')?['groupName'])"
+                        "@and(not(equals(toLower(coalesce(body('Parse_AI_Intent')?['confidence'], 'low')), 'low')), equals(length(coalesce(body('Parse_AI_Intent')?['missing'], createArray())), 0), or(empty(coalesce(body('Parse_AI_Intent')?['targetUserUpn'], '')), greater(length(coalesce(body('Graph_Find_Users')?['value'], createArray())), 0)), or(not(equals(toLower(coalesce(body('Parse_AI_Intent')?['resourceType'], '')), 'group')), greater(length(coalesce(body('Graph_Find_Groups')?['value'], createArray())), 0)))",
+                        true
                       ]
                     }
                   ]
@@ -624,5 +615,5 @@
       "type": "If"
     }
   },
-  "description": "APR-10 trigger hardening (2026-06-01, cowork): GetOnNewItems->GetOnUpdatedItems + server-side trigger condition RitmState=='Pending Validation' so re-fires never reprocess advanced rows and a stranded Pending-Validation row self-recovers on the next modified scan; mirrors the Triage-Orchestrator pattern. 2026-06-01 STRUCTURED-INTAKE merge: validator now first branches on whether the RITM Variables is structured JSON (from the SPFx portal payload via RITM Generator). Structured -> skip AI Builder + Graph fuzzy match entirely; trust RequestedFor identity + catalog JobType + dropdown-selected SKU; release straight to Pending Approval (human approver reviews seats/cost). Free-text Variables -> fall back to the prior AI Builder (Triage Validation prompt 00000000) + deterministic Graph user/group exact-match path, including the AI-down On Hold stopgap. Group-membership requests via free text unaffected. #flowstudio-mcp"
+  "description": "JobType-AWARE AI validation (2026-06-01). Structured payloads (license dropdown) still skip the AI entirely. Free-text path now feeds the Triage Validation prompt (00000000) the catalog JobType + InputSchema + CatalogItem + RequestedFor UPN + request text, and the prompt returns {jobType,targetUserUpn,resourceType,resourceName,confidence,missing,summary}. Gate is JobType-aware: pass when confidence!=low AND no missing required fields AND (no target user OR user resolves in Graph) AND (resourceType!=group OR a group resolves) - no more mandatory group match. So identity.disableUser/enableUser, licensing, groups, teams etc. validate on their own required fields instead of being forced through group-membership add/remove. Preserves cowork APR-10 trigger (GetOnUpdatedItems + RitmState=='Pending Validation') and the AI-down On Hold stopgap."
 }
