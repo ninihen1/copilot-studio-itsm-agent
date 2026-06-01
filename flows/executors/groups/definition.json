@@ -201,7 +201,7 @@
                   "type": "Http",
                   "inputs": {
                     "method": "POST",
-                    "uri": "@{concat('https://graph.microsoft.com/v1.0/groups/', body('Parse_Target')?['id'], '/members/$ref')}",
+                    "uri": "@{concat('https://graph.microsoft.com/v1.0/groups/', outputs('Compose_Effective_GroupId'), '/members/$ref')}",
                     "headers": {
                       "Authorization": "@{concat('Bearer ', body('Parse_Token')?['access_token'])}",
                       "Content-Type": "application/json"
@@ -238,7 +238,7 @@
                       "item/CompletedAt": "@utcNow()",
                       "item/DurationMs": "@div(sub(ticks(utcNow()), ticks(body('Update_Status_InProgress')?['StartedAt'])), 10000)",
                       "item/GraphRequestId": "@coalesce(outputs('Http_Graph_AddMember')?['headers']?['x-ms-correlation-id'], outputs('Http_Graph_AddMember')?['headers']?['request-id'])",
-                      "item/ResultJson": "@{concat('{\"groupId\":\"', body('Parse_Target')?['id'], '\",\"memberAdded\":\"', body('Parse_Target')?['upn'], '\"}')}"
+                      "item/ResultJson": "@{concat('{\\\"groupId\\\":\\\"', outputs('Compose_Effective_GroupId'), '\\\",\\\"memberAdded\\\":\\\"', body('Parse_Target')?['upn'], '\\\"}')}"
                     },
                     "authentication": "@parameters('$authentication')"
                   }
@@ -292,7 +292,7 @@
                   "type": "Http",
                   "inputs": {
                     "method": "DELETE",
-                    "uri": "@{concat('https://graph.microsoft.com/v1.0/groups/', body('Parse_Target')?['id'], '/members/', body('Resolve_User_Id')?['id'], '/$ref')}",
+                    "uri": "@{concat('https://graph.microsoft.com/v1.0/groups/', outputs('Compose_Effective_GroupId'), '/members/', body('Resolve_User_Id')?['id'], '/$ref')}",
                     "headers": {
                       "Authorization": "@{concat('Bearer ', body('Parse_Token')?['access_token'])}",
                       "Content-Type": "application/json"
@@ -328,7 +328,7 @@
                       "item/CompletedAt": "@utcNow()",
                       "item/DurationMs": "@div(sub(ticks(utcNow()), ticks(body('Update_Status_InProgress')?['StartedAt'])), 10000)",
                       "item/GraphRequestId": "@coalesce(outputs('Http_Graph_RemoveMember')?['headers']?['x-ms-correlation-id'], outputs('Http_Graph_RemoveMember')?['headers']?['request-id'])",
-                      "item/ResultJson": "@{concat('{\"groupId\":\"', body('Parse_Target')?['id'], '\",\"memberRemoved\":\"', body('Parse_Target')?['upn'], '\"}')}"
+                      "item/ResultJson": "@{concat('{\\\"groupId\\\":\\\"', outputs('Compose_Effective_GroupId'), '\\\",\\\"memberRemoved\\\":\\\"', body('Parse_Target')?['upn'], '\\\"}')}"
                     },
                     "authentication": "@parameters('$authentication')"
                   }
@@ -591,7 +591,7 @@
             }
           },
           "runAfter": {
-            "Parse_Target": [
+            "Compose_Effective_GroupId": [
               "Succeeded"
             ]
           },
@@ -608,13 +608,107 @@
               },
               {
                 "equals": [
-                  "@trim(coalesce(body('Parse_Target')?['id'], ''))",
+                  "@trim(coalesce(outputs('Compose_Effective_GroupId'),''))",
                   ""
                 ]
               }
             ]
           },
           "type": "If"
+        },
+        "Parse_Args": {
+          "runAfter": {
+            "Parse_Target": [
+              "Succeeded"
+            ]
+          },
+          "type": "ParseJson",
+          "inputs": {
+            "content": "@coalesce(triggerOutputs()?['body/ArgsJson'], '{}')",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "groupName": {
+                  "type": "string"
+                },
+                "targetUserUpn": {
+                  "type": "string"
+                },
+                "groupId": {
+                  "type": "string"
+                },
+                "groupSiteUrl": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "If_Resolve_Group_From_Site": {
+          "actions": {
+            "Resolve_Group_From_Site": {
+              "runAfter": {},
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": {
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                  "connectionName": "shared_sharepointonline",
+                  "operationId": "HttpRequest"
+                },
+                "parameters": {
+                  "dataset": "@body('Parse_Args')?['groupSiteUrl']",
+                  "parameters/method": "GET",
+                  "parameters/uri": "_api/site/groupId",
+                  "parameters/headers": {
+                    "Accept": "application/json;odata=nometadata"
+                  }
+                },
+                "authentication": "@parameters('$authentication')"
+              }
+            }
+          },
+          "runAfter": {
+            "Parse_Args": [
+              "Succeeded"
+            ]
+          },
+          "else": {
+            "actions": {}
+          },
+          "expression": {
+            "and": [
+              {
+                "equals": [
+                  "@trim(coalesce(body('Parse_Target')?['id'],''))",
+                  ""
+                ]
+              },
+              {
+                "equals": [
+                  "@trim(coalesce(body('Parse_Args')?['groupId'],''))",
+                  ""
+                ]
+              },
+              {
+                "not": {
+                  "equals": [
+                    "@trim(coalesce(body('Parse_Args')?['groupSiteUrl'],''))",
+                    ""
+                  ]
+                }
+              }
+            ]
+          },
+          "type": "If"
+        },
+        "Compose_Effective_GroupId": {
+          "runAfter": {
+            "If_Resolve_Group_From_Site": [
+              "Succeeded"
+            ]
+          },
+          "type": "Compose",
+          "inputs": "@coalesce(if(equals(trim(coalesce(body('Parse_Target')?['id'],'')),''),null,body('Parse_Target')?['id']), if(equals(trim(coalesce(body('Parse_Args')?['groupId'],'')),''),null,body('Parse_Args')?['groupId']), body('Resolve_Group_From_Site')?['value'], '')"
         }
       },
       "runAfter": {
@@ -660,5 +754,6 @@
         "authentication": "@parameters('$authentication')"
       }
     }
-  }
+  },
+  "description": "Groups executor. 2026-06-01 FIX: if TargetJson.id (group id) is missing, resolve it from ArgsJson.groupSiteUrl via SharePoint _api/site/groupId. Compose_Effective_GroupId = coalesce(TargetJson.id, Args.groupId, site-resolved). Agent site-access jobs that pass a site URL (not a group id) now succeed instead of failing missing_groupId. #flowstudio-mcp"
 }
