@@ -52,7 +52,7 @@
     "Compose_Microsoft_Sku_Csv_Url": {
       "runAfter": {},
       "type": "Compose",
-      "inputs": "https://download.microsoft.com/download/e/3/e/00000000-0000-4000-8000-000000000050/Product%20names%20and%20service%20plan%20identifiers%20for%20licensing.csv"
+      "inputs": "https://download.microsoft.com/download/e/3/e/e3e9faf2-f28b-490a-9ada-c6089a1fc5b0/Product%20names%20and%20service%20plan%20identifiers%20for%20licensing.csv"
     },
     "Compose_Microsoft_Reference_Url": {
       "runAfter": {
@@ -252,7 +252,7 @@
                             "item/OfficialProductName": "@outputs('Compose_Product_Name')",
                             "item/SkuId": "@outputs('Compose_Sku_Id')",
                             "item/LastVerified": "@utcNow()",
-                            "item/Notes": "@concat('Created by ITSM-Scheduled-License-Costs-Sync from Microsoft official SKU reference: ', outputs('Compose_Microsoft_Reference_Url'))"
+                            "item/Notes": "@concat('Created by ITSM-License-Costs-Sync from Microsoft official SKU reference: ', outputs('Compose_Microsoft_Reference_Url'))"
                           },
                           "authentication": "@parameters('$authentication')"
                         }
@@ -332,12 +332,12 @@
         ]
       },
       "type": "Foreach",
+      "description": "Serial execution prevents duplicate creates because the Microsoft CSV has multiple service-plan rows per SKU.",
       "runtimeConfiguration": {
         "concurrency": {
           "repetitions": 1
         }
-      },
-      "description": "Serial execution prevents duplicate creates because the Microsoft CSV has multiple service-plan rows per SKU."
+      }
     }
   },
   "outputs": {}

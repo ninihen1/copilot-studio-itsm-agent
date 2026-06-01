@@ -2,7 +2,7 @@
 
 **Audience:** ITSM admins, flow owners, Power Platform admins, and implementation engineers
 
-This guide covers known pilot issues, Day 2 bugs, and repeatable debugging steps.
+This guide covers known pilot issues, common bugs, and repeatable debugging steps.
 
 ## 1. Start Here
 
@@ -17,7 +17,7 @@ When something fails, identify the record and the flow stage:
 
 Then open Power Automate run history for the relevant flow.
 
-## 2. Common Day 2 Issues
+## 2. Common Issues
 
 ### Plain-Text Variables Parsing
 
@@ -74,6 +74,7 @@ Symptom:
 - RITM closes but parent Ticket remains In Progress.
 - SCTASK closes but RITM remains Approved or In Progress.
 - Provisioning Job succeeds but SCTASK remains open.
+- Provisioning Job succeeds on the propose / Incident path, but the parent Ticket stays In Progress.
 
 Cause:
 
@@ -81,6 +82,7 @@ Cause:
   - SCTASK -> PJ Bridge
   - Executor
   - SCTASK Orchestrator
+  - ITSM-PJ-Ticket-Resolver (propose / Incident path: resolves the parent Ticket when a non-SCTASK Provisioning Job reaches Succeeded)
 - A task is not in a terminal state.
 - Required SharePoint fields were omitted in PatchItem.
 
@@ -93,7 +95,7 @@ Fix:
    - Closed Incomplete
    - Closed Skipped
    - Cancelled
-4. Open SCTASK Orchestrator run history.
+4. Open SCTASK Orchestrator run history (Request path). For an Incident or propose-path ticket with no SCTASK, open `ITSM-PJ-Ticket-Resolver` run history instead: it resolves the parent Ticket once the PJ, whose `IdempotencyKey` does not start with `SCTASK-`, reaches `Succeeded`.
 5. If PatchItem failed, confirm the flow supplies all required SharePoint fields, not only changed fields.
 
 ### Mis-Cased JobType
@@ -244,7 +246,7 @@ Check:
 
 - HTTP request body includes `pjId`, `jobType`, `idempotencyKey`, `callerUpn`, `approverUpn`, `approvalSessionId`, and `correlationId`.
 - Provisioning Job exists.
-- PJ `JobStatus` is Proposed or AwaitingApproval.
+- PJ `JobStatus` is `AwaitingApproval` (the legacy `Proposed` state was retired 2026-05-30; jobs now reach the Dispatcher only as `AwaitingApproval`).
 - Inbound jobType matches the PJ row.
 - Config `KillSwitch` is `false`.
 - JobTypes row exists and is active.
@@ -333,15 +335,14 @@ Do not include access tokens, client secrets, temporary passwords, or full user 
 
 This section keeps only limitations that change troubleshooting decisions. For the full hardening backlog and implementation roadmap, see:
 
-- [`../IMPLEMENTATION-PLAYBOOK.md`](../IMPLEMENTATION-PLAYBOOK.md) sections 9 and 9b for Phase 2/3 backlog.
-- [`../decisions/0001-dispatcher-host.md`](../decisions/0001-dispatcher-host.md) for Dispatcher host, JWT, idempotency, Service Bus, and audit decisions.
-- [`../PHASE-3-DEPLOYMENT.md`](../PHASE-3-DEPLOYMENT.md) for Phase 3.1 fixes and Phase 3.2 outstanding items.
+- [`IMPLEMENTATION-PLAYBOOK.md`](IMPLEMENTATION-PLAYBOOK.md) sections 9 and 9b for Phase 2/3 backlog.
+- [`decisions/0001-dispatcher-host.md`](decisions/0001-dispatcher-host.md) for Dispatcher host, JWT, idempotency, Service Bus, and audit decisions.
 
 | Troubleshooting-relevant limitation | What to do during incident response |
 |---|---|
 | Dispatcher trusts the pilot SAS URL rather than validating a JWT. | Treat Dispatcher URL exposure as a security incident. Rotate or recreate the trigger URL if exposed. |
 | Idempotency uses a SharePoint list query in the pilot. | Do not test true parallel replay as proof of production idempotency. For duplicate jobs, compare `IdempotencyKey`, target state, and GraphRequestId before re-driving. |
-| Executors poll Provisioning Jobs. | Allow normal 1-3 minute trigger latency before declaring a job stuck. Check whether the row was edited by a user identity. |
+| Executors poll Provisioning Jobs. | Allow normal 1-3 minute trigger latency before declaring a job stuck. Check whether the row was edited by a user identity. A rapid create-approve-dispatch sequence within one poll window could previously strand a `Dispatched` job on a stale trigger snapshot; fixed 2026-06-01: executors now re-read the PJ fresh (`Get_PJ_Fresh`) before gating. |
 | Power Automate run history is time-limited. | Preserve Provisioning Job fields, ErrorJson, GraphRequestId, and flow run timestamps during incident review. |
 | RITM approval is manager-centric in the pilot. | If a user has no manager, route through a backup approver or manually resolve the approval path. |
 | App-only SharePoint edits may not trigger flows. | Use delegated Graph or PnP Interactive for trigger tests. Avoid app-only PnP rows as smoke tests unless followed by a user-identity edit. |

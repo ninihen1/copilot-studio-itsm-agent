@@ -1,7 +1,7 @@
 # ITSM Implementation Playbook
 
 **Audience:** A fresh AI agent (or new engineer) tasked with rebuilding, extending, or auditing the ITSM pilot from scratch.
-**Last updated:** 2026-05-08 (Day 4 status tracked in `flows/CURRENT-STATUS.md`)
+**Last updated:** 2026-05-08
 **Pairs with:** [`itsm-design-memo.md`](itsm-design-memo.md) (canonical design), [`README.md`](README.md), [`DEPLOYMENT.md`](DEPLOYMENT.md)
 
 This is the **single doc to read first.** It describes everything implemented, the order it must be built in, the exact tools and permissions used, and every gotcha that cost time to discover.
@@ -21,7 +21,7 @@ Pilot scope (proven 2026-05-01): a caller files a ticket → the Triage Orchestr
 ### 2.1 Six-stage design (production target)
 
 ```
-1. INTAKE     — Outlook / Teams / Service Portal / Voice → Tickets SP row
+1. INTAKE     — Teams / Service Portal / Voice → Tickets SP row
 2. TYPE GATE  — validate Incident vs Request before RITM, triage, or MI automation
 3. TRIAGE     — Helpdesk Triage Agent classifies (READ-ONLY, no privileged writes)
 4. APPROVAL   — Approval flow runs policy stages (Manager / IT-Owner / CAB), signs JWT
@@ -235,7 +235,7 @@ $body = @{
     client_secret = "<the-secret>"
     scope         = "https://graph.microsoft.com/.default"
 }
-$tokenResp = Invoke-RestMethod -Method POST -Uri "https://login.microsoftonline.com/26e65220-.../oauth2/v2.0/token" -Body $body
+$tokenResp = Invoke-RestMethod -Method POST -Uri "https://login.microsoftonline.com/<tenant-id>/oauth2/v2.0/token" -Body $body
 # Decode the JWT, verify roles claim contains User.ReadWrite.All AND UserAuthenticationMethod.ReadWrite.All
 ```
 
@@ -457,7 +457,7 @@ Re-fire the dispatcher with the same `idempotencyKey`:
 
 ## 8. Deployed artifact glossary
 
-### 8.1 Power Automate flows (Flow Studio Demo env `d0897dde-...`)
+### 8.1 Power Automate flows (Flow Studio Demo env `<env-id>`)
 
 | Flow | id | Purpose |
 |---|---|---|
@@ -465,6 +465,7 @@ Re-fire the dispatcher with the same `idempotencyKey`:
 | ITSM-Identity-Executor | `00000000-0000-4000-8000-000000000043` | PJ Dispatched → Graph password reset |
 | ITSM-Dispatcher | `00000000-0000-4000-8000-000000000033` | HTTP POST → validates + patches PJ to Dispatched |
 | ITSM-Approval-Bridge | `00000000-0000-4000-8000-000000000001` | Approvals row state change → calls Dispatcher |
+| ITSM-PJ-Ticket-Resolver | `00000000-0000-4000-8000-000000000062` | PJ Succeeded (propose path, non-SCTASK) → resolves parent Ticket |
 
 ### 8.2 SharePoint lists (`/sites/ITSM`)
 
@@ -515,7 +516,7 @@ What's deliberately deferred. Each is independently addable per the migration pa
 11. **CMDB seed** — Intune export + business services manual entries
 12. **KB seed** — 30-50 articles minimum before deflection rate is meaningful
 13. **SharePoint groups + permission split** — IT-ITSM-Admins, IT-Approvers-Backup, Change-Advisory-Board, HR-Confirmation-Approvers, ITSM-Agent-Users
-14. **Adaptive Cards wired** — 6 templates exist (`notifications/cards/`); wire to flow notification actions
+14. **Notification cards** — approval, SLA breach, resolution, and major-incident notifications are sent by the flows via the Teams connector
 15. **SLA timer flow** (Week 6) — 75% warning + 100% breach
 16. **Archival flow** (Week 6) — Closed > 12 months → Tickets-Archive
 17. **Major Incident detector** (Week 6) — webhook cluster detection
@@ -553,12 +554,11 @@ Per Catherine 2026-05-02: items 21, 22, 23 are the minimum to demo as a real ITS
 
 ### Living docs (kept current)
 - `IMPLEMENTATION-PLAYBOOK.md` (this file) — single playbook for fresh agents
-- `flows/CURRENT-STATUS.md` — authoritative current deployment status, Day 4 task counts, blockers, and evidence pointers
 - `DEPLOYMENT.md` — runbook with phase-by-phase status
 - `README.md` — project overview + repo layout
 - `USER_GUIDE.md` — end-user, approver, and Level 1 support guide
 - `ADMIN_GUIDE.md` — day-to-day admin operations guide
-- `TROUBLESHOOTING_GUIDE.md` — Day 2 troubleshooting and re-drive guide
+- `TROUBLESHOOTING_GUIDE.md` — troubleshooting and re-drive guide
 - `DEPLOYMENT.md` — active deployment runbook after consolidation
 
 ### Design memos (canonical, with pilot annotations)
@@ -571,7 +571,6 @@ Per Catherine 2026-05-02: items 21, 22, 23 are the minimum to demo as a real ITS
 - `infra/sharepoint/README.md` — SharePoint provisioning runbook
 
 ### Visual artifacts
-- `itsm-ai-workflow-flowchart.pdf` / `.png` — original 6-stage design diagram (NOT updated for pilot deviations; see §2.2 above for pilot mermaid)
 - `sharepoint-itsm-schema.xlsx` — 16-list SharePoint schema (canonical)
 - `servicenow-itsm-ticketing-report.md` — research baseline for ServiceNow modules being mirrored
 

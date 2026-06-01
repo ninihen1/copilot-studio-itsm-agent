@@ -1,0 +1,222 @@
+{
+  "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "$connections": {
+      "defaultValue": {},
+      "type": "Object"
+    },
+    "$authentication": {
+      "defaultValue": {},
+      "type": "SecureObject"
+    }
+  },
+  "triggers": {
+    "Weekly_Schedule": {
+      "recurrence": {
+        "frequency": "Week",
+        "interval": 1,
+        "schedule": {
+          "weekDays": [
+            "Sunday"
+          ],
+          "hours": [
+            "3"
+          ],
+          "minutes": [
+            0
+          ]
+        },
+        "timeZone": "AUS Eastern Standard Time"
+      },
+      "evaluatedRecurrence": {
+        "frequency": "Week",
+        "interval": 1,
+        "schedule": {
+          "weekDays": [
+            "Sunday"
+          ],
+          "hours": [
+            "3"
+          ],
+          "minutes": [
+            0
+          ]
+        },
+        "timeZone": "AUS Eastern Standard Time"
+      },
+      "type": "Recurrence"
+    }
+  },
+  "actions": {
+    "Get_KV_Secret": {
+      "runAfter": {},
+      "type": "OpenApiConnection",
+      "inputs": {
+        "host": {
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_keyvault",
+          "connectionName": "shared_keyvault",
+          "operationId": "GetSecret"
+        },
+        "parameters": {
+          "secretName": "SP-IT-Identity-ClientSecret"
+        },
+        "authentication": "@parameters('$authentication')"
+      },
+      "runtimeConfiguration": {
+        "secureData": {
+          "properties": [
+            "inputs",
+            "outputs"
+          ]
+        }
+      }
+    },
+    "Get_Graph_Token": {
+      "runAfter": {
+        "Get_KV_Secret": [
+          "Succeeded"
+        ]
+      },
+      "type": "Http",
+      "inputs": {
+        "method": "POST",
+        "uri": "https://login.microsoftonline.com/00000000-0000-0000-0000-000000000001/oauth2/v2.0/token",
+        "headers": {
+          "Content-Type": "application/x-www-form-urlencoded"
+        },
+        "body": "@{concat('grant_type=client_credentials&client_id=00000000-0000-0000-0000-000000000004&scope=https%3A%2F%2Fgraph.microsoft.com%2F.default&client_secret=', encodeUriComponent(body('Get_KV_Secret')?['value']))}"
+      },
+      "runtimeConfiguration": {
+        "secureData": {
+          "properties": [
+            "inputs",
+            "outputs"
+          ]
+        }
+      }
+    },
+    "Parse_Token": {
+      "runAfter": {
+        "Get_Graph_Token": [
+          "Succeeded"
+        ]
+      },
+      "type": "ParseJson",
+      "inputs": {
+        "content": "@body('Get_Graph_Token')",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "access_token": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "runtimeConfiguration": {
+        "secureData": {
+          "properties": [
+            "inputs"
+          ]
+        }
+      }
+    },
+    "Get_SubscribedSkus": {
+      "runAfter": {
+        "Parse_Token": [
+          "Succeeded"
+        ]
+      },
+      "type": "Http",
+      "inputs": {
+        "method": "GET",
+        "uri": "https://graph.microsoft.com/v1.0/subscribedSkus",
+        "headers": {
+          "Authorization": "@{concat('Bearer ', body('Parse_Token')?['access_token'])}"
+        }
+      }
+    },
+    "Select_Owned_Skus": {
+      "runAfter": {
+        "Get_SubscribedSkus": [
+          "Succeeded"
+        ]
+      },
+      "type": "Select",
+      "inputs": {
+        "from": "@body('Get_SubscribedSkus')?['value']",
+        "select": "@item()?['skuPartNumber']"
+      }
+    },
+    "Get_License_Costs": {
+      "runAfter": {
+        "Select_Owned_Skus": [
+          "Succeeded"
+        ]
+      },
+      "type": "OpenApiConnection",
+      "inputs": {
+        "host": {
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+          "connectionName": "shared_sharepointonline",
+          "operationId": "GetItems"
+        },
+        "parameters": {
+          "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+          "table": "License Costs",
+          "$top": 5000
+        },
+        "authentication": "@parameters('$authentication')"
+      }
+    },
+    "Apply_To_Each_Row": {
+      "foreach": "@body('Get_License_Costs')?['value']",
+      "actions": {
+        "If_Owned_State_Changed": {
+          "actions": {
+            "Patch_Owned": {
+              "runAfter": {},
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": {
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                  "connectionName": "shared_sharepointonline",
+                  "operationId": "PatchItem"
+                },
+                "parameters": {
+                  "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+                  "table": "License Costs",
+                  "id": "@items('Apply_To_Each_Row')?['ID']",
+                  "item/Title": "@items('Apply_To_Each_Row')?['Title']",
+                  "item/SkuPartNumber": "@items('Apply_To_Each_Row')?['SkuPartNumber']",
+                  "item/Owned": "@contains(body('Select_Owned_Skus'), items('Apply_To_Each_Row')?['SkuPartNumber'])"
+                },
+                "authentication": "@parameters('$authentication')"
+              }
+            }
+          },
+          "else": {
+            "actions": {}
+          },
+          "expression": {
+            "not": {
+              "equals": [
+                "@coalesce(items('Apply_To_Each_Row')?['Owned'], false)",
+                "@contains(body('Select_Owned_Skus'), items('Apply_To_Each_Row')?['SkuPartNumber'])"
+              ]
+            }
+          },
+          "type": "If"
+        }
+      },
+      "runAfter": {
+        "Get_License_Costs": [
+          "Succeeded"
+        ]
+      },
+      "type": "Foreach"
+    }
+  },
+  "description": "Weekly reconcile of the License Costs 'Owned' flag against the tenant subscription. Gets a Graph app-only token (KV secret SP-IT-Identity-ClientSecret, client 00000000) -> GET subscribedSkus -> Owned=true on License Costs rows whose SkuPartNumber is currently subscribed, Owned=false otherwise (patch only on change). Keeps the SPFx owned-only license dropdown accurate as subscriptions change. Runs Sunday 03:00 AEST, after S3 License-Costs-Sync (02:00) so new catalog rows exist to flag. #flowstudio-mcp"
+}

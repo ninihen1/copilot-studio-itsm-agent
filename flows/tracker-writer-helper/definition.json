@@ -1,0 +1,80 @@
+{
+  "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "$authentication": {
+      "defaultValue": {},
+      "type": "SecureObject"
+    },
+    "$connections": {
+      "defaultValue": {},
+      "type": "Object"
+    }
+  },
+  "triggers": {
+    "manual": {
+      "metadata": {},
+      "type": "Request",
+      "kind": "Http",
+      "inputs": {
+        "schema": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "notes": {
+              "type": "string"
+            },
+            "status": {
+              "type": "string"
+            }
+          }
+        },
+        "triggerAuthenticationType": "All"
+      }
+    }
+  },
+  "actions": {
+    "Patch_Row": {
+      "runAfter": {},
+      "type": "OpenApiConnection",
+      "inputs": {
+        "host": {
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+          "connectionName": "shared_sharepointonline",
+          "operationId": "PatchItem"
+        },
+        "parameters": {
+          "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+          "table": "ITSM Project Tracker",
+          "id": "@int(triggerBody()?['id'])",
+          "item/Title": "@triggerBody()?['title']",
+          "item/Notes": "@triggerBody()?['notes']",
+          "item/Status/Value": "@triggerBody()?['status']"
+        },
+        "authentication": "@parameters('$authentication')"
+      }
+    },
+    "Respond": {
+      "runAfter": {
+        "Patch_Row": [
+          "Succeeded"
+        ]
+      },
+      "type": "Response",
+      "kind": "Http",
+      "inputs": {
+        "statusCode": 200,
+        "body": {
+          "ok": true,
+          "id": "@triggerBody()?['id']"
+        }
+      }
+    }
+  },
+  "description": "ITSM housekeeping helper: PATCH an ITSM Project Tracker row Notes/Status via the proven SharePoint connection on /sites/ITSM. #flowstudio-mcp"
+}

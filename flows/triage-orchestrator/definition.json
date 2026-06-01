@@ -2,13 +2,13 @@
   "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
   "contentVersion": "1.0.0.0",
   "parameters": {
-    "$connections": {
-      "defaultValue": {},
-      "type": "Object"
-    },
     "$authentication": {
       "defaultValue": {},
       "type": "SecureObject"
+    },
+    "$connections": {
+      "defaultValue": {},
+      "type": "Object"
     }
   },
   "triggers": {
@@ -17,11 +17,6 @@
         "frequency": "Minute",
         "interval": 3
       },
-      "conditions": [
-        {
-          "expression": "@and(not(equals(triggerOutputs()?['body/TicketType/Value'], 'Request')), not(equals(coalesce(triggerOutputs()?['body/TicketSource/Value'], ''), 'ProposeAction')), equals(coalesce(triggerOutputs()?['body/TicketTypeValidated'], false), true), not(equals(coalesce(triggerOutputs()?['body/TicketTypeValidationStatus/Value'], ''), 'NeedsConfirmation')), equals(coalesce(triggerOutputs()?['body/TicketState/Value'], 'New'), 'New'))"
-        }
-      ],
       "evaluatedRecurrence": {
         "frequency": "Minute",
         "interval": 3
@@ -29,17 +24,22 @@
       "splitOn": "@triggerOutputs()?['body/value']",
       "type": "OpenApiConnection",
       "inputs": {
+        "parameters": {
+          "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+          "table": "Tickets"
+        },
         "host": {
           "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
           "connectionName": "shared_sharepointonline",
           "operationId": "GetOnUpdatedItems"
         },
-        "parameters": {
-          "dataset": "https://contoso.sharepoint.com/sites/ITSM",
-          "table": "Tickets"
-        },
         "authentication": "@parameters('$authentication')"
-      }
+      },
+      "conditions": [
+        {
+          "expression": "@and(not(equals(triggerOutputs()?['body/TicketType/Value'], 'Request')), equals(coalesce(triggerOutputs()?['body/TicketTypeValidated'], false), true), not(equals(coalesce(triggerOutputs()?['body/TicketTypeValidationStatus/Value'], ''), 'NeedsConfirmation')), equals(coalesce(triggerOutputs()?['body/TicketState/Value'], 'New'), 'New'))"
+        }
+      ]
     }
   },
   "actions": {
@@ -89,8 +89,7 @@
         "variables": [
           {
             "name": "lastMoreInfoNeeded",
-            "type": "string",
-            "value": ""
+            "type": "string"
           }
         ]
       }
@@ -150,9 +149,8 @@
     "Triage_Loop": {
       "actions": {
         "Compose_TriagePrompt": {
-          "runAfter": {},
           "type": "Compose",
-          "inputs": "@concat('Triage this ticket from the automated intake flow.\n\n[TRIAGE_REQUEST]\nticketId: ', coalesce(triggerOutputs()?['body/Title'], triggerOutputs()?['body/Title']), '\nticketSpItemId: ', string(triggerOutputs()?['body/ID']), '\ncallerUpn: ', coalesce(triggerOutputs()?['body/Caller/Email'], last(split(coalesce(triggerOutputs()?['body/Caller/Claims'],'|'),'|')), ''), '\ncallerName: ', coalesce(triggerOutputs()?['body/Caller/DisplayName'], ''), '\nshortDescription: ', coalesce(triggerOutputs()?['body/ShortDescription'], triggerOutputs()?['body/Title'], ''), '\ndescription: ', coalesce(triggerOutputs()?['body/Description'], ''), '\nopenedDate: ', coalesce(triggerOutputs()?['body/Created'], ''), variables('accumulatedContext'), '\n\nApply your standard ITSM classification. Reply with EXACTLY the tagged JSON block in this format and NOTHING ELSE \u2014 no chat, no preamble, no follow-up question:\\n\\n<<<TRIAGE_BEGIN>>>\\n{ \"outcome\": \"...\", ... }\\n<<<TRIAGE_END>>>')"
+          "inputs": "@concat('Triage this ticket from the automated intake flow.\n\n[TRIAGE_REQUEST]\nticketId: ', coalesce(triggerOutputs()?['body/Title'], triggerOutputs()?['body/Title']), '\nticketSpItemId: ', string(triggerOutputs()?['body/ID']), '\ncallerUpn: ', coalesce(triggerOutputs()?['body/Caller/Email'], last(split(coalesce(triggerOutputs()?['body/Caller/Claims'],'|'),'|')), ''), '\ncallerName: ', coalesce(triggerOutputs()?['body/Caller/DisplayName'], ''), '\nshortDescription: ', coalesce(triggerOutputs()?['body/ShortDescription'], triggerOutputs()?['body/Title'], ''), '\ndescription: ', coalesce(triggerOutputs()?['body/Description'], ''), '\nopenedDate: ', coalesce(triggerOutputs()?['body/Created'], ''), variables('accumulatedContext'), '\n\nApply your standard ITSM classification. Reply with EXACTLY the tagged JSON block in this format and NOTHING ELSE — no chat, no preamble, no follow-up question:\\n\\n<<<TRIAGE_BEGIN>>>\\n{ \"outcome\": \"...\", ... }\\n<<<TRIAGE_END>>>')"
         },
         "Execute_Agent_Triage": {
           "runAfter": {
@@ -162,14 +160,14 @@
           },
           "type": "OpenApiConnectionWebhook",
           "inputs": {
+            "parameters": {
+              "Copilot": "cre79_agent",
+              "body/message": "@{outputs('Compose_TriagePrompt')}"
+            },
             "host": {
               "apiId": "/providers/Microsoft.PowerApps/apis/shared_microsoftcopilotstudio",
               "connectionName": "shared_microsoftcopilotstudio",
               "operationId": "ExecuteCopilotAsyncV2"
-            },
-            "parameters": {
-              "Copilot": "cre79_agent",
-              "body/message": "@{outputs('Compose_TriagePrompt')}"
             },
             "authentication": "@parameters('$authentication')"
           }
@@ -198,7 +196,6 @@
         "Scope_ParseTriage": {
           "actions": {
             "Parse_TriageJson": {
-              "runAfter": {},
               "type": "ParseJson",
               "inputs": {
                 "content": "@outputs('Compose_ExtractedBlock')",
@@ -339,151 +336,6 @@
             "name": "lastUrgencyLabel",
             "value": "@{concat(string(coalesce(body('Parse_TriageJson')?['urgency'], 3)), ' - ', if(equals(coalesce(body('Parse_TriageJson')?['urgency'], 3), 1), 'High', if(equals(coalesce(body('Parse_TriageJson')?['urgency'], 3), 2), 'Medium', 'Low')))}"
           }
-        },
-        "If_StopAndAsk": {
-          "actions": {
-            "Update_Ticket_AwaitingCaller": {
-              "runAfter": {},
-              "type": "OpenApiConnection",
-              "inputs": {
-                "host": {
-                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
-                  "connectionName": "shared_sharepointonline",
-                  "operationId": "PatchItem"
-                },
-                "parameters": {
-                  "dataset": "https://contoso.sharepoint.com/sites/ITSM",
-                  "table": "Tickets",
-                  "id": "@triggerOutputs()?['body/ID']",
-                  "item/Title": "@triggerOutputs()?['body/Title']",
-                  "item/TicketType/Value": "@variables('lastTicketType')",
-                  "item/ShortDescription": "@triggerOutputs()?['body/ShortDescription']",
-                  "item/Description": "@{concat('Triage Agent asked caller for clarification: ', variables('lastMoreInfoNeeded'))}",
-                  "item/TicketState/Value": "On Hold",
-                  "item/HoldReason/Value": "Awaiting Caller",
-                  "item/Caller/Claims": "@triggerOutputs()?['body/Caller/Claims']",
-                  "item/Impact/Value": "@variables('lastImpactLabel')",
-                  "item/Urgency/Value": "@variables('lastUrgencyLabel')",
-                  "item/ConfidentialityLevel/Value": "@coalesce(triggerOutputs()?['body/ConfidentialityLevel/Value'], 'Public')"
-                },
-                "authentication": "@parameters('$authentication')"
-              }
-            },
-            "Compose_QuestionDetails": {
-              "runAfter": {
-                "Update_Ticket_AwaitingCaller": [
-                  "Succeeded"
-                ]
-              },
-              "type": "Compose",
-              "inputs": "@{concat('Hi \u2014 the Helpdesk Triage Agent reviewed your ticket but needs more info before it can take action.\n\n**Your ticket:** ', triggerOutputs()?['body/Title'], ' \u2014 ', triggerOutputs()?['body/ShortDescription'], '\n\n**Question from the agent:**\n\n> ', variables('lastMoreInfoNeeded'), '\n\n---\n\nClick **I have an answer** and type your reply in the comments box. The agent will use your reply and re-triage. If you want to drop the request, click **Cancel ticket**.')}"
-            },
-            "Ask_Caller_Approval": {
-              "runAfter": {
-                "Compose_QuestionDetails": [
-                  "Succeeded"
-                ]
-              },
-              "type": "OpenApiConnection",
-              "inputs": {
-                "host": {
-                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_approvals",
-                  "connectionName": "shared_approvals",
-                  "operationId": "CreateAnApproval"
-                },
-                "parameters": {
-                  "approvalType": "CustomResponse",
-                  "ApprovalCreationInput/title": "@{concat('More info needed \u2014 ', triggerOutputs()?['body/Title'])}",
-                  "ApprovalCreationInput/assignedTo": "@coalesce(triggerOutputs()?['body/Caller/Email'], 'catherine.han@flowstudio.app')",
-                  "ApprovalCreationInput/details": "@outputs('Compose_QuestionDetails')",
-                  "ApprovalCreationInput/itemLink": "@{concat('https://contoso.sharepoint.com/sites/ITSM/Lists/Tickets/DispForm.aspx?ID=', string(triggerOutputs()?['body/ID']))}",
-                  "ApprovalCreationInput/itemLinkDescription": "Open ticket in SharePoint",
-                  "ApprovalCreationInput/responseOptions": [
-                    "I have an answer",
-                    "Cancel ticket"
-                  ],
-                  "ApprovalCreationInput/enableNotifications": true,
-                  "ApprovalCreationInput/enableReassignment": false
-                },
-                "authentication": "@parameters('$authentication')"
-              }
-            },
-            "Wait_For_Caller_Reply": {
-              "runAfter": {
-                "Ask_Caller_Approval": [
-                  "Succeeded"
-                ]
-              },
-              "type": "OpenApiConnectionWebhook",
-              "inputs": {
-                "host": {
-                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_approvals",
-                  "connectionName": "shared_approvals",
-                  "operationId": "WaitForAnApproval"
-                },
-                "parameters": {
-                  "approvalName": "@body('Ask_Caller_Approval')?['name']"
-                },
-                "authentication": "@parameters('$authentication')"
-              }
-            },
-            "If_CallerCancelled": {
-              "actions": {
-                "Set_Outcome_Cancelled": {
-                  "runAfter": {},
-                  "type": "SetVariable",
-                  "inputs": {
-                    "name": "agentOutcome",
-                    "value": "cancelled"
-                  }
-                }
-              },
-              "runAfter": {
-                "Wait_For_Caller_Reply": [
-                  "Succeeded"
-                ]
-              },
-              "else": {
-                "actions": {
-                  "Append_AnswerToContext": {
-                    "runAfter": {},
-                    "type": "AppendToStringVariable",
-                    "inputs": {
-                      "name": "accumulatedContext",
-                      "value": "@{concat('\n\n--- Caller clarification ---\n[Q] ', variables('lastMoreInfoNeeded'), '\n[A] ', coalesce(body('Wait_For_Caller_Reply')?['responses']?[0]?['comments'], '(no answer text)'))}"
-                    }
-                  }
-                }
-              },
-              "expression": {
-                "and": [
-                  {
-                    "equals": [
-                      "@body('Wait_For_Caller_Reply')?['responses']?[0]?['approverResponse']",
-                      "Cancel ticket"
-                    ]
-                  }
-                ]
-              },
-              "type": "If"
-            }
-          },
-          "runAfter": {
-            "Set_LastUrgencyLabel": [
-              "Succeeded"
-            ]
-          },
-          "expression": {
-            "and": [
-              {
-                "equals": [
-                  "@variables('agentOutcome')",
-                  "stop_and_ask"
-                ]
-              }
-            ]
-          },
-          "type": "If"
         }
       },
       "runAfter": {
@@ -621,29 +473,28 @@
           "case": "cancelled",
           "actions": {
             "Update_Ticket_OnCallerCancel": {
-              "runAfter": {},
               "type": "OpenApiConnection",
               "inputs": {
-                "host": {
-                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
-                  "connectionName": "shared_sharepointonline",
-                  "operationId": "PatchItem"
-                },
                 "parameters": {
                   "dataset": "https://contoso.sharepoint.com/sites/ITSM",
                   "table": "Tickets",
                   "id": "@triggerOutputs()?['body/ID']",
                   "item/Title": "@triggerOutputs()?['body/Title']",
-                  "item/TicketType/Value": "@variables('lastTicketType')",
                   "item/ShortDescription": "@triggerOutputs()?['body/ShortDescription']",
-                  "item/Description": "@{concat('Caller cancelled the ticket while the Triage Agent was awaiting clarification.\n\nQ&A so far:', variables('accumulatedContext'))}",
-                  "item/TicketState/Value": "Cancelled",
+                  "item/TicketType/Value": "@variables('lastTicketType')",
                   "item/Caller/Claims": "@triggerOutputs()?['body/Caller/Claims']",
+                  "item/TicketState/Value": "Cancelled",
                   "item/Impact/Value": "@variables('lastImpactLabel')",
                   "item/Urgency/Value": "@variables('lastUrgencyLabel')",
                   "item/ClosedDate": "@utcNow()",
                   "item/ConfidentialityLevel/Value": "@coalesce(triggerOutputs()?['body/ConfidentialityLevel/Value'], 'Public')",
+                  "item/Description": "@{concat('Caller cancelled the ticket while the Triage Agent was awaiting clarification.\n\nQ&A so far:', variables('accumulatedContext'))}",
                   "item/CloseCode/Value": "Closed/Resolved by Caller"
+                },
+                "host": {
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                  "connectionName": "shared_sharepointonline",
+                  "operationId": "PatchItem"
                 },
                 "authentication": "@parameters('$authentication')"
               }
@@ -654,31 +505,30 @@
           "case": "deflect",
           "actions": {
             "Update_Ticket_OnDeflect": {
-              "runAfter": {},
               "type": "OpenApiConnection",
               "inputs": {
-                "host": {
-                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
-                  "connectionName": "shared_sharepointonline",
-                  "operationId": "PatchItem"
-                },
                 "parameters": {
                   "dataset": "https://contoso.sharepoint.com/sites/ITSM",
                   "table": "Tickets",
                   "id": "@triggerOutputs()?['body/ID']",
                   "item/Title": "@triggerOutputs()?['body/Title']",
-                  "item/TicketType/Value": "@variables('lastTicketType')",
                   "item/ShortDescription": "@triggerOutputs()?['body/ShortDescription']",
-                  "item/Description": "@{concat(coalesce(body('Parse_FinalTriageJson')?['rationale'], ''), variables('accumulatedContext'))}",
-                  "item/TicketState/Value": "Resolved",
+                  "item/TicketType/Value": "@variables('lastTicketType')",
+                  "item/CategoryRef/Id": "@coalesce(first(body('Get_CategoryId')?['value'])?['ID'], 6)",
                   "item/Caller/Claims": "@triggerOutputs()?['body/Caller/Claims']",
+                  "item/TicketState/Value": "Resolved",
+                  "item/Priority/Value": "@coalesce(first(body('Get_PriorityFromMatrix')?['value'])?['Priority']?['Value'], '5 - Planning')",
                   "item/Impact/Value": "@variables('lastImpactLabel')",
                   "item/Urgency/Value": "@variables('lastUrgencyLabel')",
                   "item/ResolvedDate": "@utcNow()",
                   "item/ConfidentialityLevel/Value": "@coalesce(triggerOutputs()?['body/ConfidentialityLevel/Value'], 'Public')",
-                  "item/CloseCode/Value": "Closed/Resolved by Caller",
-                  "item/CategoryRef/Id": "@coalesce(first(body('Get_CategoryId')?['value'])?['ID'], 6)",
-                  "item/Priority/Value": "@coalesce(first(body('Get_PriorityFromMatrix')?['value'])?['Priority']?['Value'], '5 - Planning')"
+                  "item/Description": "@{concat(coalesce(body('Parse_FinalTriageJson')?['rationale'], ''), variables('accumulatedContext'))}",
+                  "item/CloseCode/Value": "Closed/Resolved by Caller"
+                },
+                "host": {
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                  "connectionName": "shared_sharepointonline",
+                  "operationId": "PatchItem"
                 },
                 "authentication": "@parameters('$authentication')"
               }
@@ -689,29 +539,28 @@
           "case": "propose",
           "actions": {
             "Update_Ticket_OnPropose": {
-              "runAfter": {},
               "type": "OpenApiConnection",
               "inputs": {
-                "host": {
-                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
-                  "connectionName": "shared_sharepointonline",
-                  "operationId": "PatchItem"
-                },
                 "parameters": {
                   "dataset": "https://contoso.sharepoint.com/sites/ITSM",
                   "table": "Tickets",
                   "id": "@triggerOutputs()?['body/ID']",
                   "item/Title": "@triggerOutputs()?['body/Title']",
-                  "item/TicketType/Value": "@variables('lastTicketType')",
                   "item/ShortDescription": "@triggerOutputs()?['body/ShortDescription']",
-                  "item/Description": "@{concat(coalesce(triggerOutputs()?['body/Description'], ''), variables('accumulatedContext'))}",
-                  "item/TicketState/Value": "In Progress",
+                  "item/TicketType/Value": "@variables('lastTicketType')",
+                  "item/CategoryRef/Id": "@coalesce(first(body('Get_CategoryId')?['value'])?['ID'], 6)",
                   "item/Caller/Claims": "@triggerOutputs()?['body/Caller/Claims']",
+                  "item/TicketState/Value": "In Progress",
+                  "item/Priority/Value": "@coalesce(first(body('Get_PriorityFromMatrix')?['value'])?['Priority']?['Value'], '5 - Planning')",
                   "item/Impact/Value": "@variables('lastImpactLabel')",
                   "item/Urgency/Value": "@variables('lastUrgencyLabel')",
                   "item/ConfidentialityLevel/Value": "@coalesce(triggerOutputs()?['body/ConfidentialityLevel/Value'], 'Public')",
-                  "item/CategoryRef/Id": "@coalesce(first(body('Get_CategoryId')?['value'])?['ID'], 6)",
-                  "item/Priority/Value": "@coalesce(first(body('Get_PriorityFromMatrix')?['value'])?['Priority']?['Value'], '5 - Planning')"
+                  "item/Description": "@{concat(coalesce(triggerOutputs()?['body/Description'], ''), variables('accumulatedContext'))}"
+                },
+                "host": {
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                  "connectionName": "shared_sharepointonline",
+                  "operationId": "PatchItem"
                 },
                 "authentication": "@parameters('$authentication')"
               }
@@ -742,26 +591,26 @@
               },
               "type": "OpenApiConnection",
               "inputs": {
-                "host": {
-                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
-                  "connectionName": "shared_sharepointonline",
-                  "operationId": "PostItem"
-                },
                 "parameters": {
                   "dataset": "https://contoso.sharepoint.com/sites/ITSM",
                   "table": "Provisioning Jobs",
                   "item/Title": "@outputs('Generate_JobId')",
                   "item/JobType": "@body('Parse_FinalTriageJson')?['proposedAction']?['jobType']",
-                  "item/JobStatus/Value": "AwaitingApproval",
-                  "item/ParentTicket/Id": "@triggerOutputs()?['body/ID']",
                   "item/CallerUpn": "@coalesce(body('Parse_FinalTriageJson')?['callerUpn'], triggerOutputs()?['body/Caller/Email'], '')",
-                  "item/TargetJson": "@string(json(concat('{\"type\":\"user\",\"upn\":\"',coalesce(body('Parse_FinalTriageJson')?['targetUserUpn'], body('Parse_FinalTriageJson')?['callerUpn'], ''),'\"}')))",
-                  "item/ArgsJson": "@string(coalesce(body('Parse_FinalTriageJson')?['proposedAction']?['args'], json('{}')))",
                   "item/IdempotencyKey": "@outputs('Generate_IdempotencyKey')",
                   "item/CorrelationId": "@coalesce(triggerOutputs()?['body/Title'], triggerOutputs()?['body/Title'])",
-                  "item/Confidence": "@body('Parse_FinalTriageJson')?['confidence']",
+                  "item/TargetJson": "@string(json(concat('{\"type\":\"user\",\"upn\":\"',coalesce(body('Parse_FinalTriageJson')?['targetUserUpn'], body('Parse_FinalTriageJson')?['callerUpn'], ''),'\"}')))",
+                  "item/ParentTicket/Id": "@triggerOutputs()?['body/ID']",
+                  "item/JobStatus/Value": "AwaitingApproval",
                   "item/Risk/Value": "@body('Parse_FinalTriageJson')?['risk']",
+                  "item/Confidence": "@body('Parse_FinalTriageJson')?['confidence']",
+                  "item/ArgsJson": "@string(coalesce(body('Parse_FinalTriageJson')?['proposedAction']?['args'], json('{}')))",
                   "item/Rationale": "@body('Parse_FinalTriageJson')?['rationale']"
+                },
+                "host": {
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                  "connectionName": "shared_sharepointonline",
+                  "operationId": "PostItem"
                 },
                 "authentication": "@parameters('$authentication')"
               }
@@ -775,33 +624,7 @@
               "type": "Compose",
               "inputs": "@{concat('AS-', toUpper(replace(guid(),'-','')))}"
             },
-            "Create_Approvals_Row": {
-              "runAfter": {
-                "Get_PolicyId": [
-                  "Succeeded"
-                ]
-              },
-              "type": "OpenApiConnection",
-              "inputs": {
-                "host": {
-                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
-                  "connectionName": "shared_sharepointonline",
-                  "operationId": "PostItem"
-                },
-                "parameters": {
-                  "dataset": "https://contoso.sharepoint.com/sites/ITSM",
-                  "table": "Approvals",
-                  "item/Title": "@outputs('Generate_ApprovalSessionId')",
-                  "item/ParentTicket/Id": "@triggerOutputs()?['body/ID']",
-                  "item/LinkedJobId": "@outputs('Generate_JobId')",
-                  "item/PolicyVersionUsed": 1,
-                  "item/SessionState/Value": "InProgress",
-                  "item/PolicyApplied/Id": "@first(body('Get_PolicyId')?['value'])?['ID']"
-                },
-                "authentication": "@parameters('$authentication')"
-              }
-            },
-            "Get_PolicyId": {
+            "Get_FallbackApprovers": {
               "runAfter": {
                 "Generate_ApprovalSessionId": [
                   "Succeeded"
@@ -816,12 +639,680 @@
                 },
                 "parameters": {
                   "dataset": "https://contoso.sharepoint.com/sites/ITSM",
-                  "table": "Approval Policies",
-                  "$filter": "Title eq 'AP-LOW-RISK-V1'",
+                  "table": "Config",
+                  "$filter": "Key eq 'FallbackApprovers'",
                   "$top": 1
                 },
                 "authentication": "@parameters('$authentication')"
+              },
+              "description": "Reads the FallbackApprovers row from the ITSM Config list (same governance as the Dispatcher kill-switch). PRE-DEPLOY: this row must be seeded with a semicolon UPN list (Baker@flowstudio.app) before the flow is enabled, or escalation CreateAnApproval will fail (assignedTo empty)."
+            },
+            "Compose_Approver_Upn": {
+              "runAfter": {
+                "Get_FallbackApprovers": [
+                  "Succeeded"
+                ]
+              },
+              "type": "Compose",
+              "inputs": "catherine.han@flowstudio.app",
+              "description": "Pilot - fixed primary approver. Phase 3.2 (APR-5) resolves dynamic manager via Office 365 Users Manager_V2; kept identical to Request lane so APR-5 is a single edit across both lanes."
+            },
+            "Compose_Fallback_Upn": {
+              "runAfter": {
+                "Compose_Approver_Upn": [
+                  "Succeeded"
+                ]
+              },
+              "type": "Compose",
+              "inputs": "@coalesce(first(body('Get_FallbackApprovers')?['value'])?['Value'], '')",
+              "description": "ITSM Approvers fallback pool (semicolon UPN list) from Config row Key=FallbackApprovers. Empty until seeded -> deploy is gated on that seed (Baker@flowstudio.app)."
+            },
+            "Compose_Provisioning_Approval_Details": {
+              "runAfter": {
+                "Compose_Fallback_Upn": [
+                  "Succeeded"
+                ]
+              },
+              "type": "Compose",
+              "inputs": "@{concat('**Ticket:** ', coalesce(triggerOutputs()?['body/Title'], ''), ' (item ID ', string(triggerOutputs()?['body/ID']), ')', decodeUriComponent('%0A'),'**Provisioning job:** ', outputs('Generate_JobId'), decodeUriComponent('%0A'),'**Job type:** ', coalesce(body('Parse_FinalTriageJson')?['proposedAction']?['jobType'], '(unknown)'), decodeUriComponent('%0A'),'**Target user:** ', coalesce(body('Parse_FinalTriageJson')?['targetUserUpn'], body('Parse_FinalTriageJson')?['callerUpn'], triggerOutputs()?['body/Caller/Email'], '(unknown)'), decodeUriComponent('%0A'),'**Risk:** ', coalesce(string(body('Parse_FinalTriageJson')?['risk']), '(n/a)'), '   **Confidence:** ', coalesce(string(body('Parse_FinalTriageJson')?['confidence']), '(n/a)'), decodeUriComponent('%0A%0A'),'**Short description:** ', coalesce(triggerOutputs()?['body/ShortDescription'], ''), decodeUriComponent('%0A%0A'),'**Agent rationale:** ', coalesce(body('Parse_FinalTriageJson')?['rationale'], '(none)'), decodeUriComponent('%0A%0A'),'**Tracking:** [Open ticket](https://contoso.sharepoint.com/sites/ITSM/Lists/Tickets/DispForm.aspx?ID=', string(triggerOutputs()?['body/ID']), ')')}",
+              "description": "Human-readable provisioning approval body rendered from the agent triage JSON."
+            },
+            "Create_Provisioning_Approval": {
+              "runAfter": {
+                "Compose_Provisioning_Approval_Details": [
+                  "Succeeded"
+                ]
+              },
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": {
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_approvals",
+                  "connectionName": "shared_approvals",
+                  "operationId": "CreateAnApproval"
+                },
+                "parameters": {
+                  "approvalType": "CustomResponse",
+                  "ApprovalCreationInput/title": "@{concat('Provisioning approval - ', coalesce(body('Parse_FinalTriageJson')?['proposedAction']?['jobType'], 'job'), ' (', outputs('Generate_JobId'), ')')}",
+                  "ApprovalCreationInput/assignedTo": "@outputs('Compose_Approver_Upn')",
+                  "ApprovalCreationInput/details": "@outputs('Compose_Provisioning_Approval_Details')",
+                  "ApprovalCreationInput/itemLink": "@{concat('https://contoso.sharepoint.com/sites/ITSM/Lists/Tickets/DispForm.aspx?ID=', string(triggerOutputs()?['body/ID']))}",
+                  "ApprovalCreationInput/itemLinkDescription": "@{concat('Ticket item ID ', string(triggerOutputs()?['body/ID']))}",
+                  "ApprovalCreationInput/responseOptions": [
+                    "Approve",
+                    "Reject"
+                  ],
+                  "ApprovalCreationInput/enableNotifications": true,
+                  "ApprovalCreationInput/enableReassignment": false
+                },
+                "authentication": "@parameters('$authentication')"
               }
+            },
+            "Wait_For_Provisioning_Approval": {
+              "runAfter": {
+                "Create_Provisioning_Approval": [
+                  "Succeeded"
+                ]
+              },
+              "limit": {
+                "timeout": "PT24H"
+              },
+              "type": "OpenApiConnectionWebhook",
+              "inputs": {
+                "host": {
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_approvals",
+                  "connectionName": "shared_approvals",
+                  "operationId": "WaitForAnApproval"
+                },
+                "parameters": {
+                  "approvalName": "@body('Create_Provisioning_Approval')?['name']"
+                },
+                "authentication": "@parameters('$authentication')"
+              }
+            },
+            "If_Provisioning_Approved": {
+              "actions": {
+                "Call_Dispatcher": {
+                  "runAfter": {},
+                  "type": "Http",
+                  "inputs": {
+                    "method": "POST",
+                    "uri": "https://contoso-flow-trigger-url-REDACTED",
+                    "headers": {
+                      "Content-Type": "application/json"
+                    },
+                    "body": {
+                      "pjId": "@body('Create_ProvisioningJob_Row')?['ID']",
+                      "idempotencyKey": "@outputs('Generate_IdempotencyKey')",
+                      "callerUpn": "@coalesce(body('Parse_FinalTriageJson')?['callerUpn'], triggerOutputs()?['body/Caller/Email'], '')",
+                      "approverUpn": "@outputs('Compose_Approver_Upn')",
+                      "approvalSessionId": "@outputs('Generate_ApprovalSessionId')",
+                      "jobType": "@body('Parse_FinalTriageJson')?['proposedAction']?['jobType']",
+                      "correlationId": "@coalesce(triggerOutputs()?['body/Title'], guid())"
+                    }
+                  }
+                },
+                "Patch_PJ_Approved": {
+                  "runAfter": {
+                    "Call_Dispatcher": [
+                      "Succeeded",
+                      "Failed",
+                      "TimedOut"
+                    ]
+                  },
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "host": {
+                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                      "connectionName": "shared_sharepointonline",
+                      "operationId": "PatchItem"
+                    },
+                    "parameters": {
+                      "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+                      "table": "Provisioning Jobs",
+                      "id": "@body('Create_ProvisioningJob_Row')?['ID']",
+                      "item/Title": "@outputs('Generate_JobId')",
+                      "item/JobType": "@body('Parse_FinalTriageJson')?['proposedAction']?['jobType']",
+                      "item/JobStatus/Value": "@if(equals(outputs('Call_Dispatcher')?['statusCode'], 202), 'Dispatched', 'AwaitingApproval')",
+                      "item/ApprovalSessionId": "@outputs('Generate_ApprovalSessionId')",
+                      "item/IdempotencyKey": "@outputs('Generate_IdempotencyKey')",
+                      "item/CorrelationId": "@coalesce(triggerOutputs()?['body/Title'], triggerOutputs()?['body/Title'])",
+                      "item/CallerUpn": "@coalesce(body('Parse_FinalTriageJson')?['callerUpn'], triggerOutputs()?['body/Caller/Email'], '')",
+                      "item/TargetJson": "@string(json(concat('{\"type\":\"user\",\"upn\":\"',coalesce(body('Parse_FinalTriageJson')?['targetUserUpn'], body('Parse_FinalTriageJson')?['callerUpn'], ''),'\"}')))"
+                    },
+                    "authentication": "@parameters('$authentication')"
+                  }
+                }
+              },
+              "runAfter": {
+                "Wait_For_Provisioning_Approval": [
+                  "Succeeded"
+                ]
+              },
+              "else": {
+                "actions": {
+                  "Patch_PJ_Rejected": {
+                    "runAfter": {},
+                    "type": "OpenApiConnection",
+                    "inputs": {
+                      "host": {
+                        "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                        "connectionName": "shared_sharepointonline",
+                        "operationId": "PatchItem"
+                      },
+                      "parameters": {
+                        "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+                        "table": "Provisioning Jobs",
+                        "id": "@body('Create_ProvisioningJob_Row')?['ID']",
+                        "item/Title": "@outputs('Generate_JobId')",
+                        "item/JobType": "@body('Parse_FinalTriageJson')?['proposedAction']?['jobType']",
+                        "item/JobStatus/Value": "Rejected",
+                        "item/ApprovalSessionId": "@outputs('Generate_ApprovalSessionId')",
+                        "item/IdempotencyKey": "@outputs('Generate_IdempotencyKey')",
+                        "item/CorrelationId": "@coalesce(triggerOutputs()?['body/Title'], triggerOutputs()?['body/Title'])",
+                        "item/CallerUpn": "@coalesce(body('Parse_FinalTriageJson')?['callerUpn'], triggerOutputs()?['body/Caller/Email'], '')",
+                        "item/TargetJson": "@string(json(concat('{\"type\":\"user\",\"upn\":\"',coalesce(body('Parse_FinalTriageJson')?['targetUserUpn'], body('Parse_FinalTriageJson')?['callerUpn'], ''),'\"}')))",
+                        "item/CompletedAt": "@utcNow()",
+                        "item/ErrorJson": "@{concat('{\"reason\":\"approval_rejected\",\"approvalSessionId\":\"', outputs('Generate_ApprovalSessionId'), '\",\"comments\":', if(equals(coalesce(first(body('Wait_For_Provisioning_Approval')?['responses'])?['comments'],''),''), 'null', concat('\"', first(body('Wait_For_Provisioning_Approval')?['responses'])?['comments'], '\"')), '}')}"
+                      },
+                      "authentication": "@parameters('$authentication')"
+                    }
+                  },
+                  "Get_Ticket": {
+                    "runAfter": {
+                      "Patch_PJ_Rejected": [
+                        "Succeeded",
+                        "Failed"
+                      ]
+                    },
+                    "type": "OpenApiConnection",
+                    "inputs": {
+                      "host": {
+                        "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                        "connectionName": "shared_sharepointonline",
+                        "operationId": "GetItem"
+                      },
+                      "parameters": {
+                        "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+                        "table": "Tickets",
+                        "id": "@triggerOutputs()?['body/ID']"
+                      },
+                      "authentication": "@parameters('$authentication')"
+                    },
+                    "description": "Re-read the live ticket immediately before the On-Hold patch. This branch can run 24-48h after the trigger fired, so the trigger snapshot is stale; GetItem confirms the row still exists and lets the next action patch only 2 fields without clobbering caller edits."
+                  },
+                  "Hold_Ticket": {
+                    "runAfter": {
+                      "Get_Ticket": [
+                        "Succeeded"
+                      ]
+                    },
+                    "type": "OpenApiConnection",
+                    "inputs": {
+                      "host": {
+                        "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                        "connectionName": "shared_sharepointonline",
+                        "operationId": "PatchItem"
+                      },
+                      "parameters": {
+                        "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+                        "table": "Tickets",
+                        "id": "@triggerOutputs()?['body/ID']",
+                        "item/Title": "@body('Get_Ticket')?['Title']",
+                        "item/ShortDescription": "@body('Get_Ticket')?['ShortDescription']",
+                        "item/TicketState/Value": "On Hold",
+                        "item/HoldReason/Value": "Awaiting Approval"
+                      },
+                      "authentication": "@parameters('$authentication')"
+                    },
+                    "description": "Minimal patch: ticket -> On Hold, HoldReason 'Awaiting Approval'. Sources Title + ShortDescription from the preceding GetItem so a stale 24-48h trigger snapshot can never overwrite caller edits."
+                  },
+                  "Notify_Caller_Teams": {
+                    "runAfter": {
+                      "Hold_Ticket": [
+                        "Succeeded",
+                        "Failed"
+                      ]
+                    },
+                    "type": "OpenApiConnection",
+                    "inputs": {
+                      "host": {
+                        "apiId": "/providers/Microsoft.PowerApps/apis/shared_teams",
+                        "connectionName": "shared_teams",
+                        "operationId": "PostMessageToConversation"
+                      },
+                      "parameters": {
+                        "poster": "Flow bot",
+                        "location": "Chat with Flow bot",
+                        "body/recipient": "@{concat(coalesce(body('Parse_FinalTriageJson')?['callerUpn'], triggerOutputs()?['body/Caller/Email'], ''), ';')}",
+                        "body/messageBody": "@{concat('Heads up - your provisioning request on ticket ', coalesce(triggerOutputs()?['body/Title'],''), ' was not approved. The ticket is now On Hold (Awaiting Approval). The approver declined the request. Open the ticket: https://contoso.sharepoint.com/sites/ITSM/Lists/Tickets/DispForm.aspx?ID=', string(triggerOutputs()?['body/ID']))}"
+                      },
+                      "authentication": "@parameters('$authentication')"
+                    },
+                    "description": "Notify the caller in Teams (Flow-bot DM) that the provisioning approval did not pass and the ticket is On Hold. Paired with an Outlook email (Notify_Caller_Outlook) so the caller is reached on BOTH channels per Catherine's request."
+                  },
+                  "Notify_Caller_Outlook": {
+                    "runAfter": {
+                      "Notify_Caller_Teams": [
+                        "Succeeded",
+                        "Failed"
+                      ]
+                    },
+                    "type": "OpenApiConnection",
+                    "inputs": {
+                      "host": {
+                        "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365",
+                        "connectionName": "shared_office365",
+                        "operationId": "SendEmailV2"
+                      },
+                      "parameters": {
+                        "emailMessage/To": "@coalesce(body('Parse_FinalTriageJson')?['callerUpn'], triggerOutputs()?['body/Caller/Email'], '')",
+                        "emailMessage/Subject": "@{concat('Provisioning request not approved - ticket ', coalesce(triggerOutputs()?['body/Title'],''))}",
+                        "emailMessage/Body": "@{concat('<p>Heads up - your provisioning request on ticket <b>', coalesce(triggerOutputs()?['body/Title'],''), '</b> was not approved. The ticket is now <b>On Hold</b> (Awaiting Approval). The approver declined the request.</p><p><a href=\"https://contoso.sharepoint.com/sites/ITSM/Lists/Tickets/DispForm.aspx?ID=', string(triggerOutputs()?['body/ID']), '\">Open the ticket</a></p>')}",
+                        "emailMessage/Importance": "High"
+                      },
+                      "authentication": "@parameters('$authentication')"
+                    },
+                    "description": "Notify the caller by Outlook email (Office 365 Outlook, catherine.han connection) that the provisioning approval did not pass and the ticket is On Hold. Runs after the Teams DM with [Succeeded, Failed] so neither channel blocks the other. Catherine asked for BOTH Teams AND Outlook; both are now wired."
+                  }
+                }
+              },
+              "expression": {
+                "and": [
+                  {
+                    "equals": [
+                      "@body('Wait_For_Provisioning_Approval')?['responses']?[0]?['approverResponse']",
+                      "Approve"
+                    ]
+                  }
+                ]
+              },
+              "type": "If"
+            },
+            "Escalate_On_Timeout": {
+              "actions": {
+                "Create_Escalation_Approval": {
+                  "runAfter": {},
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "host": {
+                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_approvals",
+                      "connectionName": "shared_approvals",
+                      "operationId": "CreateAnApproval"
+                    },
+                    "parameters": {
+                      "approvalType": "CustomResponse",
+                      "ApprovalCreationInput/title": "@{concat('ESCALATED provisioning approval - ', coalesce(body('Parse_FinalTriageJson')?['proposedAction']?['jobType'], 'job'), ' (', outputs('Generate_JobId'), ')')}",
+                      "ApprovalCreationInput/assignedTo": "@outputs('Compose_Fallback_Upn')",
+                      "ApprovalCreationInput/details": "@{concat('**ESCALATED** - primary approver (', outputs('Compose_Approver_Upn'), ') did not respond within 24h.', decodeUriComponent('%0A%0A'), outputs('Compose_Provisioning_Approval_Details'))}",
+                      "ApprovalCreationInput/itemLink": "@{concat('https://contoso.sharepoint.com/sites/ITSM/Lists/Tickets/DispForm.aspx?ID=', string(triggerOutputs()?['body/ID']))}",
+                      "ApprovalCreationInput/itemLinkDescription": "@{concat('Ticket item ID ', string(triggerOutputs()?['body/ID']))}",
+                      "ApprovalCreationInput/responseOptions": [
+                        "Approve",
+                        "Reject"
+                      ],
+                      "ApprovalCreationInput/enableNotifications": true,
+                      "ApprovalCreationInput/enableReassignment": false
+                    },
+                    "authentication": "@parameters('$authentication')"
+                  }
+                },
+                "Wait_For_Escalation_Approval": {
+                  "runAfter": {
+                    "Create_Escalation_Approval": [
+                      "Succeeded"
+                    ]
+                  },
+                  "limit": {
+                    "timeout": "PT24H"
+                  },
+                  "type": "OpenApiConnectionWebhook",
+                  "inputs": {
+                    "host": {
+                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_approvals",
+                      "connectionName": "shared_approvals",
+                      "operationId": "WaitForAnApproval"
+                    },
+                    "parameters": {
+                      "approvalName": "@body('Create_Escalation_Approval')?['name']"
+                    },
+                    "authentication": "@parameters('$authentication')"
+                  }
+                },
+                "If_Escalation_Approved": {
+                  "actions": {
+                    "Call_Dispatcher_Esc": {
+                      "runAfter": {},
+                      "type": "Http",
+                      "inputs": {
+                        "method": "POST",
+                        "uri": "https://contoso-flow-trigger-url-REDACTED",
+                        "headers": {
+                          "Content-Type": "application/json"
+                        },
+                        "body": {
+                          "pjId": "@body('Create_ProvisioningJob_Row')?['ID']",
+                          "idempotencyKey": "@outputs('Generate_IdempotencyKey')",
+                          "callerUpn": "@coalesce(body('Parse_FinalTriageJson')?['callerUpn'], triggerOutputs()?['body/Caller/Email'], '')",
+                          "approverUpn": "@outputs('Compose_Fallback_Upn')",
+                          "approvalSessionId": "@outputs('Generate_ApprovalSessionId')",
+                          "jobType": "@body('Parse_FinalTriageJson')?['proposedAction']?['jobType']",
+                          "correlationId": "@coalesce(triggerOutputs()?['body/Title'], guid())"
+                        }
+                      }
+                    },
+                    "Patch_PJ_Approved_Esc": {
+                      "runAfter": {
+                        "Call_Dispatcher_Esc": [
+                          "Succeeded",
+                          "Failed",
+                          "TimedOut"
+                        ]
+                      },
+                      "type": "OpenApiConnection",
+                      "inputs": {
+                        "host": {
+                          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                          "connectionName": "shared_sharepointonline",
+                          "operationId": "PatchItem"
+                        },
+                        "parameters": {
+                          "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+                          "table": "Provisioning Jobs",
+                          "id": "@body('Create_ProvisioningJob_Row')?['ID']",
+                          "item/Title": "@outputs('Generate_JobId')",
+                          "item/JobType": "@body('Parse_FinalTriageJson')?['proposedAction']?['jobType']",
+                          "item/JobStatus/Value": "@if(equals(outputs('Call_Dispatcher_Esc')?['statusCode'], 202), 'Dispatched', 'AwaitingApproval')",
+                          "item/ApprovalSessionId": "@outputs('Generate_ApprovalSessionId')",
+                          "item/IdempotencyKey": "@outputs('Generate_IdempotencyKey')",
+                          "item/CorrelationId": "@coalesce(triggerOutputs()?['body/Title'], triggerOutputs()?['body/Title'])",
+                          "item/CallerUpn": "@coalesce(body('Parse_FinalTriageJson')?['callerUpn'], triggerOutputs()?['body/Caller/Email'], '')",
+                          "item/TargetJson": "@string(json(concat('{\"type\":\"user\",\"upn\":\"',coalesce(body('Parse_FinalTriageJson')?['targetUserUpn'], body('Parse_FinalTriageJson')?['callerUpn'], ''),'\"}')))"
+                        },
+                        "authentication": "@parameters('$authentication')"
+                      }
+                    }
+                  },
+                  "runAfter": {
+                    "Wait_For_Escalation_Approval": [
+                      "Succeeded"
+                    ]
+                  },
+                  "else": {
+                    "actions": {
+                      "Patch_PJ_Rejected_Esc": {
+                        "runAfter": {},
+                        "type": "OpenApiConnection",
+                        "inputs": {
+                          "host": {
+                            "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                            "connectionName": "shared_sharepointonline",
+                            "operationId": "PatchItem"
+                          },
+                          "parameters": {
+                            "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+                            "table": "Provisioning Jobs",
+                            "id": "@body('Create_ProvisioningJob_Row')?['ID']",
+                            "item/Title": "@outputs('Generate_JobId')",
+                            "item/JobType": "@body('Parse_FinalTriageJson')?['proposedAction']?['jobType']",
+                            "item/JobStatus/Value": "Rejected",
+                            "item/ApprovalSessionId": "@outputs('Generate_ApprovalSessionId')",
+                            "item/IdempotencyKey": "@outputs('Generate_IdempotencyKey')",
+                            "item/CorrelationId": "@coalesce(triggerOutputs()?['body/Title'], triggerOutputs()?['body/Title'])",
+                            "item/CallerUpn": "@coalesce(body('Parse_FinalTriageJson')?['callerUpn'], triggerOutputs()?['body/Caller/Email'], '')",
+                            "item/TargetJson": "@string(json(concat('{\"type\":\"user\",\"upn\":\"',coalesce(body('Parse_FinalTriageJson')?['targetUserUpn'], body('Parse_FinalTriageJson')?['callerUpn'], ''),'\"}')))",
+                            "item/CompletedAt": "@utcNow()",
+                            "item/ErrorJson": "@{concat('{\"reason\":\"approval_rejected_escalated\",\"approvalSessionId\":\"', outputs('Generate_ApprovalSessionId'), '\",\"comments\":', if(equals(coalesce(first(body('Wait_For_Escalation_Approval')?['responses'])?['comments'],''),''), 'null', concat('\"', first(body('Wait_For_Escalation_Approval')?['responses'])?['comments'], '\"')), '}')}"
+                          },
+                          "authentication": "@parameters('$authentication')"
+                        }
+                      },
+                      "Get_Ticket_Esc": {
+                        "runAfter": {
+                          "Patch_PJ_Rejected_Esc": [
+                            "Succeeded",
+                            "Failed"
+                          ]
+                        },
+                        "type": "OpenApiConnection",
+                        "inputs": {
+                          "host": {
+                            "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                            "connectionName": "shared_sharepointonline",
+                            "operationId": "GetItem"
+                          },
+                          "parameters": {
+                            "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+                            "table": "Tickets",
+                            "id": "@triggerOutputs()?['body/ID']"
+                          },
+                          "authentication": "@parameters('$authentication')"
+                        },
+                        "description": "Re-read the live ticket immediately before the On-Hold patch (escalation branch). Same stale-snapshot guard as the primary path."
+                      },
+                      "Hold_Ticket_Esc": {
+                        "runAfter": {
+                          "Get_Ticket_Esc": [
+                            "Succeeded"
+                          ]
+                        },
+                        "type": "OpenApiConnection",
+                        "inputs": {
+                          "host": {
+                            "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                            "connectionName": "shared_sharepointonline",
+                            "operationId": "PatchItem"
+                          },
+                          "parameters": {
+                            "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+                            "table": "Tickets",
+                            "id": "@triggerOutputs()?['body/ID']",
+                            "item/Title": "@body('Get_Ticket_Esc')?['Title']",
+                            "item/ShortDescription": "@body('Get_Ticket_Esc')?['ShortDescription']",
+                            "item/TicketState/Value": "On Hold",
+                            "item/HoldReason/Value": "Awaiting Approval"
+                          },
+                          "authentication": "@parameters('$authentication')"
+                        },
+                        "description": "Minimal patch: ticket -> On Hold, HoldReason 'Awaiting Approval' (escalation branch). Title + ShortDescription sourced from Get_Ticket_Esc."
+                      },
+                      "Notify_Caller_Teams_Esc": {
+                        "runAfter": {
+                          "Hold_Ticket_Esc": [
+                            "Succeeded",
+                            "Failed"
+                          ]
+                        },
+                        "type": "OpenApiConnection",
+                        "inputs": {
+                          "host": {
+                            "apiId": "/providers/Microsoft.PowerApps/apis/shared_teams",
+                            "connectionName": "shared_teams",
+                            "operationId": "PostMessageToConversation"
+                          },
+                          "parameters": {
+                            "poster": "Flow bot",
+                            "location": "Chat with Flow bot",
+                            "body/recipient": "@{concat(coalesce(body('Parse_FinalTriageJson')?['callerUpn'], triggerOutputs()?['body/Caller/Email'], ''), ';')}",
+                            "body/messageBody": "@{concat('Heads up - your provisioning request on ticket ', coalesce(triggerOutputs()?['body/Title'],''), ' was not approved. The ticket is now On Hold (Awaiting Approval). The escalation approver declined the request. Open the ticket: https://contoso.sharepoint.com/sites/ITSM/Lists/Tickets/DispForm.aspx?ID=', string(triggerOutputs()?['body/ID']))}"
+                          },
+                          "authentication": "@parameters('$authentication')"
+                        },
+                        "description": "Notify the caller in Teams (Flow-bot DM), escalation branch. Paired with the Outlook email so the caller is reached on BOTH channels."
+                      },
+                      "Notify_Caller_Outlook_Esc": {
+                        "runAfter": {
+                          "Notify_Caller_Teams_Esc": [
+                            "Succeeded",
+                            "Failed"
+                          ]
+                        },
+                        "type": "OpenApiConnection",
+                        "inputs": {
+                          "host": {
+                            "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365",
+                            "connectionName": "shared_office365",
+                            "operationId": "SendEmailV2"
+                          },
+                          "parameters": {
+                            "emailMessage/To": "@coalesce(body('Parse_FinalTriageJson')?['callerUpn'], triggerOutputs()?['body/Caller/Email'], '')",
+                            "emailMessage/Subject": "@{concat('Provisioning request not approved - ticket ', coalesce(triggerOutputs()?['body/Title'],''))}",
+                            "emailMessage/Body": "@{concat('<p>Heads up - your provisioning request on ticket <b>', coalesce(triggerOutputs()?['body/Title'],''), '</b> was not approved. The ticket is now <b>On Hold</b> (Awaiting Approval). The escalation approver declined the request.</p><p><a href=\"https://contoso.sharepoint.com/sites/ITSM/Lists/Tickets/DispForm.aspx?ID=', string(triggerOutputs()?['body/ID']), '\">Open the ticket</a></p>')}",
+                            "emailMessage/Importance": "High"
+                          },
+                          "authentication": "@parameters('$authentication')"
+                        },
+                        "description": "Notify the caller by Outlook email, escalation branch. Runs after the Teams DM with [Succeeded, Failed] so neither channel blocks the other."
+                      }
+                    }
+                  },
+                  "expression": {
+                    "and": [
+                      {
+                        "equals": [
+                          "@body('Wait_For_Escalation_Approval')?['responses']?[0]?['approverResponse']",
+                          "Approve"
+                        ]
+                      }
+                    ]
+                  },
+                  "type": "If"
+                },
+                "Patch_PJ_Rejected_Timeout": {
+                  "runAfter": {
+                    "Wait_For_Escalation_Approval": [
+                      "TimedOut"
+                    ]
+                  },
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "host": {
+                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                      "connectionName": "shared_sharepointonline",
+                      "operationId": "PatchItem"
+                    },
+                    "parameters": {
+                      "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+                      "table": "Provisioning Jobs",
+                      "id": "@body('Create_ProvisioningJob_Row')?['ID']",
+                      "item/Title": "@outputs('Generate_JobId')",
+                      "item/JobType": "@body('Parse_FinalTriageJson')?['proposedAction']?['jobType']",
+                      "item/JobStatus/Value": "Rejected",
+                      "item/ApprovalSessionId": "@outputs('Generate_ApprovalSessionId')",
+                      "item/IdempotencyKey": "@outputs('Generate_IdempotencyKey')",
+                      "item/CorrelationId": "@coalesce(triggerOutputs()?['body/Title'], triggerOutputs()?['body/Title'])",
+                      "item/CallerUpn": "@coalesce(body('Parse_FinalTriageJson')?['callerUpn'], triggerOutputs()?['body/Caller/Email'], '')",
+                      "item/TargetJson": "@string(json(concat('{\"type\":\"user\",\"upn\":\"',coalesce(body('Parse_FinalTriageJson')?['targetUserUpn'], body('Parse_FinalTriageJson')?['callerUpn'], ''),'\"}')))",
+                      "item/CompletedAt": "@utcNow()",
+                      "item/ErrorJson": "@{concat('{\"reason\":\"approval_timeout_no_response\",\"approvalSessionId\":\"', outputs('Generate_ApprovalSessionId'), '\",\"escalatedTo\":\"', outputs('Compose_Fallback_Upn'), '\"}')}"
+                    },
+                    "authentication": "@parameters('$authentication')"
+                  }
+                },
+                "Get_Ticket_Timeout": {
+                  "runAfter": {
+                    "Patch_PJ_Rejected_Timeout": [
+                      "Succeeded",
+                      "Failed"
+                    ]
+                  },
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "host": {
+                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                      "connectionName": "shared_sharepointonline",
+                      "operationId": "GetItem"
+                    },
+                    "parameters": {
+                      "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+                      "table": "Tickets",
+                      "id": "@triggerOutputs()?['body/ID']"
+                    },
+                    "authentication": "@parameters('$authentication')"
+                  },
+                  "description": "Re-read the live ticket immediately before the On-Hold patch (auto-reject timeout branch). Same stale-snapshot guard."
+                },
+                "Hold_Ticket_Timeout": {
+                  "runAfter": {
+                    "Get_Ticket_Timeout": [
+                      "Succeeded"
+                    ]
+                  },
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "host": {
+                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                      "connectionName": "shared_sharepointonline",
+                      "operationId": "PatchItem"
+                    },
+                    "parameters": {
+                      "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+                      "table": "Tickets",
+                      "id": "@triggerOutputs()?['body/ID']",
+                      "item/Title": "@body('Get_Ticket_Timeout')?['Title']",
+                      "item/ShortDescription": "@body('Get_Ticket_Timeout')?['ShortDescription']",
+                      "item/TicketState/Value": "On Hold",
+                      "item/HoldReason/Value": "Awaiting Approval"
+                    },
+                    "authentication": "@parameters('$authentication')"
+                  },
+                  "description": "Minimal patch: ticket -> On Hold, HoldReason 'Awaiting Approval' (auto-reject timeout branch). Title + ShortDescription sourced from Get_Ticket_Timeout."
+                },
+                "Notify_Caller_Teams_Timeout": {
+                  "runAfter": {
+                    "Hold_Ticket_Timeout": [
+                      "Succeeded",
+                      "Failed"
+                    ]
+                  },
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "host": {
+                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_teams",
+                      "connectionName": "shared_teams",
+                      "operationId": "PostMessageToConversation"
+                    },
+                    "parameters": {
+                      "poster": "Flow bot",
+                      "location": "Chat with Flow bot",
+                      "body/recipient": "@{concat(coalesce(body('Parse_FinalTriageJson')?['callerUpn'], triggerOutputs()?['body/Caller/Email'], ''), ';')}",
+                      "body/messageBody": "@{concat('Heads up - your provisioning request on ticket ', coalesce(triggerOutputs()?['body/Title'],''), ' was not approved. The ticket is now On Hold (Awaiting Approval). No approver responded within the escalation window, so it was auto-rejected. Open the ticket: https://contoso.sharepoint.com/sites/ITSM/Lists/Tickets/DispForm.aspx?ID=', string(triggerOutputs()?['body/ID']))}"
+                    },
+                    "authentication": "@parameters('$authentication')"
+                  },
+                  "description": "Notify the caller in Teams (Flow-bot DM), auto-reject timeout branch. Paired with the Outlook email so the caller is reached on BOTH channels."
+                },
+                "Notify_Caller_Outlook_Timeout": {
+                  "runAfter": {
+                    "Notify_Caller_Teams_Timeout": [
+                      "Succeeded",
+                      "Failed"
+                    ]
+                  },
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "host": {
+                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365",
+                      "connectionName": "shared_office365",
+                      "operationId": "SendEmailV2"
+                    },
+                    "parameters": {
+                      "emailMessage/To": "@coalesce(body('Parse_FinalTriageJson')?['callerUpn'], triggerOutputs()?['body/Caller/Email'], '')",
+                      "emailMessage/Subject": "@{concat('Provisioning request not approved - ticket ', coalesce(triggerOutputs()?['body/Title'],''))}",
+                      "emailMessage/Body": "@{concat('<p>Heads up - your provisioning request on ticket <b>', coalesce(triggerOutputs()?['body/Title'],''), '</b> was not approved. The ticket is now <b>On Hold</b> (Awaiting Approval). No approver responded within the escalation window, so it was auto-rejected.</p><p><a href=\"https://contoso.sharepoint.com/sites/ITSM/Lists/Tickets/DispForm.aspx?ID=', string(triggerOutputs()?['body/ID']), '\">Open the ticket</a></p>')}",
+                      "emailMessage/Importance": "High"
+                    },
+                    "authentication": "@parameters('$authentication')"
+                  },
+                  "description": "Notify the caller by Outlook email, auto-reject timeout branch. Runs after the Teams DM with [Succeeded, Failed] so neither channel blocks the other."
+                }
+              },
+              "runAfter": {
+                "Wait_For_Provisioning_Approval": [
+                  "TimedOut"
+                ]
+              },
+              "type": "Scope",
+              "description": "Wait #1 timed out (no response in 24h). Escalate once to the ITSM Approvers fallback pool, wait another 24h. Second timeout auto-REJECTS (PJ Rejected + ticket On Hold + notify caller). Never auto-approve. (ADR 0002 / approval spec sec.7)"
             }
           }
         }
@@ -829,28 +1320,27 @@
       "default": {
         "actions": {
           "Update_Ticket_OnUnknownOutcome": {
-            "runAfter": {},
             "type": "OpenApiConnection",
             "inputs": {
-              "host": {
-                "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
-                "connectionName": "shared_sharepointonline",
-                "operationId": "PatchItem"
-              },
               "parameters": {
                 "dataset": "https://contoso.sharepoint.com/sites/ITSM",
                 "table": "Tickets",
                 "id": "@triggerOutputs()?['body/ID']",
                 "item/Title": "@triggerOutputs()?['body/Title']",
-                "item/TicketType/Value": "@variables('lastTicketType')",
                 "item/ShortDescription": "@triggerOutputs()?['body/ShortDescription']",
+                "item/TicketType/Value": "@variables('lastTicketType')",
+                "item/Caller/Claims": "@triggerOutputs()?['body/Caller/Claims']",
                 "item/TicketState/Value": "On Hold",
                 "item/HoldReason/Value": "Awaiting Caller",
-                "item/Caller/Claims": "@triggerOutputs()?['body/Caller/Claims']",
                 "item/Impact/Value": "@variables('lastImpactLabel')",
                 "item/Urgency/Value": "@variables('lastUrgencyLabel')",
                 "item/ConfidentialityLevel/Value": "@coalesce(triggerOutputs()?['body/ConfidentialityLevel/Value'], 'Public')",
                 "item/Description": "@{concat('Triage loop exited with outcome=', variables('agentOutcome'), '. Routed to human queue.\n\n=== Q&A history ===', variables('accumulatedContext'), '\n\n=== Last agent reply ===\n', variables('agentRawReply'))}"
+              },
+              "host": {
+                "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                "connectionName": "shared_sharepointonline",
+                "operationId": "PatchItem"
               },
               "authentication": "@parameters('$authentication')"
             }
@@ -877,16 +1367,16 @@
       },
       "type": "OpenApiConnection",
       "inputs": {
-        "host": {
-          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
-          "connectionName": "shared_sharepointonline",
-          "operationId": "GetItems"
-        },
         "parameters": {
           "dataset": "https://contoso.sharepoint.com/sites/ITSM",
           "table": "Categories",
           "$filter": "@{concat('Title eq ''', coalesce(body('Parse_FinalTriageJson')?['category'], 'General Inquiry'), '''')}",
           "$top": 1
+        },
+        "host": {
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+          "connectionName": "shared_sharepointonline",
+          "operationId": "GetItems"
         },
         "authentication": "@parameters('$authentication')"
       }
@@ -899,19 +1389,20 @@
       },
       "type": "OpenApiConnection",
       "inputs": {
-        "host": {
-          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
-          "connectionName": "shared_sharepointonline",
-          "operationId": "GetItems"
-        },
         "parameters": {
           "dataset": "https://contoso.sharepoint.com/sites/ITSM",
           "table": "Priority Matrix",
           "$filter": "@{concat('Title eq ''', outputs('Compose_PriorityMatrixKey'), '''')}",
           "$top": 1
         },
+        "host": {
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+          "connectionName": "shared_sharepointonline",
+          "operationId": "GetItems"
+        },
         "authentication": "@parameters('$authentication')"
       }
     }
-  }
+  },
+  "description": "REVERT NOTIF-1: removed the Clarifier wiring from the Triage-Orchestrator. Deleted If_StopAndAsk (Update_Ticket_AwaitingCaller + Fire_Clarifier_Child + Set_Outcome_AwaitingCaller) from Triage_Loop and the no-op Outcome_AwaitingCaller Switch case. The triage agent's stop_and_ask outcome now falls through to the Branch_FinalOutcome default (Update_Ticket_OnUnknownOutcome -> On Hold / Awaiting Caller / routed to human queue), restoring pre-NOTIF-1 behaviour. The Clarifier child is owned exclusively by the Ticket-Type Validator. #flowstudio-mcp"
 }

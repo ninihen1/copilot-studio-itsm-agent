@@ -341,7 +341,7 @@ After `Dispatched`, ownership transfers to the Dispatcher → Executor pipeline 
 
 ## 14. Out of scope for this spec
 
-- The Adaptive Card schema's exact layout — separate `notifications/cards/` artefact.
+- The Adaptive Card schema's exact layout (handled inline in the notification flows, not this spec).
 - ADR 0003 — full timeout / delegation / escalation policy.
 - Phase-2 auto-approve allowlist when v1.x relaxes the rule.
 - Integration with HR-Confirm stage for `AP-USER-CREATE-V1` — needs an HR system or HRSD list of "real new hires" to confirm against. Open item.

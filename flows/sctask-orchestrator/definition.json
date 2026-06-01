@@ -13,6 +13,15 @@
   },
   "triggers": {
     "When_a_Task_is_Modified": {
+      "recurrence": {
+        "frequency": "Minute",
+        "interval": 2
+      },
+      "evaluatedRecurrence": {
+        "frequency": "Minute",
+        "interval": 2
+      },
+      "splitOn": "@triggerOutputs()?['body/value']",
       "type": "OpenApiConnection",
       "inputs": {
         "host": {
@@ -25,46 +34,11 @@
           "table": "Tasks"
         },
         "authentication": "@parameters('$authentication')"
-      },
-      "recurrence": {
-        "frequency": "Minute",
-        "interval": 2
-      },
-      "splitOn": "@triggerOutputs()?['body/value']"
+      }
     }
   },
   "actions": {
     "If_Task_Reached_Terminal_State": {
-      "runAfter": {},
-      "type": "If",
-      "expression": {
-        "or": [
-          {
-            "equals": [
-              "@triggerOutputs()?['body/TaskState/Value']",
-              "Closed Complete"
-            ]
-          },
-          {
-            "equals": [
-              "@triggerOutputs()?['body/TaskState/Value']",
-              "Closed Incomplete"
-            ]
-          },
-          {
-            "equals": [
-              "@triggerOutputs()?['body/TaskState/Value']",
-              "Closed Skipped"
-            ]
-          },
-          {
-            "equals": [
-              "@triggerOutputs()?['body/TaskState/Value']",
-              "Cancelled"
-            ]
-          }
-        ]
-      },
       "actions": {
         "Get_Sibling_Tasks": {
           "runAfter": {},
@@ -103,25 +77,6 @@
           "inputs": "@greater(length(body('Filter_Failed_Tasks')), 0)"
         },
         "If_All_Tasks_Closed": {
-          "runAfter": {
-            "Compose_All_Closed": [
-              "Succeeded"
-            ],
-            "Compose_Any_Failed": [
-              "Succeeded"
-            ]
-          },
-          "type": "If",
-          "expression": {
-            "and": [
-              {
-                "equals": [
-                  "@outputs('Compose_All_Closed')",
-                  true
-                ]
-              }
-            ]
-          },
           "actions": {
             "Patch_RITM_Closed": {
               "runAfter": {
@@ -213,25 +168,6 @@
               "inputs": "@greater(length(body('Filter_Failed_RITMs')), 0)"
             },
             "If_All_RITMs_Closed": {
-              "runAfter": {
-                "Compose_All_RITMs_Closed": [
-                  "Succeeded"
-                ],
-                "Compose_Any_RITM_Failed": [
-                  "Succeeded"
-                ]
-              },
-              "type": "If",
-              "expression": {
-                "and": [
-                  {
-                    "equals": [
-                      "@outputs('Compose_All_RITMs_Closed')",
-                      true
-                    ]
-                  }
-                ]
-              },
               "actions": {
                 "Get_Parent_Ticket": {
                   "runAfter": {},
@@ -242,9 +178,9 @@
                       "connectionName": "shared_sharepointonline",
                       "operationId": "GetItem"
                     },
-                "parameters": {
-                  "dataset": "https://contoso.sharepoint.com/sites/ITSM",
-                  "table": "Tickets",
+                    "parameters": {
+                      "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+                      "table": "Tickets",
                       "id": "@body('Get_Parent_RITM')?['ParentTicket']?['Id']"
                     },
                     "authentication": "@parameters('$authentication')"
@@ -279,37 +215,56 @@
                       "item/ResolvedDate": "@utcNow()",
                       "item/CloseCode/Value": "@if(outputs('Compose_Any_RITM_Failed'), 'Not Solved (Not Reproducible)', 'Solved Permanently')",
                       "item/CloseNotes": "@{concat('All ', length(body('Get_Sibling_RITMs')?['value']), ' RITM(s) reached terminal state. Auto-resolved by SCTASK Orchestrator.')}"
+                    },
+                    "authentication": "@parameters('$authentication')"
+                  }
                 },
-                "authentication": "@parameters('$authentication')"
-              }
-            },
-            "Post_Ticket_Resolved_Notification": {
+                "Post_Ticket_Resolved_Notification": {
+                  "runAfter": {
+                    "Patch_Ticket_Resolved": [
+                      "Succeeded"
+                    ]
+                  },
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "host": {
+                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_teams",
+                      "connectionName": "shared_teams",
+                      "operationId": "PostMessageToConversation"
+                    },
+                    "parameters": {
+                      "poster": "Flow bot",
+                      "location": "Chat with Flow bot",
+                      "body/recipient": "@{coalesce(body('Get_Parent_Ticket')?['Caller']?['Email'], last(split(coalesce(body('Get_Parent_Ticket')?['Caller']?['Claims'], ''), '|')), 'catherine.han@flowstudio.app')}",
+                      "body/messageBody": "@{concat('<h2>Ticket resolved</h2><p><b>Ticket:</b> ', body('Get_Parent_Ticket')?['Title'], ' (item ID ', string(body('Get_Parent_Ticket')?['ID']), ')</p><p><b>Status:</b> Resolved</p><p><b>Resolved at:</b> ', utcNow(), '</p><p><b>Close code:</b> ', if(outputs('Compose_Any_RITM_Failed'), 'Not Solved (Not Reproducible)', 'Solved Permanently'), '</p><p><b>Resolution summary:</b> All ', string(length(body('Get_Sibling_RITMs')?['value'])), ' RITM(s) reached terminal state. Auto-resolved by SCTASK Orchestrator.</p><p><a href=\"https://contoso.sharepoint.com/sites/ITSM/Lists/Tickets/DispForm.aspx?ID=', string(body('Get_Parent_Ticket')?['ID']), '\">Open ticket</a></p>')}"
+                    },
+                    "authentication": "@parameters('$authentication')"
+                  },
+                  "description": "Day 4 task 11: ticket resolved notification to caller via Teams Flow bot."
+                }
+              },
               "runAfter": {
-                "Patch_Ticket_Resolved": [
+                "Compose_All_RITMs_Closed": [
+                  "Succeeded"
+                ],
+                "Compose_Any_RITM_Failed": [
                   "Succeeded"
                 ]
               },
-              "type": "OpenApiConnection",
-              "inputs": {
-                "host": {
-                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_teams",
-                  "connectionName": "shared_teams",
-                  "operationId": "PostMessageToConversation"
-                },
-                "parameters": {
-                  "poster": "Flow bot",
-                  "location": "Chat with Flow bot",
-                  "body/recipient": "@{coalesce(body('Get_Parent_Ticket')?['Caller']?['Email'], last(split(coalesce(body('Get_Parent_Ticket')?['Caller']?['Claims'], ''), '|')), 'catherine.han@flowstudio.app')}",
-                  "body/messageBody": "@{concat('<h2>Ticket resolved</h2><p><b>Ticket:</b> ', body('Get_Parent_Ticket')?['Title'], ' (item ID ', string(body('Get_Parent_Ticket')?['ID']), ')</p><p><b>Status:</b> Resolved</p><p><b>Resolved at:</b> ', utcNow(), '</p><p><b>Close code:</b> ', if(outputs('Compose_Any_RITM_Failed'), 'Not Solved (Not Reproducible)', 'Solved Permanently'), '</p><p><b>Resolution summary:</b> All ', string(length(body('Get_Sibling_RITMs')?['value'])), ' RITM(s) reached terminal state. Auto-resolved by SCTASK Orchestrator.</p><p><a href=\"https://contoso.sharepoint.com/sites/ITSM/Lists/Tickets/DispForm.aspx?ID=', string(body('Get_Parent_Ticket')?['ID']), '\">Open ticket</a></p>')}"
-                },
-                "authentication": "@parameters('$authentication')"
-              },
-              "description": "Day 4 task 11: ticket resolved notification to caller via Teams Flow bot."
-            }
-          },
-          "else": {
+              "else": {
                 "actions": {}
-              }
+              },
+              "expression": {
+                "and": [
+                  {
+                    "equals": [
+                      "@outputs('Compose_All_RITMs_Closed')",
+                      true
+                    ]
+                  }
+                ]
+              },
+              "type": "If"
             },
             "Filter_Closed_RITMs": {
               "runAfter": {
@@ -336,9 +291,28 @@
               }
             }
           },
+          "runAfter": {
+            "Compose_All_Closed": [
+              "Succeeded"
+            ],
+            "Compose_Any_Failed": [
+              "Succeeded"
+            ]
+          },
           "else": {
             "actions": {}
-          }
+          },
+          "expression": {
+            "and": [
+              {
+                "equals": [
+                  "@outputs('Compose_All_Closed')",
+                  true
+                ]
+              }
+            ]
+          },
+          "type": "If"
         },
         "Filter_Closed_Tasks": {
           "runAfter": {
@@ -365,9 +339,40 @@
           }
         }
       },
+      "runAfter": {},
       "else": {
         "actions": {}
-      }
+      },
+      "expression": {
+        "or": [
+          {
+            "equals": [
+              "@triggerOutputs()?['body/TaskState/Value']",
+              "Closed Complete"
+            ]
+          },
+          {
+            "equals": [
+              "@triggerOutputs()?['body/TaskState/Value']",
+              "Closed Incomplete"
+            ]
+          },
+          {
+            "equals": [
+              "@triggerOutputs()?['body/TaskState/Value']",
+              "Closed Skipped"
+            ]
+          },
+          {
+            "equals": [
+              "@triggerOutputs()?['body/TaskState/Value']",
+              "Cancelled"
+            ]
+          }
+        ]
+      },
+      "type": "If"
     }
-  }
+  },
+  "description": "Day 4 task 11: ticket resolved Teams notification wired. — Updated via Flow Studio MCP #flowstudio-mcp"
 }

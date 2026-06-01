@@ -17,7 +17,6 @@
   },
   "triggers": {
     "Run_Daily_2am": {
-      "type": "Recurrence",
       "recurrence": {
         "frequency": "Day",
         "interval": 1,
@@ -30,7 +29,21 @@
           ]
         },
         "timeZone": "AUS Eastern Standard Time"
-      }
+      },
+      "evaluatedRecurrence": {
+        "frequency": "Day",
+        "interval": 1,
+        "schedule": {
+          "hours": [
+            "2"
+          ],
+          "minutes": [
+            0
+          ]
+        },
+        "timeZone": "AUS Eastern Standard Time"
+      },
+      "type": "Recurrence"
     }
   },
   "actions": {
@@ -53,12 +66,6 @@
       }
     },
     "ForEach_Ticket": {
-      "runAfter": {
-        "Get_Closed_Old_Tickets": [
-          "Succeeded"
-        ]
-      },
-      "type": "Foreach",
       "foreach": "@body('Get_Closed_Old_Tickets')?['value']",
       "actions": {
         "Copy_To_Archive": {
@@ -95,7 +102,7 @@
               "item/ConfidentialityLevel/Value": "@coalesce(items('ForEach_Ticket')?['ConfidentialityLevel']?['Value'], 'Public')",
               "item/MadeSla": "@items('ForEach_Ticket')?['MadeSla']",
               "item/ReopenCount": "@coalesce(items('ForEach_Ticket')?['ReopenCount'], 0)",
-              "item/ArchivedByFlow": "ITSM-Scheduled-Archival"
+              "item/ArchivedByFlow": "ITSM-Archival"
             },
             "authentication": "@parameters('$authentication')"
           }
@@ -134,7 +141,13 @@
             "authentication": "@parameters('$authentication')"
           }
         }
-      }
+      },
+      "runAfter": {
+        "Get_Closed_Old_Tickets": [
+          "Succeeded"
+        ]
+      },
+      "type": "Foreach"
     }
   }
 }

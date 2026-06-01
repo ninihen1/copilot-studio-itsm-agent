@@ -1,7 +1,7 @@
 # ITSM Level 1 Pilot Admin Guide
 
 **Audience:** IT managers, service desk leads, Power Platform admins, and tenant admins  
-**System of record:** SharePoint site `https://contoso.sharepoint.com/sites/ITSM`  
+**System of record:** SharePoint site `https://contoso.sharepoint.com/sites/ITSM` *(`contoso` is a placeholder for your own tenant)*  
 **Power Platform environment:** Flow Studio Demo, environment id `00000000-0000-4000-8000-000000000045`
 
 This guide explains how the ITSM pilot is structured and how admins operate the system.
@@ -10,11 +10,11 @@ This guide explains how the ITSM pilot is structured and how admins operate the 
 
 The ITSM system follows a six-stage pipeline: Intake, Triage, Approval, Dispatch, Execution, and Audit. The operating rule is: **AI proposes, humans approve, scoped service principals execute.** No Copilot Studio agent has Microsoft Graph write permissions.
 
-For the full architecture, pilot status, and implementation history, see [`../README.md`](../README.md) and [`../IMPLEMENTATION-PLAYBOOK.md`](../IMPLEMENTATION-PLAYBOOK.md).
+For the full architecture, pilot status, and implementation history, see [`README.md`](README.md) and [`IMPLEMENTATION-PLAYBOOK.md`](IMPLEMENTATION-PLAYBOOK.md).
 
 ## 2. Pilot Components
 
-This table is a day-to-day operator reference. For full deployment status and implementation details, see [`../IMPLEMENTATION-PLAYBOOK.md`](../IMPLEMENTATION-PLAYBOOK.md).
+This table is a day-to-day operator reference. For full deployment status and implementation details, see [`IMPLEMENTATION-PLAYBOOK.md`](IMPLEMENTATION-PLAYBOOK.md).
 
 ### Core SharePoint Lists
 

@@ -13,6 +13,15 @@
   },
   "triggers": {
     "When_a_PJ_is_Modified": {
+      "recurrence": {
+        "frequency": "Minute",
+        "interval": 3
+      },
+      "evaluatedRecurrence": {
+        "frequency": "Minute",
+        "interval": 3
+      },
+      "splitOn": "@triggerOutputs()?['body/value']",
       "type": "OpenApiConnection",
       "inputs": {
         "host": {
@@ -25,34 +34,11 @@
           "table": "Provisioning Jobs"
         },
         "authentication": "@parameters('$authentication')"
-      },
-      "recurrence": {
-        "frequency": "Minute",
-        "interval": 3
-      },
-      "splitOn": "@triggerOutputs()?['body/value']"
+      }
     }
   },
   "actions": {
     "If_Exchange_Dispatched": {
-      "runAfter": {},
-      "type": "If",
-      "expression": {
-        "and": [
-          {
-            "equals": [
-              "@triggerOutputs()?['body/JobStatus/Value']",
-              "Dispatched"
-            ]
-          },
-          {
-            "startsWith": [
-              "@coalesce(triggerOutputs()?['body/JobType'],'')",
-              "exchange."
-            ]
-          }
-        ]
-      },
       "actions": {
         "Update_Status_InProgress": {
           "runAfter": {},
@@ -117,11 +103,11 @@
           "type": "Http",
           "inputs": {
             "method": "POST",
-            "uri": "https://login.microsoftonline.com/00000000-0000-4000-8000-000000000009/oauth2/v2.0/token",
+            "uri": "https://login.microsoftonline.com/00000000-0000-0000-0000-000000000001/oauth2/v2.0/token",
             "headers": {
               "Content-Type": "application/x-www-form-urlencoded"
             },
-            "body": "@{concat('grant_type=client_credentials&client_id=00000000-0000-4000-8000-000000000058&scope=https%3A%2F%2Fgraph.microsoft.com%2F.default&client_secret=', encodeUriComponent(body('Get_KV_Secret')?['value']))}"
+            "body": "@{concat('grant_type=client_credentials&client_id=00000000-0000-0000-0000-000000000003&scope=https%3A%2F%2Fgraph.microsoft.com%2F.default&client_secret=', encodeUriComponent(body('Get_KV_Secret')?['value']))}"
           },
           "runtimeConfiguration": {
             "secureData": {
@@ -207,50 +193,21 @@
             },
             "authentication": "@parameters('$authentication')"
           },
+          "description": "Phase 3.1 — fetches the Function key for exo-mailbox-permission. Stored in KV as 'ExoMailboxPermission-FunctionKey'.",
           "runtimeConfiguration": {
-            "secureData": { "properties": ["inputs", "outputs"] }
-          },
-          "description": "Phase 3.1 — fetches the Function key for exo-mailbox-permission. Stored in KV as 'ExoMailboxPermission-FunctionKey'."
+            "secureData": {
+              "properties": [
+                "inputs",
+                "outputs"
+              ]
+            }
+          }
         },
         "Switch_JobType": {
           "runAfter": {
             "Get_KV_Secret_FunctionKey": [
               "Succeeded"
             ]
-          },
-          "type": "Switch",
-          "expression": "@triggerOutputs()?['body/JobType']",
-          "default": {
-            "actions": {
-              "Update_Failed_UnsupportedJobType": {
-                "runAfter": {},
-                "type": "OpenApiConnection",
-                "inputs": {
-                  "host": {
-                    "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
-                    "connectionName": "shared_sharepointonline",
-                    "operationId": "PatchItem"
-                  },
-                  "parameters": {
-                    "dataset": "https://contoso.sharepoint.com/sites/ITSM",
-                    "table": "Provisioning Jobs",
-                    "id": "@triggerOutputs()?['body/ID']",
-                    "item/Title": "@coalesce(triggerOutputs()?['body/Title'], 'PJ-fallback')",
-                    "item/JobType": "@triggerOutputs()?['body/JobType']",
-                    "item/ParentTicket/Id": "@triggerOutputs()?['body/ParentTicket/Id']",
-                    "item/JobStatus/Value": "Failed",
-                    "item/CallerUpn": "@triggerOutputs()?['body/CallerUpn']",
-                    "item/TargetJson": "@triggerOutputs()?['body/TargetJson']",
-                    "item/IdempotencyKey": "@triggerOutputs()?['body/IdempotencyKey']",
-                    "item/CorrelationId": "@triggerOutputs()?['body/CorrelationId']",
-                    "item/ServicePrincipal": "SP-IT-Exchange",
-                    "item/CompletedAt": "@utcNow()",
-                    "item/ErrorJson": "@{concat('{\"reason\":\"unsupported_jobtype\",\"jobType\":\"', triggerOutputs()?['body/JobType'], '\",\"executor\":\"SP-IT-Exchange\"}')}"
-                  },
-                  "authentication": "@parameters('$authentication')"
-                }
-              }
-            }
           },
           "cases": {
             "JobType_GrantFullAccess": {
@@ -284,7 +241,11 @@
                     "body": "@outputs('Compose_Body_GrantFullAccess')"
                   },
                   "runtimeConfiguration": {
-                    "secureData": { "properties": ["inputs"] }
+                    "secureData": {
+                      "properties": [
+                        "inputs"
+                      ]
+                    }
                   }
                 },
                 "Update_Succeeded_GrantFullAccess": {
@@ -388,7 +349,11 @@
                     "body": "@outputs('Compose_Body_RevokeFullAccess')"
                   },
                   "runtimeConfiguration": {
-                    "secureData": { "properties": ["inputs"] }
+                    "secureData": {
+                      "properties": [
+                        "inputs"
+                      ]
+                    }
                   }
                 },
                 "Update_Succeeded_RevokeFullAccess": {
@@ -461,12 +426,836 @@
                   }
                 }
               }
+            },
+            "JobType_GrantSendAs": {
+              "case": "exchange.grantSendAs",
+              "actions": {
+                "Compose_Body_GrantSendAs": {
+                  "runAfter": {},
+                  "type": "Compose",
+                  "inputs": {
+                    "action": "grantSendAs",
+                    "mailboxUpn": "@{coalesce(if(empty(coalesce(triggerOutputs()?['body/ArgsJson'],'')), null, json(triggerOutputs()?['body/ArgsJson'])?['mailboxUpn']), '')}",
+                    "delegateUpn": "@{body('Parse_Target')?['upn']}",
+                    "correlationId": "@{triggerOutputs()?['body/CorrelationId']}"
+                  }
+                },
+                "Http_Exo_GrantSendAs": {
+                  "runAfter": {
+                    "Compose_Body_GrantSendAs": [
+                      "Succeeded"
+                    ]
+                  },
+                  "type": "Http",
+                  "inputs": {
+                    "method": "POST",
+                    "uri": "@{concat('https://func-itsm-dev.azurewebsites.net/api/exo-mailbox-permission?code=', body('Get_KV_Secret_FunctionKey')?['value'])}",
+                    "headers": {
+                      "Content-Type": "application/json"
+                    },
+                    "body": "@outputs('Compose_Body_GrantSendAs')"
+                  },
+                  "runtimeConfiguration": {
+                    "secureData": {
+                      "properties": [
+                        "inputs"
+                      ]
+                    }
+                  }
+                },
+                "Update_Succeeded_GrantSendAs": {
+                  "runAfter": {
+                    "Http_Exo_GrantSendAs": [
+                      "Succeeded"
+                    ]
+                  },
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "host": {
+                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                      "connectionName": "shared_sharepointonline",
+                      "operationId": "PatchItem"
+                    },
+                    "parameters": {
+                      "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+                      "table": "Provisioning Jobs",
+                      "id": "@triggerOutputs()?['body/ID']",
+                      "item/Title": "@coalesce(triggerOutputs()?['body/Title'], 'PJ-fallback')",
+                      "item/JobType": "@triggerOutputs()?['body/JobType']",
+                      "item/ParentTicket/Id": "@triggerOutputs()?['body/ParentTicket/Id']",
+                      "item/JobStatus/Value": "Succeeded",
+                      "item/CallerUpn": "@triggerOutputs()?['body/CallerUpn']",
+                      "item/TargetJson": "@triggerOutputs()?['body/TargetJson']",
+                      "item/IdempotencyKey": "@triggerOutputs()?['body/IdempotencyKey']",
+                      "item/CorrelationId": "@triggerOutputs()?['body/CorrelationId']",
+                      "item/ServicePrincipal": "SP-IT-Exchange",
+                      "item/CompletedAt": "@utcNow()",
+                      "item/DurationMs": "@div(sub(ticks(utcNow()), ticks(body('Update_Status_InProgress')?['StartedAt'])), 10000)",
+                      "item/GraphRequestId": "@coalesce(outputs('Http_Exo_GrantSendAs')?['headers']?['x-ms-correlation-id'], outputs('Http_Exo_GrantSendAs')?['headers']?['request-id'])",
+                      "item/ResultJson": "@{concat('{\"sendAsGranted\":true,\"mailbox\":\"', coalesce(if(empty(coalesce(triggerOutputs()?['body/ArgsJson'],'')), null, json(triggerOutputs()?['body/ArgsJson'])?['mailboxUpn']), ''), '\",\"delegate\":\"', body('Parse_Target')?['upn'], '\",\"functionResponse\":', string(body('Http_Exo_GrantSendAs')), '}')}"
+                    },
+                    "authentication": "@parameters('$authentication')"
+                  }
+                },
+                "Update_Failed_GrantSendAs": {
+                  "runAfter": {
+                    "Http_Exo_GrantSendAs": [
+                      "Failed",
+                      "TimedOut"
+                    ]
+                  },
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "host": {
+                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                      "connectionName": "shared_sharepointonline",
+                      "operationId": "PatchItem"
+                    },
+                    "parameters": {
+                      "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+                      "table": "Provisioning Jobs",
+                      "id": "@triggerOutputs()?['body/ID']",
+                      "item/Title": "@coalesce(triggerOutputs()?['body/Title'], 'PJ-fallback')",
+                      "item/JobType": "@triggerOutputs()?['body/JobType']",
+                      "item/ParentTicket/Id": "@triggerOutputs()?['body/ParentTicket/Id']",
+                      "item/JobStatus/Value": "Failed",
+                      "item/CallerUpn": "@triggerOutputs()?['body/CallerUpn']",
+                      "item/TargetJson": "@triggerOutputs()?['body/TargetJson']",
+                      "item/IdempotencyKey": "@triggerOutputs()?['body/IdempotencyKey']",
+                      "item/CorrelationId": "@triggerOutputs()?['body/CorrelationId']",
+                      "item/ServicePrincipal": "SP-IT-Exchange",
+                      "item/CompletedAt": "@utcNow()",
+                      "item/DurationMs": "@div(sub(ticks(utcNow()), ticks(body('Update_Status_InProgress')?['StartedAt'])), 10000)",
+                      "item/GraphRequestId": "@coalesce(outputs('Http_Exo_GrantSendAs')?['headers']?['x-ms-correlation-id'], outputs('Http_Exo_GrantSendAs')?['headers']?['request-id'])",
+                      "item/ErrorJson": "@{string(body('Http_Exo_GrantSendAs'))}"
+                    },
+                    "authentication": "@parameters('$authentication')"
+                  }
+                }
+              }
+            },
+            "JobType_RevokeSendAs": {
+              "case": "exchange.revokeSendAs",
+              "actions": {
+                "Compose_Body_RevokeSendAs": {
+                  "runAfter": {},
+                  "type": "Compose",
+                  "inputs": {
+                    "action": "revokeSendAs",
+                    "mailboxUpn": "@{coalesce(if(empty(coalesce(triggerOutputs()?['body/ArgsJson'],'')), null, json(triggerOutputs()?['body/ArgsJson'])?['mailboxUpn']), '')}",
+                    "delegateUpn": "@{body('Parse_Target')?['upn']}",
+                    "correlationId": "@{triggerOutputs()?['body/CorrelationId']}"
+                  }
+                },
+                "Http_Exo_RevokeSendAs": {
+                  "runAfter": {
+                    "Compose_Body_RevokeSendAs": [
+                      "Succeeded"
+                    ]
+                  },
+                  "type": "Http",
+                  "inputs": {
+                    "method": "POST",
+                    "uri": "@{concat('https://func-itsm-dev.azurewebsites.net/api/exo-mailbox-permission?code=', body('Get_KV_Secret_FunctionKey')?['value'])}",
+                    "headers": {
+                      "Content-Type": "application/json"
+                    },
+                    "body": "@outputs('Compose_Body_RevokeSendAs')"
+                  },
+                  "runtimeConfiguration": {
+                    "secureData": {
+                      "properties": [
+                        "inputs"
+                      ]
+                    }
+                  }
+                },
+                "Update_Succeeded_RevokeSendAs": {
+                  "runAfter": {
+                    "Http_Exo_RevokeSendAs": [
+                      "Succeeded"
+                    ]
+                  },
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "host": {
+                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                      "connectionName": "shared_sharepointonline",
+                      "operationId": "PatchItem"
+                    },
+                    "parameters": {
+                      "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+                      "table": "Provisioning Jobs",
+                      "id": "@triggerOutputs()?['body/ID']",
+                      "item/Title": "@coalesce(triggerOutputs()?['body/Title'], 'PJ-fallback')",
+                      "item/JobType": "@triggerOutputs()?['body/JobType']",
+                      "item/ParentTicket/Id": "@triggerOutputs()?['body/ParentTicket/Id']",
+                      "item/JobStatus/Value": "Succeeded",
+                      "item/CallerUpn": "@triggerOutputs()?['body/CallerUpn']",
+                      "item/TargetJson": "@triggerOutputs()?['body/TargetJson']",
+                      "item/IdempotencyKey": "@triggerOutputs()?['body/IdempotencyKey']",
+                      "item/CorrelationId": "@triggerOutputs()?['body/CorrelationId']",
+                      "item/ServicePrincipal": "SP-IT-Exchange",
+                      "item/CompletedAt": "@utcNow()",
+                      "item/DurationMs": "@div(sub(ticks(utcNow()), ticks(body('Update_Status_InProgress')?['StartedAt'])), 10000)",
+                      "item/GraphRequestId": "@coalesce(outputs('Http_Exo_RevokeSendAs')?['headers']?['x-ms-correlation-id'], outputs('Http_Exo_RevokeSendAs')?['headers']?['request-id'])",
+                      "item/ResultJson": "@{concat('{\"sendAsRevoked\":true,\"mailbox\":\"', coalesce(if(empty(coalesce(triggerOutputs()?['body/ArgsJson'],'')), null, json(triggerOutputs()?['body/ArgsJson'])?['mailboxUpn']), ''), '\",\"delegate\":\"', body('Parse_Target')?['upn'], '\",\"functionResponse\":', string(body('Http_Exo_RevokeSendAs')), '}')}"
+                    },
+                    "authentication": "@parameters('$authentication')"
+                  }
+                },
+                "Update_Failed_RevokeSendAs": {
+                  "runAfter": {
+                    "Http_Exo_RevokeSendAs": [
+                      "Failed",
+                      "TimedOut"
+                    ]
+                  },
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "host": {
+                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                      "connectionName": "shared_sharepointonline",
+                      "operationId": "PatchItem"
+                    },
+                    "parameters": {
+                      "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+                      "table": "Provisioning Jobs",
+                      "id": "@triggerOutputs()?['body/ID']",
+                      "item/Title": "@coalesce(triggerOutputs()?['body/Title'], 'PJ-fallback')",
+                      "item/JobType": "@triggerOutputs()?['body/JobType']",
+                      "item/ParentTicket/Id": "@triggerOutputs()?['body/ParentTicket/Id']",
+                      "item/JobStatus/Value": "Failed",
+                      "item/CallerUpn": "@triggerOutputs()?['body/CallerUpn']",
+                      "item/TargetJson": "@triggerOutputs()?['body/TargetJson']",
+                      "item/IdempotencyKey": "@triggerOutputs()?['body/IdempotencyKey']",
+                      "item/CorrelationId": "@triggerOutputs()?['body/CorrelationId']",
+                      "item/ServicePrincipal": "SP-IT-Exchange",
+                      "item/CompletedAt": "@utcNow()",
+                      "item/DurationMs": "@div(sub(ticks(utcNow()), ticks(body('Update_Status_InProgress')?['StartedAt'])), 10000)",
+                      "item/GraphRequestId": "@coalesce(outputs('Http_Exo_RevokeSendAs')?['headers']?['x-ms-correlation-id'], outputs('Http_Exo_RevokeSendAs')?['headers']?['request-id'])",
+                      "item/ErrorJson": "@{string(body('Http_Exo_RevokeSendAs'))}"
+                    },
+                    "authentication": "@parameters('$authentication')"
+                  }
+                }
+              }
+            },
+            "JobType_GrantSendOnBehalf": {
+              "case": "exchange.grantSendOnBehalf",
+              "actions": {
+                "Compose_Body_GrantSendOnBehalf": {
+                  "runAfter": {},
+                  "type": "Compose",
+                  "inputs": {
+                    "action": "grantSendOnBehalf",
+                    "mailboxUpn": "@{coalesce(if(empty(coalesce(triggerOutputs()?['body/ArgsJson'],'')), null, json(triggerOutputs()?['body/ArgsJson'])?['mailboxUpn']), '')}",
+                    "delegateUpn": "@{body('Parse_Target')?['upn']}",
+                    "correlationId": "@{triggerOutputs()?['body/CorrelationId']}"
+                  }
+                },
+                "Http_Exo_GrantSendOnBehalf": {
+                  "runAfter": {
+                    "Compose_Body_GrantSendOnBehalf": [
+                      "Succeeded"
+                    ]
+                  },
+                  "type": "Http",
+                  "inputs": {
+                    "method": "POST",
+                    "uri": "@{concat('https://func-itsm-dev.azurewebsites.net/api/exo-mailbox-permission?code=', body('Get_KV_Secret_FunctionKey')?['value'])}",
+                    "headers": {
+                      "Content-Type": "application/json"
+                    },
+                    "body": "@outputs('Compose_Body_GrantSendOnBehalf')"
+                  },
+                  "runtimeConfiguration": {
+                    "secureData": {
+                      "properties": [
+                        "inputs"
+                      ]
+                    }
+                  }
+                },
+                "Update_Succeeded_GrantSendOnBehalf": {
+                  "runAfter": {
+                    "Http_Exo_GrantSendOnBehalf": [
+                      "Succeeded"
+                    ]
+                  },
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "host": {
+                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                      "connectionName": "shared_sharepointonline",
+                      "operationId": "PatchItem"
+                    },
+                    "parameters": {
+                      "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+                      "table": "Provisioning Jobs",
+                      "id": "@triggerOutputs()?['body/ID']",
+                      "item/Title": "@coalesce(triggerOutputs()?['body/Title'], 'PJ-fallback')",
+                      "item/JobType": "@triggerOutputs()?['body/JobType']",
+                      "item/ParentTicket/Id": "@triggerOutputs()?['body/ParentTicket/Id']",
+                      "item/JobStatus/Value": "Succeeded",
+                      "item/CallerUpn": "@triggerOutputs()?['body/CallerUpn']",
+                      "item/TargetJson": "@triggerOutputs()?['body/TargetJson']",
+                      "item/IdempotencyKey": "@triggerOutputs()?['body/IdempotencyKey']",
+                      "item/CorrelationId": "@triggerOutputs()?['body/CorrelationId']",
+                      "item/ServicePrincipal": "SP-IT-Exchange",
+                      "item/CompletedAt": "@utcNow()",
+                      "item/DurationMs": "@div(sub(ticks(utcNow()), ticks(body('Update_Status_InProgress')?['StartedAt'])), 10000)",
+                      "item/GraphRequestId": "@coalesce(outputs('Http_Exo_GrantSendOnBehalf')?['headers']?['x-ms-correlation-id'], outputs('Http_Exo_GrantSendOnBehalf')?['headers']?['request-id'])",
+                      "item/ResultJson": "@{concat('{\"sendOnBehalfGranted\":true,\"mailbox\":\"', coalesce(if(empty(coalesce(triggerOutputs()?['body/ArgsJson'],'')), null, json(triggerOutputs()?['body/ArgsJson'])?['mailboxUpn']), ''), '\",\"delegate\":\"', body('Parse_Target')?['upn'], '\",\"functionResponse\":', string(body('Http_Exo_GrantSendOnBehalf')), '}')}"
+                    },
+                    "authentication": "@parameters('$authentication')"
+                  }
+                },
+                "Update_Failed_GrantSendOnBehalf": {
+                  "runAfter": {
+                    "Http_Exo_GrantSendOnBehalf": [
+                      "Failed",
+                      "TimedOut"
+                    ]
+                  },
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "host": {
+                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                      "connectionName": "shared_sharepointonline",
+                      "operationId": "PatchItem"
+                    },
+                    "parameters": {
+                      "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+                      "table": "Provisioning Jobs",
+                      "id": "@triggerOutputs()?['body/ID']",
+                      "item/Title": "@coalesce(triggerOutputs()?['body/Title'], 'PJ-fallback')",
+                      "item/JobType": "@triggerOutputs()?['body/JobType']",
+                      "item/ParentTicket/Id": "@triggerOutputs()?['body/ParentTicket/Id']",
+                      "item/JobStatus/Value": "Failed",
+                      "item/CallerUpn": "@triggerOutputs()?['body/CallerUpn']",
+                      "item/TargetJson": "@triggerOutputs()?['body/TargetJson']",
+                      "item/IdempotencyKey": "@triggerOutputs()?['body/IdempotencyKey']",
+                      "item/CorrelationId": "@triggerOutputs()?['body/CorrelationId']",
+                      "item/ServicePrincipal": "SP-IT-Exchange",
+                      "item/CompletedAt": "@utcNow()",
+                      "item/DurationMs": "@div(sub(ticks(utcNow()), ticks(body('Update_Status_InProgress')?['StartedAt'])), 10000)",
+                      "item/GraphRequestId": "@coalesce(outputs('Http_Exo_GrantSendOnBehalf')?['headers']?['x-ms-correlation-id'], outputs('Http_Exo_GrantSendOnBehalf')?['headers']?['request-id'])",
+                      "item/ErrorJson": "@{string(body('Http_Exo_GrantSendOnBehalf'))}"
+                    },
+                    "authentication": "@parameters('$authentication')"
+                  }
+                }
+              }
+            },
+            "JobType_RevokeSendOnBehalf": {
+              "case": "exchange.revokeSendOnBehalf",
+              "actions": {
+                "Compose_Body_RevokeSendOnBehalf": {
+                  "runAfter": {},
+                  "type": "Compose",
+                  "inputs": {
+                    "action": "revokeSendOnBehalf",
+                    "mailboxUpn": "@{coalesce(if(empty(coalesce(triggerOutputs()?['body/ArgsJson'],'')), null, json(triggerOutputs()?['body/ArgsJson'])?['mailboxUpn']), '')}",
+                    "delegateUpn": "@{body('Parse_Target')?['upn']}",
+                    "correlationId": "@{triggerOutputs()?['body/CorrelationId']}"
+                  }
+                },
+                "Http_Exo_RevokeSendOnBehalf": {
+                  "runAfter": {
+                    "Compose_Body_RevokeSendOnBehalf": [
+                      "Succeeded"
+                    ]
+                  },
+                  "type": "Http",
+                  "inputs": {
+                    "method": "POST",
+                    "uri": "@{concat('https://func-itsm-dev.azurewebsites.net/api/exo-mailbox-permission?code=', body('Get_KV_Secret_FunctionKey')?['value'])}",
+                    "headers": {
+                      "Content-Type": "application/json"
+                    },
+                    "body": "@outputs('Compose_Body_RevokeSendOnBehalf')"
+                  },
+                  "runtimeConfiguration": {
+                    "secureData": {
+                      "properties": [
+                        "inputs"
+                      ]
+                    }
+                  }
+                },
+                "Update_Succeeded_RevokeSendOnBehalf": {
+                  "runAfter": {
+                    "Http_Exo_RevokeSendOnBehalf": [
+                      "Succeeded"
+                    ]
+                  },
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "host": {
+                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                      "connectionName": "shared_sharepointonline",
+                      "operationId": "PatchItem"
+                    },
+                    "parameters": {
+                      "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+                      "table": "Provisioning Jobs",
+                      "id": "@triggerOutputs()?['body/ID']",
+                      "item/Title": "@coalesce(triggerOutputs()?['body/Title'], 'PJ-fallback')",
+                      "item/JobType": "@triggerOutputs()?['body/JobType']",
+                      "item/ParentTicket/Id": "@triggerOutputs()?['body/ParentTicket/Id']",
+                      "item/JobStatus/Value": "Succeeded",
+                      "item/CallerUpn": "@triggerOutputs()?['body/CallerUpn']",
+                      "item/TargetJson": "@triggerOutputs()?['body/TargetJson']",
+                      "item/IdempotencyKey": "@triggerOutputs()?['body/IdempotencyKey']",
+                      "item/CorrelationId": "@triggerOutputs()?['body/CorrelationId']",
+                      "item/ServicePrincipal": "SP-IT-Exchange",
+                      "item/CompletedAt": "@utcNow()",
+                      "item/DurationMs": "@div(sub(ticks(utcNow()), ticks(body('Update_Status_InProgress')?['StartedAt'])), 10000)",
+                      "item/GraphRequestId": "@coalesce(outputs('Http_Exo_RevokeSendOnBehalf')?['headers']?['x-ms-correlation-id'], outputs('Http_Exo_RevokeSendOnBehalf')?['headers']?['request-id'])",
+                      "item/ResultJson": "@{concat('{\"sendOnBehalfRevoked\":true,\"mailbox\":\"', coalesce(if(empty(coalesce(triggerOutputs()?['body/ArgsJson'],'')), null, json(triggerOutputs()?['body/ArgsJson'])?['mailboxUpn']), ''), '\",\"delegate\":\"', body('Parse_Target')?['upn'], '\",\"functionResponse\":', string(body('Http_Exo_RevokeSendOnBehalf')), '}')}"
+                    },
+                    "authentication": "@parameters('$authentication')"
+                  }
+                },
+                "Update_Failed_RevokeSendOnBehalf": {
+                  "runAfter": {
+                    "Http_Exo_RevokeSendOnBehalf": [
+                      "Failed",
+                      "TimedOut"
+                    ]
+                  },
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "host": {
+                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                      "connectionName": "shared_sharepointonline",
+                      "operationId": "PatchItem"
+                    },
+                    "parameters": {
+                      "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+                      "table": "Provisioning Jobs",
+                      "id": "@triggerOutputs()?['body/ID']",
+                      "item/Title": "@coalesce(triggerOutputs()?['body/Title'], 'PJ-fallback')",
+                      "item/JobType": "@triggerOutputs()?['body/JobType']",
+                      "item/ParentTicket/Id": "@triggerOutputs()?['body/ParentTicket/Id']",
+                      "item/JobStatus/Value": "Failed",
+                      "item/CallerUpn": "@triggerOutputs()?['body/CallerUpn']",
+                      "item/TargetJson": "@triggerOutputs()?['body/TargetJson']",
+                      "item/IdempotencyKey": "@triggerOutputs()?['body/IdempotencyKey']",
+                      "item/CorrelationId": "@triggerOutputs()?['body/CorrelationId']",
+                      "item/ServicePrincipal": "SP-IT-Exchange",
+                      "item/CompletedAt": "@utcNow()",
+                      "item/DurationMs": "@div(sub(ticks(utcNow()), ticks(body('Update_Status_InProgress')?['StartedAt'])), 10000)",
+                      "item/GraphRequestId": "@coalesce(outputs('Http_Exo_RevokeSendOnBehalf')?['headers']?['x-ms-correlation-id'], outputs('Http_Exo_RevokeSendOnBehalf')?['headers']?['request-id'])",
+                      "item/ErrorJson": "@{string(body('Http_Exo_RevokeSendOnBehalf'))}"
+                    },
+                    "authentication": "@parameters('$authentication')"
+                  }
+                }
+              }
+            },
+            "JobType_CreateDistributionList": {
+              "case": "exchange.createDistributionList",
+              "actions": {
+                "Compose_Body_CreateDistributionList": {
+                  "runAfter": {},
+                  "type": "Compose",
+                  "inputs": {
+                    "action": "createDistributionList",
+                    "dlName": "@{coalesce(if(empty(coalesce(triggerOutputs()?['body/ArgsJson'],'')), null, json(triggerOutputs()?['body/ArgsJson'])?['dlName']), '')}",
+                    "dlAlias": "@{coalesce(if(empty(coalesce(triggerOutputs()?['body/ArgsJson'],'')), null, json(triggerOutputs()?['body/ArgsJson'])?['dlAlias']), '')}",
+                    "dlSmtp": "@{coalesce(if(empty(coalesce(triggerOutputs()?['body/ArgsJson'],'')), null, json(triggerOutputs()?['body/ArgsJson'])?['dlSmtp']), '')}",
+                    "dlType": "@{coalesce(if(empty(coalesce(triggerOutputs()?['body/ArgsJson'],'')), null, json(triggerOutputs()?['body/ArgsJson'])?['dlType']), '')}",
+                    "correlationId": "@{triggerOutputs()?['body/CorrelationId']}"
+                  }
+                },
+                "Http_Exo_CreateDistributionList": {
+                  "runAfter": {
+                    "Compose_Body_CreateDistributionList": [
+                      "Succeeded"
+                    ]
+                  },
+                  "type": "Http",
+                  "inputs": {
+                    "method": "POST",
+                    "uri": "@{concat('https://func-itsm-dev.azurewebsites.net/api/exo-mailbox-permission?code=', body('Get_KV_Secret_FunctionKey')?['value'])}",
+                    "headers": {
+                      "Content-Type": "application/json"
+                    },
+                    "body": "@outputs('Compose_Body_CreateDistributionList')"
+                  },
+                  "runtimeConfiguration": {
+                    "secureData": {
+                      "properties": [
+                        "inputs"
+                      ]
+                    }
+                  }
+                },
+                "Update_Succeeded_CreateDistributionList": {
+                  "runAfter": {
+                    "Http_Exo_CreateDistributionList": [
+                      "Succeeded"
+                    ]
+                  },
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "host": {
+                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                      "connectionName": "shared_sharepointonline",
+                      "operationId": "PatchItem"
+                    },
+                    "parameters": {
+                      "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+                      "table": "Provisioning Jobs",
+                      "id": "@triggerOutputs()?['body/ID']",
+                      "item/Title": "@coalesce(triggerOutputs()?['body/Title'], 'PJ-fallback')",
+                      "item/JobType": "@triggerOutputs()?['body/JobType']",
+                      "item/ParentTicket/Id": "@triggerOutputs()?['body/ParentTicket/Id']",
+                      "item/JobStatus/Value": "Succeeded",
+                      "item/CallerUpn": "@triggerOutputs()?['body/CallerUpn']",
+                      "item/TargetJson": "@triggerOutputs()?['body/TargetJson']",
+                      "item/IdempotencyKey": "@triggerOutputs()?['body/IdempotencyKey']",
+                      "item/CorrelationId": "@triggerOutputs()?['body/CorrelationId']",
+                      "item/ServicePrincipal": "SP-IT-Exchange",
+                      "item/CompletedAt": "@utcNow()",
+                      "item/DurationMs": "@div(sub(ticks(utcNow()), ticks(body('Update_Status_InProgress')?['StartedAt'])), 10000)",
+                      "item/GraphRequestId": "@coalesce(outputs('Http_Exo_CreateDistributionList')?['headers']?['x-ms-correlation-id'], outputs('Http_Exo_CreateDistributionList')?['headers']?['request-id'])",
+                      "item/ResultJson": "@{concat('{\"dlCreated\":true,\"dlName\":\"', coalesce(if(empty(coalesce(triggerOutputs()?['body/ArgsJson'],'')), null, json(triggerOutputs()?['body/ArgsJson'])?['dlName']), ''), '\",\"functionResponse\":', string(body('Http_Exo_CreateDistributionList')), '}')}"
+                    },
+                    "authentication": "@parameters('$authentication')"
+                  }
+                },
+                "Update_Failed_CreateDistributionList": {
+                  "runAfter": {
+                    "Http_Exo_CreateDistributionList": [
+                      "Failed",
+                      "TimedOut"
+                    ]
+                  },
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "host": {
+                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                      "connectionName": "shared_sharepointonline",
+                      "operationId": "PatchItem"
+                    },
+                    "parameters": {
+                      "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+                      "table": "Provisioning Jobs",
+                      "id": "@triggerOutputs()?['body/ID']",
+                      "item/Title": "@coalesce(triggerOutputs()?['body/Title'], 'PJ-fallback')",
+                      "item/JobType": "@triggerOutputs()?['body/JobType']",
+                      "item/ParentTicket/Id": "@triggerOutputs()?['body/ParentTicket/Id']",
+                      "item/JobStatus/Value": "Failed",
+                      "item/CallerUpn": "@triggerOutputs()?['body/CallerUpn']",
+                      "item/TargetJson": "@triggerOutputs()?['body/TargetJson']",
+                      "item/IdempotencyKey": "@triggerOutputs()?['body/IdempotencyKey']",
+                      "item/CorrelationId": "@triggerOutputs()?['body/CorrelationId']",
+                      "item/ServicePrincipal": "SP-IT-Exchange",
+                      "item/CompletedAt": "@utcNow()",
+                      "item/DurationMs": "@div(sub(ticks(utcNow()), ticks(body('Update_Status_InProgress')?['StartedAt'])), 10000)",
+                      "item/GraphRequestId": "@coalesce(outputs('Http_Exo_CreateDistributionList')?['headers']?['x-ms-correlation-id'], outputs('Http_Exo_CreateDistributionList')?['headers']?['request-id'])",
+                      "item/ErrorJson": "@{string(body('Http_Exo_CreateDistributionList'))}"
+                    },
+                    "authentication": "@parameters('$authentication')"
+                  }
+                }
+              }
+            },
+            "JobType_AddDLMember": {
+              "case": "exchange.addDLMember",
+              "actions": {
+                "Compose_Body_AddDLMember": {
+                  "runAfter": {},
+                  "type": "Compose",
+                  "inputs": {
+                    "action": "addDLMember",
+                    "dlIdentity": "@{coalesce(if(empty(coalesce(triggerOutputs()?['body/ArgsJson'],'')), null, json(triggerOutputs()?['body/ArgsJson'])?['dlIdentity']), '')}",
+                    "delegateUpn": "@{body('Parse_Target')?['upn']}",
+                    "correlationId": "@{triggerOutputs()?['body/CorrelationId']}"
+                  }
+                },
+                "Http_Exo_AddDLMember": {
+                  "runAfter": {
+                    "Compose_Body_AddDLMember": [
+                      "Succeeded"
+                    ]
+                  },
+                  "type": "Http",
+                  "inputs": {
+                    "method": "POST",
+                    "uri": "@{concat('https://func-itsm-dev.azurewebsites.net/api/exo-mailbox-permission?code=', body('Get_KV_Secret_FunctionKey')?['value'])}",
+                    "headers": {
+                      "Content-Type": "application/json"
+                    },
+                    "body": "@outputs('Compose_Body_AddDLMember')"
+                  },
+                  "runtimeConfiguration": {
+                    "secureData": {
+                      "properties": [
+                        "inputs"
+                      ]
+                    }
+                  }
+                },
+                "Update_Succeeded_AddDLMember": {
+                  "runAfter": {
+                    "Http_Exo_AddDLMember": [
+                      "Succeeded"
+                    ]
+                  },
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "host": {
+                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                      "connectionName": "shared_sharepointonline",
+                      "operationId": "PatchItem"
+                    },
+                    "parameters": {
+                      "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+                      "table": "Provisioning Jobs",
+                      "id": "@triggerOutputs()?['body/ID']",
+                      "item/Title": "@coalesce(triggerOutputs()?['body/Title'], 'PJ-fallback')",
+                      "item/JobType": "@triggerOutputs()?['body/JobType']",
+                      "item/ParentTicket/Id": "@triggerOutputs()?['body/ParentTicket/Id']",
+                      "item/JobStatus/Value": "Succeeded",
+                      "item/CallerUpn": "@triggerOutputs()?['body/CallerUpn']",
+                      "item/TargetJson": "@triggerOutputs()?['body/TargetJson']",
+                      "item/IdempotencyKey": "@triggerOutputs()?['body/IdempotencyKey']",
+                      "item/CorrelationId": "@triggerOutputs()?['body/CorrelationId']",
+                      "item/ServicePrincipal": "SP-IT-Exchange",
+                      "item/CompletedAt": "@utcNow()",
+                      "item/DurationMs": "@div(sub(ticks(utcNow()), ticks(body('Update_Status_InProgress')?['StartedAt'])), 10000)",
+                      "item/GraphRequestId": "@coalesce(outputs('Http_Exo_AddDLMember')?['headers']?['x-ms-correlation-id'], outputs('Http_Exo_AddDLMember')?['headers']?['request-id'])",
+                      "item/ResultJson": "@{concat('{\"dlMemberAdded\":true,\"dlIdentity\":\"', coalesce(if(empty(coalesce(triggerOutputs()?['body/ArgsJson'],'')), null, json(triggerOutputs()?['body/ArgsJson'])?['dlIdentity']), ''), '\",\"member\":\"', body('Parse_Target')?['upn'], '\",\"functionResponse\":', string(body('Http_Exo_AddDLMember')), '}')}"
+                    },
+                    "authentication": "@parameters('$authentication')"
+                  }
+                },
+                "Update_Failed_AddDLMember": {
+                  "runAfter": {
+                    "Http_Exo_AddDLMember": [
+                      "Failed",
+                      "TimedOut"
+                    ]
+                  },
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "host": {
+                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                      "connectionName": "shared_sharepointonline",
+                      "operationId": "PatchItem"
+                    },
+                    "parameters": {
+                      "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+                      "table": "Provisioning Jobs",
+                      "id": "@triggerOutputs()?['body/ID']",
+                      "item/Title": "@coalesce(triggerOutputs()?['body/Title'], 'PJ-fallback')",
+                      "item/JobType": "@triggerOutputs()?['body/JobType']",
+                      "item/ParentTicket/Id": "@triggerOutputs()?['body/ParentTicket/Id']",
+                      "item/JobStatus/Value": "Failed",
+                      "item/CallerUpn": "@triggerOutputs()?['body/CallerUpn']",
+                      "item/TargetJson": "@triggerOutputs()?['body/TargetJson']",
+                      "item/IdempotencyKey": "@triggerOutputs()?['body/IdempotencyKey']",
+                      "item/CorrelationId": "@triggerOutputs()?['body/CorrelationId']",
+                      "item/ServicePrincipal": "SP-IT-Exchange",
+                      "item/CompletedAt": "@utcNow()",
+                      "item/DurationMs": "@div(sub(ticks(utcNow()), ticks(body('Update_Status_InProgress')?['StartedAt'])), 10000)",
+                      "item/GraphRequestId": "@coalesce(outputs('Http_Exo_AddDLMember')?['headers']?['x-ms-correlation-id'], outputs('Http_Exo_AddDLMember')?['headers']?['request-id'])",
+                      "item/ErrorJson": "@{string(body('Http_Exo_AddDLMember'))}"
+                    },
+                    "authentication": "@parameters('$authentication')"
+                  }
+                }
+              }
+            },
+            "JobType_RemoveDLMember": {
+              "case": "exchange.removeDLMember",
+              "actions": {
+                "Compose_Body_RemoveDLMember": {
+                  "runAfter": {},
+                  "type": "Compose",
+                  "inputs": {
+                    "action": "removeDLMember",
+                    "dlIdentity": "@{coalesce(if(empty(coalesce(triggerOutputs()?['body/ArgsJson'],'')), null, json(triggerOutputs()?['body/ArgsJson'])?['dlIdentity']), '')}",
+                    "delegateUpn": "@{body('Parse_Target')?['upn']}",
+                    "correlationId": "@{triggerOutputs()?['body/CorrelationId']}"
+                  }
+                },
+                "Http_Exo_RemoveDLMember": {
+                  "runAfter": {
+                    "Compose_Body_RemoveDLMember": [
+                      "Succeeded"
+                    ]
+                  },
+                  "type": "Http",
+                  "inputs": {
+                    "method": "POST",
+                    "uri": "@{concat('https://func-itsm-dev.azurewebsites.net/api/exo-mailbox-permission?code=', body('Get_KV_Secret_FunctionKey')?['value'])}",
+                    "headers": {
+                      "Content-Type": "application/json"
+                    },
+                    "body": "@outputs('Compose_Body_RemoveDLMember')"
+                  },
+                  "runtimeConfiguration": {
+                    "secureData": {
+                      "properties": [
+                        "inputs"
+                      ]
+                    }
+                  }
+                },
+                "Update_Succeeded_RemoveDLMember": {
+                  "runAfter": {
+                    "Http_Exo_RemoveDLMember": [
+                      "Succeeded"
+                    ]
+                  },
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "host": {
+                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                      "connectionName": "shared_sharepointonline",
+                      "operationId": "PatchItem"
+                    },
+                    "parameters": {
+                      "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+                      "table": "Provisioning Jobs",
+                      "id": "@triggerOutputs()?['body/ID']",
+                      "item/Title": "@coalesce(triggerOutputs()?['body/Title'], 'PJ-fallback')",
+                      "item/JobType": "@triggerOutputs()?['body/JobType']",
+                      "item/ParentTicket/Id": "@triggerOutputs()?['body/ParentTicket/Id']",
+                      "item/JobStatus/Value": "Succeeded",
+                      "item/CallerUpn": "@triggerOutputs()?['body/CallerUpn']",
+                      "item/TargetJson": "@triggerOutputs()?['body/TargetJson']",
+                      "item/IdempotencyKey": "@triggerOutputs()?['body/IdempotencyKey']",
+                      "item/CorrelationId": "@triggerOutputs()?['body/CorrelationId']",
+                      "item/ServicePrincipal": "SP-IT-Exchange",
+                      "item/CompletedAt": "@utcNow()",
+                      "item/DurationMs": "@div(sub(ticks(utcNow()), ticks(body('Update_Status_InProgress')?['StartedAt'])), 10000)",
+                      "item/GraphRequestId": "@coalesce(outputs('Http_Exo_RemoveDLMember')?['headers']?['x-ms-correlation-id'], outputs('Http_Exo_RemoveDLMember')?['headers']?['request-id'])",
+                      "item/ResultJson": "@{concat('{\"dlMemberRemoved\":true,\"dlIdentity\":\"', coalesce(if(empty(coalesce(triggerOutputs()?['body/ArgsJson'],'')), null, json(triggerOutputs()?['body/ArgsJson'])?['dlIdentity']), ''), '\",\"member\":\"', body('Parse_Target')?['upn'], '\",\"functionResponse\":', string(body('Http_Exo_RemoveDLMember')), '}')}"
+                    },
+                    "authentication": "@parameters('$authentication')"
+                  }
+                },
+                "Update_Failed_RemoveDLMember": {
+                  "runAfter": {
+                    "Http_Exo_RemoveDLMember": [
+                      "Failed",
+                      "TimedOut"
+                    ]
+                  },
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "host": {
+                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                      "connectionName": "shared_sharepointonline",
+                      "operationId": "PatchItem"
+                    },
+                    "parameters": {
+                      "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+                      "table": "Provisioning Jobs",
+                      "id": "@triggerOutputs()?['body/ID']",
+                      "item/Title": "@coalesce(triggerOutputs()?['body/Title'], 'PJ-fallback')",
+                      "item/JobType": "@triggerOutputs()?['body/JobType']",
+                      "item/ParentTicket/Id": "@triggerOutputs()?['body/ParentTicket/Id']",
+                      "item/JobStatus/Value": "Failed",
+                      "item/CallerUpn": "@triggerOutputs()?['body/CallerUpn']",
+                      "item/TargetJson": "@triggerOutputs()?['body/TargetJson']",
+                      "item/IdempotencyKey": "@triggerOutputs()?['body/IdempotencyKey']",
+                      "item/CorrelationId": "@triggerOutputs()?['body/CorrelationId']",
+                      "item/ServicePrincipal": "SP-IT-Exchange",
+                      "item/CompletedAt": "@utcNow()",
+                      "item/DurationMs": "@div(sub(ticks(utcNow()), ticks(body('Update_Status_InProgress')?['StartedAt'])), 10000)",
+                      "item/GraphRequestId": "@coalesce(outputs('Http_Exo_RemoveDLMember')?['headers']?['x-ms-correlation-id'], outputs('Http_Exo_RemoveDLMember')?['headers']?['request-id'])",
+                      "item/ErrorJson": "@{string(body('Http_Exo_RemoveDLMember'))}"
+                    },
+                    "authentication": "@parameters('$authentication')"
+                  }
+                }
+              }
             }
-          }
+          },
+          "default": {
+            "actions": {
+              "Update_Failed_UnsupportedJobType": {
+                "runAfter": {},
+                "type": "OpenApiConnection",
+                "inputs": {
+                  "host": {
+                    "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                    "connectionName": "shared_sharepointonline",
+                    "operationId": "PatchItem"
+                  },
+                  "parameters": {
+                    "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+                    "table": "Provisioning Jobs",
+                    "id": "@triggerOutputs()?['body/ID']",
+                    "item/Title": "@coalesce(triggerOutputs()?['body/Title'], 'PJ-fallback')",
+                    "item/JobType": "@triggerOutputs()?['body/JobType']",
+                    "item/ParentTicket/Id": "@triggerOutputs()?['body/ParentTicket/Id']",
+                    "item/JobStatus/Value": "Failed",
+                    "item/CallerUpn": "@triggerOutputs()?['body/CallerUpn']",
+                    "item/TargetJson": "@triggerOutputs()?['body/TargetJson']",
+                    "item/IdempotencyKey": "@triggerOutputs()?['body/IdempotencyKey']",
+                    "item/CorrelationId": "@triggerOutputs()?['body/CorrelationId']",
+                    "item/ServicePrincipal": "SP-IT-Exchange",
+                    "item/CompletedAt": "@utcNow()",
+                    "item/ErrorJson": "@{concat('{\"reason\":\"unsupported_jobtype\",\"jobType\":\"', triggerOutputs()?['body/JobType'], '\",\"executor\":\"SP-IT-Exchange\"}')}"
+                  },
+                  "authentication": "@parameters('$authentication')"
+                }
+              }
+            }
+          },
+          "expression": "@triggerOutputs()?['body/JobType']",
+          "type": "Switch"
         }
+      },
+      "runAfter": {
+        "Get_PJ_Fresh": [
+          "Succeeded"
+        ]
       },
       "else": {
         "actions": {}
+      },
+      "expression": {
+        "and": [
+          {
+            "equals": [
+              "@outputs('Get_PJ_Fresh')?['body/JobStatus/Value']",
+              "Dispatched"
+            ]
+          },
+          {
+            "startsWith": [
+              "@coalesce(outputs('Get_PJ_Fresh')?['body/JobType'],'')",
+              "exchange."
+            ]
+          }
+        ]
+      },
+      "type": "If"
+    },
+    "Get_PJ_Fresh": {
+      "runAfter": {},
+      "type": "OpenApiConnection",
+      "inputs": {
+        "host": {
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+          "connectionName": "shared_sharepointonline",
+          "operationId": "GetItem"
+        },
+        "parameters": {
+          "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+          "table": "Provisioning Jobs",
+          "id": "@triggerOutputs()?['body/ID']"
+        },
+        "authentication": "@parameters('$authentication')"
       }
     }
   }

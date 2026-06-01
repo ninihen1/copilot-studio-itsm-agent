@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ITSM Pipeline — Independent SharePoint Pollers, Coordinated by Row STATE</title>
+<style>
+  :root{
+    --intake:#5B9BD5; --triage:#ED7D31; --ritm:#70AD47; --approve:#FFC000;
+    --exec:#7030A0; --dead:#C00000; --side:#A6A6A6;
+    --ai-copilot:#0078D4; --ai-studio:#1E88C9; --ai-build:#742774;
+    --agent:#16A085; --call:#111111; --clar:#9B59B6; --ink:#222;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; padding:32px 26px 70px;
+    font-family:"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    color:var(--ink); background:#f7f8fa;
+  }
+  h1{font-size:27px; margin:0 0 10px; text-align:center; letter-spacing:.2px}
+  .sub{max-width:1180px; margin:0 auto 6px; text-align:center; font-style:italic;
+       color:#555; font-size:16px; line-height:1.5}
+  .crux{max-width:1180px; margin:8px auto 22px; text-align:center; font-size:16px;
+        font-weight:600; color:var(--call); line-height:1.5}
+  .wrap{max-width:1320px; margin:0 auto}
+  .mermaid{background:#fff; border:1px solid #e3e6ea; border-radius:12px;
+           padding:24px; overflow-x:auto; box-shadow:0 1px 4px rgba(0,0,0,.08);
+           font-size:16px}
+  .mermaid .nodeLabel, .mermaid .edgeLabel, .mermaid span{font-size:15.5px !important}
+  .mermaid .edgeLabel{background:#fff !important; padding:2px 5px !important}
+  .mermaid .cluster-label .nodeLabel{font-size:17px !important; font-weight:700 !important}
+
+  .legend{max-width:1180px; margin:20px auto 0; background:#fff;
+          border:1px solid #e3e6ea; border-radius:10px; padding:14px 18px;
+          box-shadow:0 1px 3px rgba(0,0,0,.06)}
+  .legend h3{margin:0 0 10px; font-size:14px}
+  .legend .grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(240px,1fr)); gap:8px 18px}
+  .li{display:flex; align-items:center; gap:9px; font-size:12.5px}
+  .sw{width:22px; height:14px; border-radius:3px; border:1px solid #333; flex:0 0 auto}
+  .ln{width:30px; height:0; border-top-width:3px; flex:0 0 auto}
+  .ln.solid{border-top:3px solid var(--call)}
+  .ln.dash{border-top:3px dashed #555}
+
+  .notes{max-width:1180px; margin:18px auto 0}
+  .note{background:#FFF4E6; border:1px solid var(--triage); border-radius:10px;
+        padding:14px 18px; font-size:13px; line-height:1.55; color:#333}
+  .note b{color:#000}
+  .note code{background:#fff; padding:1px 5px; border-radius:3px; border:1px solid #e3e6ea}
+  .ai-foot{max-width:1180px; margin:12px auto 0; text-align:center;
+           font-size:12.5px; font-style:italic; color:#555}
+  .tag{display:inline-block; font-size:11px; font-weight:700; padding:1px 6px;
+       border-radius:4px; background:#eef; color:#225; margin-left:4px}
+</style>
+<script type="module">
+  import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs";
+  mermaid.initialize({ startOnLoad:true, securityLevel:"loose", theme:"base",
+    flowchart:{ curve:"basis", nodeSpacing:60, rankSpacing:75, useMaxWidth:true } });
+</script>
+</head>
+<body>
+
+  <h1>ITSM Pipeline — Independent SharePoint Pollers, Coordinated by Row STATE</h1>
+  <p class="sub">Stage codes &amp; lane tags from <b>FlowDocsInventory</b>. Almost no flow calls another —
+    each polls a shared SharePoint list on its own trigger and fires when its guard matches.</p>
+  <p class="crux">Real inline (HTTP) calls: → <b>4.1 Dispatcher</b> (from 3.1 Approval-Bridge &amp; 2.1 Triage-Orchestrator)
+    · → <b>1.2 Clarifier</b> (from 1.1 Validator, fire-and-forget)</p>
+
+  <div class="wrap">
+  <pre class="mermaid">
+flowchart TD
+
+  %% ===================== HUB 1 =====================
+  TICKETS["<b>Tickets list (SharePoint)</b><br/>SHARED DATA HUB<br/>single source of truth — every flow polls and patches ticket rows here independently"]:::side
+
+  %% ===================== Validator + Clarifier band =====================
+  VAL["<b>1.1 Ticket-Type-Validator</b> <i>[Both]</i><br/>ENTRY POINT — polls Tickets, 1 min<br/>GetOnUpdatedItems · deterministic rules<br/>sets Validated=true, or parks at NeedsConfirmation"]:::triage
+
+  CLR["<b>1.2 Clarifier</b> <i>[Both]</i><br/>HTTP-fired by Validator on parked tickets<br/>fire-and-forget · Approvals card<br/>asks caller to confirm ticket type"]:::clar
+
+  TICKETS -. "Validator polls, 1 min" .-> VAL
+  VAL == "PATCH Validated=true" ==> TICKETS
+  VAL == "PATCH On Hold, NeedsConfirmation" ==> TICKETS
+  VAL == "HTTP (fire-and-forget)" ==> CLR
+  CLR == "PATCH TicketType, reopen row" ==> TICKETS
+
+  TICKETS -. "2.2 RITM-Generator polls, 1 min<br/>fires when TicketType=Request" .-> RG
+  TICKETS -. "2.1 Triage-Orchestrator polls, 3 min<br/>fires when TicketType≠Request" .-> TO
+
+  %% ===================== LEFT: REQUEST LANE =====================
+  subgraph REQ["REQUEST LANE — catalog items"]
+    direction TB
+    RG["<b>2.2 RITM-Generator</b> <i>[Request]</i><br/>creates the RITM record"]:::ritm
+    VT["<b>3.2 RITM-Validation-Triage</b> <i>[Request]</i><br/>reads free-text + Graph resolves user + group<br/>AI Builder — GPT prompt"]:::triage
+    APP["<b>3.3 RITM-Approval</b> <i>[Request]</i><br/>emits the APPROVAL CARD"]:::approve
+  end
+
+  RG -. "creates RITM row, Validation-Triage polls" .-> VT
+  VT -. "PATCH row, RITM-Approval polls" .-> APP
+  APP -. "Catherine approves → Approval-Bridge polls Approvals list" .-> BR
+
+  %% ===================== RIGHT: INCIDENT / AGENTIC LANE =====================
+  subgraph INC["INCIDENT / AGENTIC LANE"]
+    direction TB
+    TO["<b>2.1 Triage-Orchestrator</b> <i>[Incident]</i><br/>built in Copilot Studio · hosts Agent (cre79_agent)<br/>Until-loop: agent proposes the action<br/>routes outcome (cancelled / deflect / propose)"]:::agent
+    PROP["<b>Propose path</b> (same flow)<br/>creates Provisioning Job row<br/>+ native inline Approval (Create and Wait)<br/>PT24H → FallbackApprovers → PT24H → AUTO-REJECT<br/><i>never auto-approves</i>"]:::agent
+    REJ["<b>REJECT / TIMEOUT</b><br/>ticket → On-Hold + Teams DM + Outlook email"]:::dead
+  end
+
+  TO -. "on 'propose' (same flow)" .-> PROP
+  PROP -. "reject / timeout" .-> REJ
+
+  %% ===================== Approval-Bridge (spans both lanes) =====================
+  BR["<b>3.1 Approval-Bridge</b> <i>[Both]*</i><br/>polls Approvals list, 3 min<br/>on terminal state: records decision<br/>Approved → HTTP → Dispatcher<br/>Rejected → PATCH PJ JobStatus=Rejected"]:::ritm
+
+  %% ===================== Dispatcher =====================
+  DISP["<b>4.1 Dispatcher</b> <i>[Both]</i> (HTTP-triggered)<br/>the ONE inline-callable flow · routes by JobType"]:::intake
+
+  BR == "HTTP call" ==> DISP
+  PROP == "APPROVE → HTTP" ==> DISP
+
+  %% ===================== HUB 2 =====================
+  DISP -- "PATCH Provisioning Jobs row" --> PJ
+  PJ["<b>Provisioning Jobs list (SharePoint)</b><br/>DATA HUB<br/>Dispatcher writes job rows; each executor INDEPENDENTLY polls this list by JobType"]:::side
+
+  IDX["<b>5.1 Identity-Executor</b> <i>[Both]</i><br/>disable / enable / resetPassword"]:::exec
+  DOMX["<b>Domain Executors ×5</b> <i>[Both]</i><br/>5.2 Groups · 5.3 Licensing · 5.4 Exchange<br/>5.5 SharePoint · 5.6 Teams<br/><i>SIBLINGS, no chain</i>"]:::exec
+
+  PJ -. "Identity polls JobType=Identity" .-> IDX
+  PJ -. "each domain executor polls its own JobType" .-> DOMX
+
+  %% ===================== HUB 3 =====================
+  SCT["<b>6.1 SCTASK-Orchestrator</b> + <b>3.4 SCTASK-PJ-Bridge</b> <i>[Request]</i>"]:::exec
+  IDX -. "PATCH job done → SCTASK flows poll" .-> SCT
+  DOMX -. "PATCH job done → SCTASK flows poll" .-> SCT
+
+  %% ===================== SIDE AI TOUCHPOINTS =====================
+  MID["<b>X1 Major-Incident-Detector</b><br/>Copilot Agent (cre79_agent)<br/>polls Tickets independently"]:::ai
+  KB["<b>T1 SearchKnowledgeBase</b><br/>Copilot Studio skill · HTTP<br/>reachable only via the agent"]:::ai
+  TICKETS -. "polls" .-> MID
+  TO -. "agent calls KB skill" .-> KB
+
+  %% ===================== OTHER SIDE PROCESSES =====================
+  OTHER["<b>Other side processes (no AI)</b><br/>S1 SLA-Timer · S2 Archival · S3 License-Costs-Sync (Recurrence)<br/>X2 Comment-Resolved-Reopen · X3 Comment-Awaiting-Caller-Resume<br/>T2 License-Lookup · T3 Tracker-Writer<br/>Z3 Comment-Notification <i>[OFF]</i>"]:::side
+
+  classDef side    fill:#A6A6A6,stroke:#333,color:#222,font-weight:bold;
+  classDef triage  fill:#ED7D31,stroke:#333,color:#fff,font-weight:bold;
+  classDef ritm    fill:#70AD47,stroke:#333,color:#fff,font-weight:bold;
+  classDef approve fill:#FFC000,stroke:#333,color:#3a2a00,font-weight:bold;
+  classDef agent   fill:#16A085,stroke:#333,color:#fff,font-weight:bold;
+  classDef exec    fill:#7030A0,stroke:#333,color:#fff,font-weight:bold;
+  classDef intake  fill:#5B9BD5,stroke:#333,color:#fff,font-weight:bold;
+  classDef dead    fill:#C00000,stroke:#333,color:#fff,font-weight:bold;
+  classDef ai      fill:#0078D4,stroke:#333,color:#fff,font-weight:bold;
+  classDef clar    fill:#9B59B6,stroke:#333,color:#fff,font-weight:bold;
+
+  %% thick black = real HTTP calls (Validator→Clarifier, Approval-Bridge→Dispatcher, Triage→Dispatcher)
+  linkStyle 3,4,17,18 stroke:#111111,stroke-width:4px;
+  </pre>
+  </div>
+
+  <div class="legend">
+    <h3>Legend  ·  codes from FlowDocsInventory</h3>
+    <div class="grid">
+      <div class="li"><span class="ln solid"></span> HTTP call (real inline invocation)</div>
+      <div class="li"><span class="ln dash"></span> data handoff (independent SharePoint poll)</div>
+      <div class="li"><span class="sw" style="background:var(--ai-build)"></span> AI Builder (Power Platform AI prompt)</div>
+      <div class="li"><span class="sw" style="background:var(--ai-studio)"></span> Copilot Studio (skill or agent host)</div>
+      <div class="li"><span class="sw" style="background:var(--ai-copilot)"></span> Copilot Agent (cre79_agent)</div>
+      <div class="li"><span class="sw" style="background:var(--side)"></span> Shared SharePoint list (data hub)</div>
+      <div class="li"><span class="sw" style="background:var(--triage)"></span> Validation / triage (1.x, 3.2)</div>
+      <div class="li"><span class="sw" style="background:var(--clar)"></span> Clarifier (1.2)</div>
+      <div class="li"><span class="sw" style="background:var(--ritm)"></span> Request → RITM lifecycle (2.2, 3.x)</div>
+      <div class="li"><span class="sw" style="background:var(--agent)"></span> Incident / Agentic lane (2.1)</div>
+      <div class="li"><span class="sw" style="background:var(--approve)"></span> Approval / human-in-the-loop</div>
+      <div class="li"><span class="sw" style="background:var(--intake)"></span> Dispatcher (4.1) — routing</div>
+      <div class="li"><span class="sw" style="background:var(--exec)"></span> Executors (5.x, 6.1)</div>
+      <div class="li"><span class="sw" style="background:var(--dead)"></span> Reject / timeout terminal</div>
+    </div>
+  </div>
+
+  <div class="notes">
+    <div class="note">
+      <b>Stage codes:</b> <code>1.1 … 6.1</code> = main pipeline.
+      <b>X</b> = exception/edge flows. <b>S</b> = scheduled (Recurrence). <b>T</b> = helper/tool. <b>Z</b> = retired/off.
+      Lane tags <code>[Request]</code> / <code>[Incident]</code> / <code>[Both]</code> / <code>[OFF]</code> taken from FlowDocsInventory.
+      <br><br>
+      <b>* 3.1 Approval-Bridge lane:</b> the inventory currently tags it <code>[Incident]</code>, but the flow definition shows it
+      polls the Approvals SharePoint list and processes any terminal approval — and the Approvals list is fed by
+      <b>both</b> RITM-Approval (Request) <b>and</b> Triage-Orchestrator's inline approval (Incident). Functionally it
+      services both lanes, so the diagram tags it <code>[Both]</code>. Confirm whether the inventory should be updated.
+      <br><br>
+      <b>How it really works:</b> the Validator does NOT call the lanes — it PATCHes the row. <code>2.2 RITM-Generator</code>
+      and <code>2.1 Triage-Orchestrator</code> each poll Tickets on their own trigger. When the Validator cannot type a
+      ticket it fires the <code>1.2 Clarifier</code> (HTTP, fire-and-forget) which asks the caller via an Approvals card and
+      PATCHes the chosen type back, reopening the row. Executors are <b>SIBLINGS</b> polling Provisioning Jobs by JobType
+      — not a call chain.
+    </div>
+  </div>
+
+  <p class="ai-foot">AI surface area: AI Builder GPT in <b>3.2 RITM-Validation-Triage</b>
+    · cre79_agent in <b>2.1 Triage-Orchestrator</b> &amp; <b>X1 Major-Incident-Detector</b>
+    · <b>T1 SearchKnowledgeBase</b> Copilot Studio skill.
+    The Clarifier (1.2) is deterministic — not AI.</p>
+
+</body>
+</html>

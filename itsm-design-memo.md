@@ -14,7 +14,6 @@ This document covers the agent layer and gaps not already captured in the schema
 
 - **sharepoint-itsm-schema.xlsx** — 13 SharePoint lists, full column-level schema, choices, performance notes.
 
-- **itsm-ai-workflow-flowchart.pdf** — six-stage architecture diagram (Intake → Triage → Approval → Dispatch → Execution → Audit).
 
 - **servicenow-itsm-ticketing-report.md** — research on the ServiceNow modules we are mirroring.
 
@@ -39,11 +38,11 @@ Plain-language definitions of the terms used throughout this document.
 
 # **3. Architecture at a Glance**
 
-Six stages, top to bottom. The full diagram is in itsm-ai-workflow-flowchart.pdf.
+Six stages, top to bottom.
 
 | Stage | Layer | What happens |
 |---|---|---|
-| 1. Intake | Outlook · Teams · Portal · Voice | Ticket created in SharePoint Tickets list. All channels normalise to the same record. Portal intake validates Incident vs Request before save where possible. |
+| 1. Intake | Teams · Portal · Voice | Ticket created in SharePoint Tickets list. All channels normalise to the same record. **Pilot: only the Service Portal intake is built — Teams and Voice are design-target channels, not yet implemented.** Portal intake validates Incident vs Request before save where possible. |
 | 2. Triage | AI (read-only) | Ticket-type validation gate confirms the row should enter triage or request fulfillment. Triage Agent classifies, links to CI, matches KB, suggests assignee, proposes resolution. No writes. |
 | 3. Approval | Human-in-the-loop | Confidence + risk gate. High-confidence/low-risk → auto-resolve. Write actions → Approval Policy stages (Manager / IT Owner / CAB). |
 | 4. Dispatch | Single HTTP endpoint | POST /provisioning/jobs validates approval and idempotency, then routes by jobType. |
@@ -65,8 +64,6 @@ The single user-facing agent. Receives a request from any channel, classifies it
 ### **Surfaces & identity**
 
 - Teams: 1:1 chat with the bot, plus @mention in channels.
-
-- Outlook: forward-to-bot mailbox creates a ticket from the email body.
 
 - Service Portal: embedded chat widget on the internal portal.
 

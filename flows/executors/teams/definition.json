@@ -13,6 +13,15 @@
   },
   "triggers": {
     "When_a_PJ_is_Modified": {
+      "recurrence": {
+        "frequency": "Minute",
+        "interval": 3
+      },
+      "evaluatedRecurrence": {
+        "frequency": "Minute",
+        "interval": 3
+      },
+      "splitOn": "@triggerOutputs()?['body/value']",
       "type": "OpenApiConnection",
       "inputs": {
         "host": {
@@ -25,34 +34,11 @@
           "table": "Provisioning Jobs"
         },
         "authentication": "@parameters('$authentication')"
-      },
-      "recurrence": {
-        "frequency": "Minute",
-        "interval": 3
-      },
-      "splitOn": "@triggerOutputs()?['body/value']"
+      }
     }
   },
   "actions": {
     "If_Teams_Dispatched": {
-      "runAfter": {},
-      "type": "If",
-      "expression": {
-        "and": [
-          {
-            "equals": [
-              "@triggerOutputs()?['body/JobStatus/Value']",
-              "Dispatched"
-            ]
-          },
-          {
-            "startsWith": [
-              "@coalesce(triggerOutputs()?['body/JobType'],'')",
-              "teams."
-            ]
-          }
-        ]
-      },
       "actions": {
         "Update_Status_InProgress": {
           "runAfter": {},
@@ -117,11 +103,11 @@
           "type": "Http",
           "inputs": {
             "method": "POST",
-            "uri": "https://login.microsoftonline.com/00000000-0000-4000-8000-000000000009/oauth2/v2.0/token",
+            "uri": "https://login.microsoftonline.com/00000000-0000-0000-0000-000000000001/oauth2/v2.0/token",
             "headers": {
               "Content-Type": "application/x-www-form-urlencoded"
             },
-            "body": "@{concat('grant_type=client_credentials&client_id=00000000-0000-4000-8000-000000000013&scope=https%3A%2F%2Fgraph.microsoft.com%2F.default&client_secret=', encodeUriComponent(body('Get_KV_Secret')?['value']))}"
+            "body": "@{concat('grant_type=client_credentials&client_id=00000000-0000-0000-0000-000000000003&scope=https%3A%2F%2Fgraph.microsoft.com%2F.default&client_secret=', encodeUriComponent(body('Get_KV_Secret')?['value']))}"
           },
           "runtimeConfiguration": {
             "secureData": {
@@ -194,40 +180,6 @@
             "Parse_Target": [
               "Succeeded"
             ]
-          },
-          "type": "Switch",
-          "expression": "@triggerOutputs()?['body/JobType']",
-          "default": {
-            "actions": {
-              "Update_Failed_UnsupportedJobType": {
-                "runAfter": {},
-                "type": "OpenApiConnection",
-                "inputs": {
-                  "host": {
-                    "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
-                    "connectionName": "shared_sharepointonline",
-                    "operationId": "PatchItem"
-                  },
-                  "parameters": {
-                    "dataset": "https://contoso.sharepoint.com/sites/ITSM",
-                    "table": "Provisioning Jobs",
-                    "id": "@triggerOutputs()?['body/ID']",
-                    "item/Title": "@coalesce(triggerOutputs()?['body/Title'], 'PJ-fallback')",
-                    "item/JobType": "@triggerOutputs()?['body/JobType']",
-                    "item/ParentTicket/Id": "@triggerOutputs()?['body/ParentTicket/Id']",
-                    "item/JobStatus/Value": "Failed",
-                    "item/CallerUpn": "@triggerOutputs()?['body/CallerUpn']",
-                    "item/TargetJson": "@triggerOutputs()?['body/TargetJson']",
-                    "item/IdempotencyKey": "@triggerOutputs()?['body/IdempotencyKey']",
-                    "item/CorrelationId": "@triggerOutputs()?['body/CorrelationId']",
-                    "item/ServicePrincipal": "SP-IT-Teams",
-                    "item/CompletedAt": "@utcNow()",
-                    "item/ErrorJson": "@{concat('{\"reason\":\"unsupported_jobtype\",\"jobType\":\"', triggerOutputs()?['body/JobType'], '\",\"executor\":\"SP-IT-Teams\"}')}"
-                  },
-                  "authentication": "@parameters('$authentication')"
-                }
-              }
-            }
           },
           "cases": {
             "JobType_CreateChannel": {
@@ -428,12 +380,287 @@
                   }
                 }
               }
+            },
+            "JobType_RemoveChannelMember": {
+              "case": "teams.removeChannelMember",
+              "actions": {
+                "Http_Graph_GetChannelMembers": {
+                  "runAfter": {},
+                  "type": "Http",
+                  "inputs": {
+                    "method": "GET",
+                    "uri": "@{concat('https://graph.microsoft.com/v1.0/teams/', body('Parse_Target')?['id'], '/channels/', json(triggerOutputs()?['body/ArgsJson'])?['channelId'], '/members')}",
+                    "headers": {
+                      "Authorization": "@{concat('Bearer ', body('Parse_Token')?['access_token'])}"
+                    }
+                  }
+                },
+                "Filter_Members": {
+                  "runAfter": {
+                    "Http_Graph_GetChannelMembers": [
+                      "Succeeded"
+                    ]
+                  },
+                  "type": "Query",
+                  "inputs": {
+                    "from": "@body('Http_Graph_GetChannelMembers')?['value']",
+                    "where": "@equals(item()?['userId'], body('Parse_Target')?['id'])"
+                  }
+                },
+                "Http_Graph_RemoveChannelMember": {
+                  "runAfter": {
+                    "Filter_Members": [
+                      "Succeeded"
+                    ]
+                  },
+                  "type": "Http",
+                  "inputs": {
+                    "method": "DELETE",
+                    "uri": "@{concat('https://graph.microsoft.com/v1.0/teams/', body('Parse_Target')?['id'], '/channels/', json(triggerOutputs()?['body/ArgsJson'])?['channelId'], '/members/', first(body('Filter_Members'))?['id'])}",
+                    "headers": {
+                      "Authorization": "@{concat('Bearer ', body('Parse_Token')?['access_token'])}"
+                    }
+                  }
+                },
+                "Update_Succeeded_RemoveChannelMember": {
+                  "runAfter": {
+                    "Http_Graph_RemoveChannelMember": [
+                      "Succeeded"
+                    ]
+                  },
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "host": {
+                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                      "connectionName": "shared_sharepointonline",
+                      "operationId": "PatchItem"
+                    },
+                    "parameters": {
+                      "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+                      "table": "Provisioning Jobs",
+                      "id": "@triggerOutputs()?['body/ID']",
+                      "item/Title": "@coalesce(triggerOutputs()?['body/Title'], 'PJ-fallback')",
+                      "item/JobType": "@triggerOutputs()?['body/JobType']",
+                      "item/ParentTicket/Id": "@triggerOutputs()?['body/ParentTicket/Id']",
+                      "item/JobStatus/Value": "Succeeded",
+                      "item/CallerUpn": "@triggerOutputs()?['body/CallerUpn']",
+                      "item/TargetJson": "@triggerOutputs()?['body/TargetJson']",
+                      "item/IdempotencyKey": "@triggerOutputs()?['body/IdempotencyKey']",
+                      "item/CorrelationId": "@triggerOutputs()?['body/CorrelationId']",
+                      "item/ServicePrincipal": "SP-IT-Teams",
+                      "item/CompletedAt": "@utcNow()",
+                      "item/DurationMs": "@div(sub(ticks(utcNow()), ticks(body('Update_Status_InProgress')?['StartedAt'])), 10000)",
+                      "item/GraphRequestId": "@coalesce(outputs('Http_Graph_RemoveChannelMember')?['headers']?['x-ms-correlation-id'], outputs('Http_Graph_RemoveChannelMember')?['headers']?['request-id'])",
+                      "item/ResultJson": "@{concat('{\"memberRemoved\":true,\"teamId\":\"', body('Parse_Target')?['id'], '\",\"channelId\":\"', json(triggerOutputs()?['body/ArgsJson'])?['channelId'], '\",\"upn\":\"', body('Parse_Target')?['upn'], '\"}')}"
+                    },
+                    "authentication": "@parameters('$authentication')"
+                  }
+                },
+                "Update_Failed_RemoveChannelMember": {
+                  "runAfter": {
+                    "Http_Graph_RemoveChannelMember": [
+                      "Failed",
+                      "TimedOut",
+                      "Skipped"
+                    ]
+                  },
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "host": {
+                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                      "connectionName": "shared_sharepointonline",
+                      "operationId": "PatchItem"
+                    },
+                    "parameters": {
+                      "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+                      "table": "Provisioning Jobs",
+                      "id": "@triggerOutputs()?['body/ID']",
+                      "item/Title": "@coalesce(triggerOutputs()?['body/Title'], 'PJ-fallback')",
+                      "item/JobType": "@triggerOutputs()?['body/JobType']",
+                      "item/ParentTicket/Id": "@triggerOutputs()?['body/ParentTicket/Id']",
+                      "item/JobStatus/Value": "Failed",
+                      "item/CallerUpn": "@triggerOutputs()?['body/CallerUpn']",
+                      "item/TargetJson": "@triggerOutputs()?['body/TargetJson']",
+                      "item/IdempotencyKey": "@triggerOutputs()?['body/IdempotencyKey']",
+                      "item/CorrelationId": "@triggerOutputs()?['body/CorrelationId']",
+                      "item/ServicePrincipal": "SP-IT-Teams",
+                      "item/CompletedAt": "@utcNow()",
+                      "item/DurationMs": "@div(sub(ticks(utcNow()), ticks(body('Update_Status_InProgress')?['StartedAt'])), 10000)",
+                      "item/GraphRequestId": "@coalesce(outputs('Http_Graph_RemoveChannelMember')?['headers']?['x-ms-correlation-id'], outputs('Http_Graph_RemoveChannelMember')?['headers']?['request-id'])",
+                      "item/ErrorJson": "@{coalesce(string(body('Http_Graph_RemoveChannelMember')), concat('{\"reason\":\"member_not_found_or_lookup_failed\",\"channelId\":\"', json(triggerOutputs()?['body/ArgsJson'])?['channelId'], '\",\"upn\":\"', body('Parse_Target')?['upn'], '\"}'))}"
+                    },
+                    "authentication": "@parameters('$authentication')"
+                  }
+                }
+              }
+            },
+            "JobType_ArchiveTeam": {
+              "case": "teams.archiveTeam",
+              "actions": {
+                "Http_Graph_ArchiveTeam": {
+                  "runAfter": {},
+                  "type": "Http",
+                  "inputs": {
+                    "method": "POST",
+                    "uri": "@{concat('https://graph.microsoft.com/v1.0/teams/', body('Parse_Target')?['id'], '/archive')}",
+                    "headers": {
+                      "Authorization": "@{concat('Bearer ', body('Parse_Token')?['access_token'])}",
+                      "Content-Type": "application/json"
+                    },
+                    "body": {
+                      "shouldSetSpoSiteReadOnlyForMembers": "@coalesce(if(empty(coalesce(triggerOutputs()?['body/ArgsJson'],'')), null, json(triggerOutputs()?['body/ArgsJson'])?['shouldSetSpoSiteReadOnlyForMembers']), false)"
+                    }
+                  }
+                },
+                "Update_Succeeded_ArchiveTeam": {
+                  "runAfter": {
+                    "Http_Graph_ArchiveTeam": [
+                      "Succeeded"
+                    ]
+                  },
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "host": {
+                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                      "connectionName": "shared_sharepointonline",
+                      "operationId": "PatchItem"
+                    },
+                    "parameters": {
+                      "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+                      "table": "Provisioning Jobs",
+                      "id": "@triggerOutputs()?['body/ID']",
+                      "item/Title": "@coalesce(triggerOutputs()?['body/Title'], 'PJ-fallback')",
+                      "item/JobType": "@triggerOutputs()?['body/JobType']",
+                      "item/ParentTicket/Id": "@triggerOutputs()?['body/ParentTicket/Id']",
+                      "item/JobStatus/Value": "Succeeded",
+                      "item/CallerUpn": "@triggerOutputs()?['body/CallerUpn']",
+                      "item/TargetJson": "@triggerOutputs()?['body/TargetJson']",
+                      "item/IdempotencyKey": "@triggerOutputs()?['body/IdempotencyKey']",
+                      "item/CorrelationId": "@triggerOutputs()?['body/CorrelationId']",
+                      "item/ServicePrincipal": "SP-IT-Teams",
+                      "item/CompletedAt": "@utcNow()",
+                      "item/DurationMs": "@div(sub(ticks(utcNow()), ticks(body('Update_Status_InProgress')?['StartedAt'])), 10000)",
+                      "item/GraphRequestId": "@coalesce(outputs('Http_Graph_ArchiveTeam')?['headers']?['x-ms-correlation-id'], outputs('Http_Graph_ArchiveTeam')?['headers']?['request-id'])",
+                      "item/ResultJson": "@{concat('{\"teamArchived\":true,\"teamId\":\"', body('Parse_Target')?['id'], '\"}')}"
+                    },
+                    "authentication": "@parameters('$authentication')"
+                  }
+                },
+                "Update_Failed_ArchiveTeam": {
+                  "runAfter": {
+                    "Http_Graph_ArchiveTeam": [
+                      "Failed",
+                      "TimedOut"
+                    ]
+                  },
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "host": {
+                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                      "connectionName": "shared_sharepointonline",
+                      "operationId": "PatchItem"
+                    },
+                    "parameters": {
+                      "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+                      "table": "Provisioning Jobs",
+                      "id": "@triggerOutputs()?['body/ID']",
+                      "item/Title": "@coalesce(triggerOutputs()?['body/Title'], 'PJ-fallback')",
+                      "item/JobType": "@triggerOutputs()?['body/JobType']",
+                      "item/ParentTicket/Id": "@triggerOutputs()?['body/ParentTicket/Id']",
+                      "item/JobStatus/Value": "Failed",
+                      "item/CallerUpn": "@triggerOutputs()?['body/CallerUpn']",
+                      "item/TargetJson": "@triggerOutputs()?['body/TargetJson']",
+                      "item/IdempotencyKey": "@triggerOutputs()?['body/IdempotencyKey']",
+                      "item/CorrelationId": "@triggerOutputs()?['body/CorrelationId']",
+                      "item/ServicePrincipal": "SP-IT-Teams",
+                      "item/CompletedAt": "@utcNow()",
+                      "item/DurationMs": "@div(sub(ticks(utcNow()), ticks(body('Update_Status_InProgress')?['StartedAt'])), 10000)",
+                      "item/GraphRequestId": "@coalesce(outputs('Http_Graph_ArchiveTeam')?['headers']?['x-ms-correlation-id'], outputs('Http_Graph_ArchiveTeam')?['headers']?['request-id'])",
+                      "item/ErrorJson": "@{string(body('Http_Graph_ArchiveTeam'))}"
+                    },
+                    "authentication": "@parameters('$authentication')"
+                  }
+                }
+              }
             }
-          }
+          },
+          "default": {
+            "actions": {
+              "Update_Failed_UnsupportedJobType": {
+                "runAfter": {},
+                "type": "OpenApiConnection",
+                "inputs": {
+                  "host": {
+                    "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                    "connectionName": "shared_sharepointonline",
+                    "operationId": "PatchItem"
+                  },
+                  "parameters": {
+                    "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+                    "table": "Provisioning Jobs",
+                    "id": "@triggerOutputs()?['body/ID']",
+                    "item/Title": "@coalesce(triggerOutputs()?['body/Title'], 'PJ-fallback')",
+                    "item/JobType": "@triggerOutputs()?['body/JobType']",
+                    "item/ParentTicket/Id": "@triggerOutputs()?['body/ParentTicket/Id']",
+                    "item/JobStatus/Value": "Failed",
+                    "item/CallerUpn": "@triggerOutputs()?['body/CallerUpn']",
+                    "item/TargetJson": "@triggerOutputs()?['body/TargetJson']",
+                    "item/IdempotencyKey": "@triggerOutputs()?['body/IdempotencyKey']",
+                    "item/CorrelationId": "@triggerOutputs()?['body/CorrelationId']",
+                    "item/ServicePrincipal": "SP-IT-Teams",
+                    "item/CompletedAt": "@utcNow()",
+                    "item/ErrorJson": "@{concat('{\"reason\":\"unsupported_jobtype\",\"jobType\":\"', triggerOutputs()?['body/JobType'], '\",\"executor\":\"SP-IT-Teams\"}')}"
+                  },
+                  "authentication": "@parameters('$authentication')"
+                }
+              }
+            }
+          },
+          "expression": "@triggerOutputs()?['body/JobType']",
+          "type": "Switch"
         }
+      },
+      "runAfter": {
+        "Get_PJ_Fresh": [
+          "Succeeded"
+        ]
       },
       "else": {
         "actions": {}
+      },
+      "expression": {
+        "and": [
+          {
+            "equals": [
+              "@outputs('Get_PJ_Fresh')?['body/JobStatus/Value']",
+              "Dispatched"
+            ]
+          },
+          {
+            "startsWith": [
+              "@coalesce(outputs('Get_PJ_Fresh')?['body/JobType'],'')",
+              "teams."
+            ]
+          }
+        ]
+      },
+      "type": "If"
+    },
+    "Get_PJ_Fresh": {
+      "runAfter": {},
+      "type": "OpenApiConnection",
+      "inputs": {
+        "host": {
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+          "connectionName": "shared_sharepointonline",
+          "operationId": "GetItem"
+        },
+        "parameters": {
+          "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+          "table": "Provisioning Jobs",
+          "id": "@triggerOutputs()?['body/ID']"
+        },
+        "authentication": "@parameters('$authentication')"
       }
     }
   }

@@ -1,0 +1,207 @@
+{
+  "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "$authentication": {
+      "defaultValue": {},
+      "type": "SecureObject"
+    },
+    "$connections": {
+      "defaultValue": {},
+      "type": "Object"
+    }
+  },
+  "triggers": {
+    "manual": {
+      "metadata": {},
+      "type": "Request",
+      "kind": "Http",
+      "inputs": {
+        "schema": {
+          "type": "object",
+          "required": [
+            "ticketId",
+            "callerUpn",
+            "validationReason"
+          ],
+          "properties": {
+            "ticketId": {
+              "type": "integer"
+            },
+            "ticketTitle": {
+              "type": "string"
+            },
+            "callerUpn": {
+              "type": "string"
+            },
+            "callerName": {
+              "type": "string"
+            },
+            "validationReason": {
+              "type": "string"
+            },
+            "suggestedTicketType": {
+              "type": "string"
+            }
+          }
+        },
+        "triggerAuthenticationType": "All"
+      }
+    }
+  },
+  "actions": {
+    "Compose_QuestionDetails": {
+      "runAfter": {},
+      "type": "Compose",
+      "inputs": "@{concat('Hi ', coalesce(triggerBody()?['callerName'], 'there'), ' — we couldn''t automatically tell whether your ticket is an **Incident** (something is broken) or a **Request** (you want something provided or changed), so it needs your confirmation before it can move.', decodeUriComponent('%0A%0A'), '**Your ticket:** ', coalesce(triggerBody()?['ticketTitle'], ''), decodeUriComponent('%0A%0A'), '**Why it stopped:** ', coalesce(triggerBody()?['validationReason'], 'The ticket type could not be determined automatically.'), decodeUriComponent('%0A%0A'), if(empty(coalesce(triggerBody()?['suggestedTicketType'], '')), '', concat('**Our best guess:** ', triggerBody()?['suggestedTicketType'], decodeUriComponent('%0A%0A'))), 'Please choose the correct type below. Pick **Incident** or **Request** and the ticket will be re-checked and moved on automatically. If you no longer need this, choose **Cancel ticket**.')}"
+    },
+    "Ask_Caller_Approval": {
+      "runAfter": {
+        "Compose_QuestionDetails": [
+          "Succeeded"
+        ]
+      },
+      "type": "OpenApiConnection",
+      "inputs": {
+        "parameters": {
+          "approvalType": "CustomResponse",
+          "ApprovalCreationInput/responseOptions": [
+            "Incident",
+            "Request",
+            "Cancel ticket"
+          ],
+          "ApprovalCreationInput/title": "@{concat('Confirm ticket type — ', coalesce(triggerBody()?['ticketTitle'], ''))}",
+          "ApprovalCreationInput/assignedTo": "@coalesce(triggerBody()?['callerUpn'], 'catherine.han@flowstudio.app')",
+          "ApprovalCreationInput/details": "@outputs('Compose_QuestionDetails')",
+          "ApprovalCreationInput/itemLink": "@{concat('https://contoso.sharepoint.com/sites/ITSM/Lists/Tickets/DispForm.aspx?ID=', string(triggerBody()?['ticketId']))}",
+          "ApprovalCreationInput/itemLinkDescription": "Open ticket in SharePoint",
+          "ApprovalCreationInput/enableNotifications": true,
+          "ApprovalCreationInput/enableReassignment": false
+        },
+        "host": {
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_approvals",
+          "connectionName": "shared_approvals",
+          "operationId": "CreateAnApproval"
+        },
+        "authentication": "@parameters('$authentication')"
+      }
+    },
+    "Wait_For_Caller_Reply": {
+      "runAfter": {
+        "Ask_Caller_Approval": [
+          "Succeeded"
+        ]
+      },
+      "type": "OpenApiConnectionWebhook",
+      "inputs": {
+        "parameters": {
+          "approvalName": "@body('Ask_Caller_Approval')?['name']"
+        },
+        "host": {
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_approvals",
+          "connectionName": "shared_approvals",
+          "operationId": "WaitForAnApproval"
+        },
+        "authentication": "@parameters('$authentication')"
+      }
+    },
+    "Get_Ticket": {
+      "runAfter": {
+        "Wait_For_Caller_Reply": [
+          "Succeeded"
+        ]
+      },
+      "type": "OpenApiConnection",
+      "inputs": {
+        "parameters": {
+          "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+          "table": "Tickets",
+          "id": "@triggerBody()?['ticketId']"
+        },
+        "host": {
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+          "connectionName": "shared_sharepointonline",
+          "operationId": "GetItem"
+        },
+        "authentication": "@parameters('$authentication')"
+      },
+      "description": "Re-read the live ticket before patching so the clarifier never clobbers caller edits made while it was parked."
+    },
+    "If_CallerCancelled": {
+      "actions": {
+        "Cancel_Ticket": {
+          "runAfter": {},
+          "type": "OpenApiConnection",
+          "inputs": {
+            "parameters": {
+              "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+              "table": "Tickets",
+              "id": "@triggerBody()?['ticketId']",
+              "item/Title": "@body('Get_Ticket')?['Title']",
+              "item/ShortDescription": "@body('Get_Ticket')?['ShortDescription']",
+              "item/TicketState/Value": "Cancelled",
+              "item/HoldReason/Value": "",
+              "item/ClosedDate": "@utcNow()",
+              "item/CloseCode/Value": "Closed/Resolved by Caller",
+              "item/Description": "@{concat(coalesce(body('Get_Ticket')?['Description'], ''), decodeUriComponent('%0A%0A'), '--- Caller cancelled at type-confirmation ---', decodeUriComponent('%0A'), '[Why it stopped] ', coalesce(triggerBody()?['validationReason'], ''), decodeUriComponent('%0A'), '[Caller chose] Cancel ticket')}"
+            },
+            "host": {
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+              "connectionName": "shared_sharepointonline",
+              "operationId": "PatchItem"
+            },
+            "authentication": "@parameters('$authentication')"
+          }
+        }
+      },
+      "runAfter": {
+        "Get_Ticket": [
+          "Succeeded"
+        ]
+      },
+      "else": {
+        "actions": {
+          "Reopen_Ticket_For_Retriage": {
+            "runAfter": {},
+            "type": "OpenApiConnection",
+            "inputs": {
+              "parameters": {
+                "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+                "table": "Tickets",
+                "id": "@triggerBody()?['ticketId']",
+                "item/Title": "@body('Get_Ticket')?['Title']",
+                "item/ShortDescription": "@body('Get_Ticket')?['ShortDescription']",
+                "item/TicketType/Value": "@body('Wait_For_Caller_Reply')?['responses']?[0]?['approverResponse']",
+                "item/TypeOverrideConfirmed": true,
+                "item/TicketTypeValidated": false,
+                "item/TicketTypeValidationStatus/Value": "Pending",
+                "item/TicketState/Value": "New",
+                "item/HoldReason/Value": "",
+                "item/Description": "@{concat(coalesce(body('Get_Ticket')?['Description'], ''), decodeUriComponent('%0A%0A'), '--- Caller confirmed ticket type ---', decodeUriComponent('%0A'), '[Why it stopped] ', coalesce(triggerBody()?['validationReason'], ''), decodeUriComponent('%0A'), '[Caller chose] ', body('Wait_For_Caller_Reply')?['responses']?[0]?['approverResponse'])}"
+              },
+              "host": {
+                "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                "connectionName": "shared_sharepointonline",
+                "operationId": "PatchItem"
+              },
+              "authentication": "@parameters('$authentication')"
+            },
+            "description": "Caller confirmed the ticket type: write the caller-chosen TicketType, set TypeOverrideConfirmed=true (loop-breaker), reset TicketTypeValidationStatus to 'Pending' + TicketTypeValidated=false, and flip TicketState back to 'New'. The Validator re-runs and — honouring TypeOverrideConfirmed — validates with the caller's chosen type instead of re-parking. Validator stays the single source of truth."
+          }
+        }
+      },
+      "expression": {
+        "and": [
+          {
+            "equals": [
+              "@body('Wait_For_Caller_Reply')?['responses']?[0]?['approverResponse']",
+              "Cancel ticket"
+            ]
+          }
+        ]
+      },
+      "type": "If"
+    }
+  },
+  "description": "ITSM-Clarifier (NOTIF-1) child flow. HTTP-triggered (fire-and-forget) by the ITSM-Ticket-Type-Validator when it cannot determine the ticket type and parks the ticket On Hold / NeedsConfirmation. Sends the caller a CustomResponse approval asking them to confirm Incident vs Request (carries the Validator's reason + suggested type). On answer it writes the chosen type, sets TypeOverrideConfirmed=true, resets validation status to Pending and flips TicketState back to New so the Validator re-runs typing without re-parking. On cancel it closes the ticket. No SharePoint watcher/poller. #flowstudio-mcp"
+}

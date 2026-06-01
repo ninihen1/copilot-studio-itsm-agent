@@ -22,5 +22,4 @@ action:
         - GetChannel
         - ListChatMembers
         - ListChannelMembers
-        - UpdateChannelMember
         - ListChannelFiles

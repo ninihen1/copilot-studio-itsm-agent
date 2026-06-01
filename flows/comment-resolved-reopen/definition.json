@@ -1,0 +1,162 @@
+{
+  "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "$connections": {
+      "defaultValue": {},
+      "type": "Object"
+    },
+    "$authentication": {
+      "defaultValue": {},
+      "type": "SecureObject"
+    }
+  },
+  "triggers": {
+    "When_a_Ticket_is_Modified": {
+      "recurrence": {
+        "frequency": "Minute",
+        "interval": 1
+      },
+      "evaluatedRecurrence": {
+        "frequency": "Minute",
+        "interval": 1
+      },
+      "splitOn": "@triggerOutputs()?['body/value']",
+      "type": "OpenApiConnection",
+      "inputs": {
+        "host": {
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+          "connectionName": "shared_sharepointonline",
+          "operationId": "GetOnUpdatedItems"
+        },
+        "parameters": {
+          "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+          "table": "Tickets"
+        },
+        "authentication": "@parameters('$authentication')"
+      },
+      "conditions": [
+        {
+          "expression": "@equals(triggerOutputs()?['body/TicketState/Value'], 'Resolved')"
+        }
+      ]
+    }
+  },
+  "actions": {
+    "Get_Changes_For_Ticket": {
+      "runAfter": {},
+      "type": "OpenApiConnection",
+      "inputs": {
+        "host": {
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+          "connectionName": "shared_sharepointonline",
+          "operationId": "GetItemChanges"
+        },
+        "parameters": {
+          "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+          "table": "Tickets",
+          "id": "@triggerOutputs()?['body/ID']",
+          "since": "@triggerOutputs()?['body/{TriggerWindowStartToken}']",
+          "includeDrafts": false
+        },
+        "authentication": "@parameters('$authentication')"
+      }
+    },
+    "If_Caller_Comment_On_Resolved_Ticket": {
+      "actions": {
+        "Compose_Reopen_Reason": {
+          "runAfter": {},
+          "type": "Compose",
+          "inputs": "@concat('Caller comment received after resolution at ', utcNow(), '. Reopening ticket for owner review. Latest caller comment excerpt: ', if(greater(length(coalesce(triggerOutputs()?['body/Comments'], '')), 300), concat(substring(coalesce(triggerOutputs()?['body/Comments'], ''), sub(length(coalesce(triggerOutputs()?['body/Comments'], '')), 300), 300), '...'), coalesce(triggerOutputs()?['body/Comments'], '')))"
+        },
+        "Reopen_Ticket": {
+          "runAfter": {
+            "Compose_Reopen_Reason": [
+              "Succeeded"
+            ]
+          },
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+              "connectionName": "shared_sharepointonline",
+              "operationId": "PatchItem"
+            },
+            "parameters": {
+              "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+              "table": "Tickets",
+              "id": "@triggerOutputs()?['body/ID']",
+              "item/Title": "@triggerOutputs()?['body/Title']",
+              "item/TicketType/Value": "@triggerOutputs()?['body/TicketType/Value']",
+              "item/TicketTypeValidationStatus/Value": "@triggerOutputs()?['body/TicketTypeValidationStatus/Value']",
+              "item/CategoryRef/Id": "@triggerOutputs()?['body/CategoryRef/Id']",
+              "item/Caller/Claims": "@triggerOutputs()?['body/Caller/Claims']",
+              "item/TicketState/Value": "In Progress",
+              "item/Impact/Value": "@triggerOutputs()?['body/Impact/Value']",
+              "item/Urgency/Value": "@triggerOutputs()?['body/Urgency/Value']",
+              "item/ShortDescription": "@triggerOutputs()?['body/ShortDescription']",
+              "item/ConfidentialityLevel/Value": "@triggerOutputs()?['body/ConfidentialityLevel/Value']",
+              "item/ReopenCount": "@add(int(coalesce(triggerOutputs()?['body/ReopenCount'], 0)), 1)",
+              "item/WorkNotes": "@outputs('Compose_Reopen_Reason')"
+            },
+            "authentication": "@parameters('$authentication')"
+          }
+        },
+        "Notify_Owner_Reopened": {
+          "runAfter": {
+            "Reopen_Ticket": [
+              "Succeeded"
+            ]
+          },
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_teams",
+              "connectionName": "shared_teams",
+              "operationId": "PostMessageToConversation"
+            },
+            "parameters": {
+              "poster": "Flow bot",
+              "location": "Chat with Flow bot",
+              "body/recipient": "@coalesce(triggerOutputs()?['body/AssignedTo/Email'], triggerOutputs()?['body/AssignedTo/EMail'], last(split(coalesce(triggerOutputs()?['body/AssignedTo/Claims'], ''), '|')), 'catherine.han@flowstudio.app')",
+              "body/messageBody": "@{concat('Ticket ', triggerOutputs()?['body/Title'], ' was reopened by a caller comment and is back In Progress. Reason: ', outputs('Compose_Reopen_Reason'))}"
+            },
+            "authentication": "@parameters('$authentication')"
+          }
+        }
+      },
+      "runAfter": {
+        "Get_Changes_For_Ticket": [
+          "Succeeded"
+        ]
+      },
+      "else": {
+        "actions": {}
+      },
+      "expression": {
+        "and": [
+          {
+            "equals": [
+              "@coalesce(body('Get_Changes_For_Ticket')?['ColumnHasChanged']?['Comments'], false)",
+              true
+            ]
+          },
+          {
+            "equals": [
+              "@triggerOutputs()?['body/TicketState/Value']",
+              "Resolved"
+            ]
+          },
+          {
+            "equals": [
+              "@toLower(coalesce(triggerOutputs()?['body/Editor/Email'], last(split(coalesce(triggerOutputs()?['body/Editor/Claims'], ''), '|'))))",
+              "@toLower(coalesce(triggerOutputs()?['body/Caller/Email'], last(split(coalesce(triggerOutputs()?['body/Caller/Claims'], ''), '|'))))"
+            ]
+          }
+        ]
+      },
+      "type": "If"
+    }
+  },
+  "description": "ITSM-Comment-Resolved-Reopen: watches Tickets updates, confirms Comments changed by Caller while TicketState=Resolved, reopens the ticket for owner review by moving it back to In Progress, increments ReopenCount, appends the reopen reason to WorkNotes, and notifies the assigned owner. Note: live Tickets schema does not yet expose a Reopened TicketState choice or ReopenReason column. #flowstudio-mcp"
+}

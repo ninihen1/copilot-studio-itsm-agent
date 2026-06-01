@@ -11,7 +11,6 @@
 infra/azure/functions/local.settings.json
 
 # Local agent/tool state
-.auth/
 .agents/
 .claude/
 .codex/
@@ -32,7 +31,6 @@ node_modules/
 # Test output
 /coverage/
 /jest-output/
-/playwright-report/
 /test-results/
 
 # Caches

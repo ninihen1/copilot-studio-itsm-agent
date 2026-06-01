@@ -21,6 +21,15 @@
   },
   "triggers": {
     "When_Ticket_is_Created": {
+      "recurrence": {
+        "frequency": "Minute",
+        "interval": 1
+      },
+      "evaluatedRecurrence": {
+        "frequency": "Minute",
+        "interval": 1
+      },
+      "splitOn": "@triggerOutputs()?['body/value']",
       "type": "OpenApiConnection",
       "inputs": {
         "host": {
@@ -34,16 +43,11 @@
         },
         "authentication": "@parameters('$authentication')"
       },
-      "recurrence": {
-        "frequency": "Minute",
-        "interval": 1
-      },
       "conditions": [
         {
           "expression": "@and(equals(triggerOutputs()?['body/TicketType/Value'], 'Incident'), equals(coalesce(triggerOutputs()?['body/TicketTypeValidated'], false), true), not(equals(coalesce(triggerOutputs()?['body/TicketTypeValidationStatus/Value'], ''), 'NeedsConfirmation')), equals(coalesce(triggerOutputs()?['body/TicketState/Value'], 'New'), 'New'))"
         }
       ],
-      "splitOn": "@triggerOutputs()?['body/value']",
       "runtimeConfiguration": {
         "concurrency": {
           "runs": 1,
@@ -54,26 +58,6 @@
   },
   "actions": {
     "If_New_Incident": {
-      "runAfter": {},
-      "type": "If",
-      "expression": {
-        "and": [
-          {
-            "equals": [
-              "@triggerOutputs()?['body/TicketType/Value']",
-              "Incident"
-            ]
-          },
-          {
-            "not": {
-              "equals": [
-                "@coalesce(triggerOutputs()?['body/MajorIncidentFlag'], false)",
-                true
-              ]
-            }
-          }
-        ]
-      },
       "actions": {
         "Get_Recent_Incidents": {
           "runAfter": {},
@@ -207,28 +191,6 @@
           }
         },
         "If_Agent_Found_Cluster": {
-          "runAfter": {
-            "Parse_Cluster_Decision": [
-              "Succeeded"
-            ]
-          },
-          "type": "If",
-          "expression": {
-            "and": [
-              {
-                "equals": [
-                  "@body('Parse_Cluster_Decision')?['clusterFound']",
-                  true
-                ]
-              },
-              {
-                "greaterOrEquals": [
-                  "@length(body('Parse_Cluster_Decision')?['relatedTicketIds'])",
-                  "@parameters('Threshold')"
-                ]
-              }
-            ]
-          },
           "actions": {
             "Compose_Major_Number": {
               "runAfter": {},
@@ -269,18 +231,7 @@
               }
             },
             "ForEach_Clustered_Incident_Id": {
-              "runAfter": {
-                "Update_Major_Incident_Metadata": [
-                  "Succeeded"
-                ]
-              },
-              "type": "Foreach",
               "foreach": "@body('Parse_Cluster_Decision')?['relatedTicketIds']",
-              "runtimeConfiguration": {
-                "concurrency": {
-                  "repetitions": 1
-                }
-              },
               "actions": {
                 "Get_Related_Incident": {
                   "runAfter": {},
@@ -332,6 +283,17 @@
                     },
                     "authentication": "@parameters('$authentication')"
                   }
+                }
+              },
+              "runAfter": {
+                "Update_Major_Incident_Metadata": [
+                  "Succeeded"
+                ]
+              },
+              "type": "Foreach",
+              "runtimeConfiguration": {
+                "concurrency": {
+                  "repetitions": 1
                 }
               }
             },
@@ -401,14 +363,56 @@
               "description": "Day 4 task 13: major incident notification to service desk/admin via Teams Flow bot."
             }
           },
+          "runAfter": {
+            "Parse_Cluster_Decision": [
+              "Succeeded"
+            ]
+          },
           "else": {
             "actions": {}
-          }
+          },
+          "expression": {
+            "and": [
+              {
+                "equals": [
+                  "@body('Parse_Cluster_Decision')?['clusterFound']",
+                  true
+                ]
+              },
+              {
+                "greaterOrEquals": [
+                  "@length(body('Parse_Cluster_Decision')?['relatedTicketIds'])",
+                  "@parameters('Threshold')"
+                ]
+              }
+            ]
+          },
+          "type": "If"
         }
       },
+      "runAfter": {},
       "else": {
         "actions": {}
-      }
+      },
+      "expression": {
+        "and": [
+          {
+            "equals": [
+              "@triggerOutputs()?['body/TicketType/Value']",
+              "Incident"
+            ]
+          },
+          {
+            "not": {
+              "equals": [
+                "@coalesce(triggerOutputs()?['body/MajorIncidentFlag'], false)",
+                true
+              ]
+            }
+          }
+        ]
+      },
+      "type": "If"
     }
   }
 }

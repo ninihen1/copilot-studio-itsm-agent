@@ -4,6 +4,8 @@
 
 > 🎥 **See it in action:** _<add demo video link>_
 
+> ⚠️ **Project status — working proof of concept.** Built in a hackathon timebox to prove the architecture end to end — and it does: the core *ticket → triage → approve → execute* pipeline runs on a live Microsoft 365 tenant. It is **not production-hardened**. Expect rough edges off the happy path, and some paths are designed and specced rather than fully tested — the repo is explicit about which (see the *"Designed and specced, but not yet wired"* section and the per-flow *"Pilot deviations"* tables). Treat it as a reference build to learn from and adapt, not a turnkey product.
+
 ## 🔍 The problem
 
 Most ITSM platforms (ServiceNow, Jira Service Management, Zendesk) charge per seat, per month, and quickly run into the thousands a year. For a small or medium business, that's hard to justify for what is mostly password resets, group adds, and license requests. This project does the same job on tools an M365 tenant already has — **SharePoint, Power Automate, and Copilot Studio** — and automates the routine work end to end.
@@ -35,6 +37,14 @@ The moment the ticket is saved, a Power Automate flow fires on that new item and
 
 ## 🎯 How it works — a walkthrough
 
+![ITSM pipeline — independent SharePoint pollers coordinated by row state](docs/ITSM_process_diagram.png)
+
+*The full pipeline at a glance: the Type-Validator gate, the parallel Incident and Request lanes, their convergence at the Dispatcher, and the six executors. The flows don't call each other — each polls a shared SharePoint list and reacts to row state. [Open the interactive version](docs/ITSM_process_diagram.html).*
+
+![The ITSM flows in Power Automate, numbered by stage](docs/screenshots/flows-list-numbered.png)
+
+*…and the same pipeline as real flows: every stage from the diagram, numbered in order (`1.1` → `6.1`, then the `X`/`S`/`T` side flows) in Power Automate.*
+
 ```
 1. INTAKE      A user submits a ticket in the ITSM Service Portal (SPFx app) → a Ticket row is created
 2. TYPE GATE   Is it an Incident or a Request? Route accordingly before any automation runs
@@ -59,6 +69,8 @@ Walk through it step by step:
 ## 🖥️ The front end — a custom SharePoint-hosted portal
 
 The portal isn't a SharePoint list form. It's the **ITSM Service Portal**, a full-screen **SPFx (SharePoint Framework) web part** — a React single-page app, built with SPFx 1.22 / Heft / TypeScript — hosted as a SharePoint page and backed by a dozen-plus SharePoint lists behind it. It follows the open-source [vibe-sharepoint-template](https://github.com/johnnliu/vibe-sharepoint-template) pattern, which treats SharePoint Online as a Vercel-like host for internal apps (CSS injection hides the SharePoint chrome for an app-like feel). The direction to the agent was essentially *"point at this template and follow it"* — it produced the ITSM-specific app from there. One web part hosts the whole experience:
+
+![The ITSM Service Portal home — the SPFx single-page app's dashboard: open tickets, pending approvals, KB suggestions, and service health](docs/screenshots/spfx-portal-home.png)
 
 - **Home** dashboard, **Service Catalog** with item detail dialogs, **Knowledge Base** with inline articles, **My Tickets** + ticket detail, **Approvals**, and an **Admin** view.
 - A typed service layer (`TicketService`, `CatalogService`, `KnowledgeService`, `ApprovalService`, …) reads and writes those SharePoint lists directly — **read-only except explicit user actions, and no privileged Graph calls ever run in the browser.**
@@ -98,6 +110,20 @@ A lot of the build progressed on its own while no one was watching. It isn't ful
 
 Cowork also documented what it built. The system grew to **20-plus Power Automate flows**, so Cowork created a **flow inventory** — a SharePoint list with each flow's key details — and then generated a dedicated **SharePoint page for every flow**, one at a time. The whole automation estate ends up self-documented, by the same agent that built it.
 
+![Cowork's flow inventory — every flow numbered by stage, each with a one-line summary, linking out to the flow and its generated page](docs/screenshots/flow-docs-inventory.png)
+
+Each inventory row links to a page like this one, generated per flow:
+
+![A generated SharePoint documentation page for the Triage Orchestrator flow](docs/screenshots/flow-doc-page-triage-orchestrator.png)
+
+Because Cowork acts only through flows, it reaches **outside Power Platform** the same way. It built a **GitHub API proxy flow** — one flow that can put files, create branches and pull requests, merge, and run and monitor GitHub Actions workflows. That's how Cowork patches the SPFx portal's own source and drives its CI/CD build, without ever leaving Power Automate.
+
+![Cowork's GitHub API proxy flow — put file, branch, PR, merge, run and monitor workflows](docs/screenshots/cowork-github-api-proxy-flow.png)
+
+A successful proxy run reading a GitHub Actions job back out — *Build and package SPFx*, completed, HTTP 200:
+
+![A successful GitHub API proxy run reading back the SPFx CI build job](docs/screenshots/cowork-github-api-proxy-run.png)
+
 And it tested its own work — to a discipline it **wrote itself**. After a few rounds of testing together, the human and Cowork agreed on what "done" should mean, and Cowork captured that as a reusable testing **skill**: the entire business chain must complete and the real-world change be confirmed live — a flow that merely reports "Succeeded," or an approval card still sitting in the queue, does **not** count. Holding itself to the bar it had written, it then ran live end-to-end requests and verified every link — triage → approval → execution → the actual change in the tenant — before calling anything done.
 
 ## 🔒 How it stays safe
@@ -124,9 +150,7 @@ The whole design assumes an AI is in the loop, so the guardrails are deliberate.
 agents/      Copilot Studio agents — Helpdesk Triage (primary) + Self-Service Resolver
 flows/       Power Automate: dispatcher, approval, six executors, SLA timer, archival, more
 infra/       SharePoint provisioning scripts + Azure (Functions, Key Vault, Service Bus)
-notifications/cards/   Teams Adaptive Cards (approval, SLA breach, resolution)
 src/         ITSM Service Portal — full-screen SPFx React SPA (home, catalog, KB, my tickets, approvals, admin) over the SharePoint lists
-tests/e2e/   Playwright end-to-end checks
 docs + *.md  Design memo, deployment runbook, admin & user guides, troubleshooting
 ```
 
@@ -137,6 +161,12 @@ docs + *.md  Design memo, deployment runbook, admin & user guides, troubleshooti
 | [`DEPLOYMENT.md`](DEPLOYMENT.md) | Deployment runbook and validation checklist |
 | [`USER_GUIDE.md`](USER_GUIDE.md) · [`ADMIN_GUIDE.md`](ADMIN_GUIDE.md) | Day-to-day use and operations |
 | [`decisions/0001-dispatcher-host.md`](decisions/0001-dispatcher-host.md) | Why the dispatcher is built the way it is |
+
+## 🚀 Try it, or let us help
+
+This is a real, open-source build — clone it, point it at your own Microsoft 365 tenant, and adapt it. The [Implementation Playbook](IMPLEMENTATION-PLAYBOOK.md) and [Deployment runbook](DEPLOYMENT.md) walk through every step, and the whole thing is designed to be stood up by **one person directing an AI coworker** — the flows are built and debugged through [Flow Studio MCP](https://mcp.flowstudio.app) (works with Copilot, Claude, and any MCP-compatible agent).
+
+If it still feels like a lot, that's fine — **[Flow Studio](https://flowstudio.app) also does this as a service.** We build and run Power Automate and Copilot Studio automations like this one for teams who'd rather have it set up for them.
 
 ## 📝 A note on the code
 

@@ -13,6 +13,15 @@
   },
   "triggers": {
     "When_a_Task_is_Created": {
+      "recurrence": {
+        "frequency": "Minute",
+        "interval": 1
+      },
+      "evaluatedRecurrence": {
+        "frequency": "Minute",
+        "interval": 1
+      },
+      "splitOn": "@triggerOutputs()?['body/value']",
       "type": "OpenApiConnection",
       "inputs": {
         "host": {
@@ -25,42 +34,11 @@
           "table": "Tasks"
         },
         "authentication": "@parameters('$authentication')"
-      },
-      "recurrence": {
-        "frequency": "Minute",
-        "interval": 1
-      },
-      "splitOn": "@triggerOutputs()?['body/value']"
+      }
     }
   },
   "actions": {
     "If_Task_Has_JobType": {
-      "runAfter": {},
-      "type": "If",
-      "expression": {
-        "and": [
-          {
-            "not": {
-              "equals": [
-                "@coalesce(triggerOutputs()?['body/JobType'], '')",
-                ""
-              ]
-            }
-          },
-          {
-            "contains": [
-              "@coalesce(triggerOutputs()?['body/JobType'], '')",
-              "."
-            ]
-          },
-          {
-            "equals": [
-              "@coalesce(triggerOutputs()?['body/LinkedJobId'], '')",
-              ""
-            ]
-          }
-        ]
-      },
       "actions": {
         "Get_Parent_RITM": {
           "runAfter": {},
@@ -110,28 +88,6 @@
           "inputs": "@if(and(startsWith(trim(coalesce(body('Get_Parent_RITM')?['Variables'], '')), '{'), endsWith(trim(coalesce(body('Get_Parent_RITM')?['Variables'], '')), '}')), json(body('Get_Parent_RITM')?['Variables']), json('{}'))"
         },
         "If_Groups_AddMember_Missing_GroupId": {
-          "runAfter": {
-            "Parse_RITM_Variables": [
-              "Succeeded"
-            ]
-          },
-          "type": "If",
-          "expression": {
-            "and": [
-              {
-                "equals": [
-                  "@triggerOutputs()?['body/JobType']",
-                  "groups.addMember"
-                ]
-              },
-              {
-                "equals": [
-                  "@trim(coalesce(outputs('Parse_RITM_Variables')?['groupId'], ''))",
-                  ""
-                ]
-              }
-            ]
-          },
           "actions": {
             "Patch_SCTASK_Failed_Missing_GroupId": {
               "runAfter": {},
@@ -170,9 +126,31 @@
               }
             }
           },
+          "runAfter": {
+            "Parse_RITM_Variables": [
+              "Succeeded"
+            ]
+          },
           "else": {
             "actions": {}
-          }
+          },
+          "expression": {
+            "and": [
+              {
+                "equals": [
+                  "@triggerOutputs()?['body/JobType']",
+                  "groups.addMember"
+                ]
+              },
+              {
+                "equals": [
+                  "@trim(coalesce(outputs('Parse_RITM_Variables')?['groupId'], ''))",
+                  ""
+                ]
+              }
+            ]
+          },
+          "type": "If"
         },
         "Compose_PJ_Number": {
           "runAfter": {
@@ -192,7 +170,7 @@
           "type": "Compose",
           "inputs": {
             "type": "user",
-            "upn": "@last(split(coalesce(body('Get_Parent_RITM')?['RequestedFor']?['Claims'], body('Get_Parent_Ticket')?['Caller']?['Claims'], '|'), '|'))",
+            "upn": "@coalesce(outputs('Parse_RITM_Variables')?['userPrincipalName'], outputs('Parse_RITM_Variables')?['userUpn'], last(split(coalesce(body('Get_Parent_RITM')?['RequestedFor']?['Claims'], body('Get_Parent_Ticket')?['Caller']?['Claims'], '|'), '|')))",
             "id": "@coalesce(outputs('Parse_RITM_Variables')?['groupId'], outputs('Parse_RITM_Variables')?['teamId'], outputs('Parse_RITM_Variables')?['siteId'], '')"
           }
         },
@@ -253,7 +231,7 @@
           "type": "Http",
           "inputs": {
             "method": "POST",
-            "uri": "https://d0897ddefb5143f58049c16dd0bfab.b5.environment.api.powerplatform.com:443/powerautomate/automations/direct/workflows/9bec7f27ae2147b4972dadcc056e93cf/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=nHduuee4UGkH8-hOwub0S-HEeKN4qr5C2gAw4PZcM58",
+            "uri": "https://contoso-flow-trigger-url-REDACTED",
             "headers": {
               "Content-Type": "application/json"
             },
@@ -298,17 +276,6 @@
           }
         },
         "Watch_PJ_For_Terminal_State": {
-          "runAfter": {
-            "Patch_SCTASK_Linked": [
-              "Succeeded"
-            ]
-          },
-          "type": "Until",
-          "expression": "@or(equals(coalesce(body('Get_PJ_Status')?['JobStatus']?['Value'], 'Dispatched'), 'Succeeded'), equals(coalesce(body('Get_PJ_Status')?['JobStatus']?['Value'], 'Dispatched'), 'Failed'))",
-          "limit": {
-            "count": 60,
-            "timeout": "PT30M"
-          },
           "actions": {
             "Delay_30s": {
               "runAfter": {},
@@ -341,7 +308,18 @@
                 "authentication": "@parameters('$authentication')"
               }
             }
-          }
+          },
+          "runAfter": {
+            "Patch_SCTASK_Linked": [
+              "Succeeded"
+            ]
+          },
+          "expression": "@or(equals(coalesce(body('Get_PJ_Status')?['JobStatus']?['Value'], 'Dispatched'), 'Succeeded'), equals(coalesce(body('Get_PJ_Status')?['JobStatus']?['Value'], 'Dispatched'), 'Failed'))",
+          "limit": {
+            "count": 60,
+            "timeout": "PT30M"
+          },
+          "type": "Until"
         },
         "Patch_SCTASK_Final_State": {
           "runAfter": {
@@ -373,9 +351,36 @@
           }
         }
       },
+      "runAfter": {},
       "else": {
         "actions": {}
-      }
+      },
+      "expression": {
+        "and": [
+          {
+            "not": {
+              "equals": [
+                "@coalesce(triggerOutputs()?['body/JobType'], '')",
+                ""
+              ]
+            }
+          },
+          {
+            "contains": [
+              "@coalesce(triggerOutputs()?['body/JobType'], '')",
+              "."
+            ]
+          },
+          {
+            "equals": [
+              "@coalesce(triggerOutputs()?['body/LinkedJobId'], '')",
+              ""
+            ]
+          }
+        ]
+      },
+      "type": "If"
     }
-  }
+  },
+  "description": "ACTION 3: fail fast before Provisioning Job creation when groups.addMember lacks RITM.Variables.groupId. #flowstudio-mcp"
 }

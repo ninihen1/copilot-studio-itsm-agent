@@ -14,13 +14,7 @@
     "ci": "npm run clean && npm run build && npm run bundle && npm run package",
     "start": "heft start --clean",
     "trust-dev-cert": "heft trust-dev-cert",
-    "eject-webpack": "heft eject-webpack",
-    "test:e2e:auth": "node scripts/save-playwright-auth.cjs",
-    "test:e2e": "playwright test",
-    "test:e2e:headed": "playwright test --headed",
-    "test:e2e:report": "playwright show-report",
-    "test:e2e:triage": "node tests/e2e/triage-orchestrator-outcomes.cjs",
-    "test:e2e:operational": "node tests/e2e/operational-regression.cjs"
+    "eject-webpack": "heft eject-webpack"
   },
   "dependencies": {
     "@fluentui/react": "^8.106.4",
@@ -40,9 +34,6 @@
     "@microsoft/sp-module-interfaces": "1.22.2",
     "@microsoft/spfx-heft-plugins": "1.22.2",
     "@microsoft/spfx-web-build-rig": "1.22.2",
-    "@playwright/test": "^1.59.1",
-    "@pnp/nodejs": "^4.19.0",
-    "@pnp/sp": "^4.19.0",
     "@rushstack/eslint-config": "4.5.2",
     "@rushstack/heft": "1.1.2",
     "@types/heft-jest": "1.0.2",

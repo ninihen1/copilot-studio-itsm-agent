@@ -2,7 +2,7 @@
 
 **Audience:** pilot users, managers, and Level 1 service desk staff  
 **System:** Copilot Studio ITSM on Microsoft 365  
-**Pilot tenant:** `https://contoso.sharepoint.com/sites/ITSM`
+**Pilot tenant:** `https://contoso.sharepoint.com/sites/ITSM` *(`contoso` is a placeholder for your own tenant — the pilot itself ran in a private Microsoft 365 demo tenant)*
 
 This guide explains how users submit IT requests, how the Helpdesk Triage Agent responds, how approvals work, and how to track a ticket through the Level 1 pilot.
 
@@ -29,44 +29,33 @@ Use **Incident** when something is broken or degraded, such as an outage, access
 
 Use **Request** when you are asking IT to provide something, such as access to a group, a license, shared mailbox permission, software, onboarding, or offboarding.
 
-The SharePoint portal submit experience should ask for the ticket type before the ticket is saved. If the chosen category and subcategory map to a Service Catalog item, the portal should recommend **Request** and ask you to confirm before submission. If you choose **Request** but the selected subcategory does not map to an active catalog item, the portal should ask you to choose a valid catalog item or submit the item as an Incident for triage.
+You choose the ticket type when you submit. Just after the ticket is saved, the **ITSM-Ticket-Type-Validator** flow checks the type against the chosen category and subcategory: if they map to an active Service Catalog item it routes the ticket down the **Request** path; otherwise the ticket stays an **Incident** for triage. (A portal prompt that recommends the type *before* you submit is planned, not yet enabled.)
 
 ### Submit From the Service Portal
 
-The portal writes directly to the **Tickets** SharePoint list. The expected submit flow is:
+The portal writes directly to the **Tickets** SharePoint list. The submit flow is:
 
 1. Choose **Incident** or **Request**.
 2. Enter a short description and details.
 3. Choose category, subcategory, impact, and urgency.
-4. Review any type recommendation shown by the portal.
-5. Confirm the final ticket type before submitting.
+4. Submit.
 
-After submission, the ticket should be marked for ticket-type validation before downstream automation creates RITMs, triage proposals, or major incident links.
+After submission, the Ticket-Type-Validator flow runs and the ticket continues into triage; downstream automation then creates RITMs, triage records, or major incident links as appropriate.
 
-### Submit From Email
+### Other Intake Channels
 
-Email-to-ticket ingestion is a planned intake channel. For the current Level 1 pilot, Teams and SharePoint-backed intake are the supported paths.
-
-If your team has enabled a mailbox-to-ticket flow after pilot deployment, use the published helpdesk mailbox and include:
-
-- Short description in the subject.
-- Full details in the email body.
-- Affected user, device, application, or service.
-- Business impact and urgency.
-- Any screenshots as attachments.
-
-The email flow should normalize the message into a row in the **Tickets** SharePoint list.
+For the Level 1 pilot, the **ITSM Service Portal is the only way to raise a ticket.** There is no email-to-ticket or Teams-to-ticket intake — sending an email or a Teams message does **not** create a ticket. (Email ingestion is a possible future channel; it is not built for this pilot.)
 
 ## 3. How The Triage Agent Handles A Ticket
 
 The Helpdesk Triage Agent classifies each submitted ticket before routing it. It will try to identify:
 
-- Ticket type: Incident, Request, Change, or Problem.
+- Ticket type: Incident or Request (the Level 1 pilot handles these two; Change and Problem are out of pilot scope).
 - Category and subcategory.
 - Impact and urgency.
 - Affected configuration item, service, app, user, or group.
 - Whether a knowledge article can resolve the issue.
-- Whether an automated action can be proposed.
+- Whether the request maps to an automated fulfilment action.
 
 When triage is uncertain, the agent does not guess. It marks the ticket **On Hold (Awaiting Caller)** and asks — through the ticket — for the missing detail, then triage runs again when the caller responds. This happens when:
 
@@ -186,7 +175,7 @@ Request ticket
 ```text
 User: Submits a ticket — "I forgot my password."
 Flow: Fires on the new ticket and calls the Triage Agent.
-Agent: Classifies as Request > Account & Access > Password Reset; proposes identity.resetPassword.
+Agent: Classifies as Request > Account & Access > Password Reset, and maps it to the action identity.resetPassword.
 System: Creates Request and RITM for Password Reset.
 Approver: Approves the RITM or linked job.
 System: Creates SCTASK and Provisioning Job with jobType identity.resetPassword.

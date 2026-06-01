@@ -1,100 +1,86 @@
 # Helpdesk Triage Agent
 
-The triage agent for the AI-augmented ITSM build. It classifies tickets, attempts knowledge-base deflection, and proposes actions for human approval. **Never executes privileged writes.**
+The triage brain of the AI-augmented ITSM build. It classifies tickets, attempts knowledge-base deflection, resolves identity/CMDB context, and **proposes** privileged actions for human approval. It **never executes a privileged write** — the only thing it produces is a structured triage decision.
 
-> ⚠ **Partially superseded (2026-05-30, ADR 0002).** Intake is **flow-drives-agent**: the `ITSM-Triage-Orchestrator` flow calls the agent server-side on each new ticket and acts on its reply — the agent is not a user-facing chatbot. The agent-callable **`ProposeAction`** flow/action was **retired**; references to it below are historical.
+## Architecture — flow-drives-agent
 
-## Status (2026-04-29, late evening — overnight build)
+Intake is **server-side, not conversational** (ADR [0002](../../decisions/0002-triage-approval-reconciliation.md)). The agent does not wait for a user to chat:
 
-**Locally authored.** All `.mcs.yml` files have been authored from `SPEC.md` and live under `Helpdesk Triage Agent/`. Schema name placeholder = `cr1c2_helpdesktriage`. SharePoint URLs in knowledge sources contain `https://contoso.sharepoint.com/...` placeholders. Connection reference logical names in `actions/*.mcs.yml` end in `.PLACEHOLDER`.
+```
+New SharePoint Tickets row
+   ↓
+ITSM-Triage-Orchestrator (Power Automate)  ── builds a [TRIAGE_REQUEST] payload
+   ↓  calls the agent server-side
+Helpdesk Triage Agent · TriageFromFlow topic
+   ↓  returns ONE tagged JSON block  <<<TRIAGE_BEGIN>>> … <<<TRIAGE_END>>>
+ITSM-Triage-Orchestrator  ── parses the JSON, creates the ticket + Provisioning Job
+   ↓
+Approval flow → JWT on full approval → Dispatcher → Service Bus → executor flows (the 6 SPs do the writes)
+```
 
-**Cannot be pushed as-is.** Three substitutions are required first (in this order):
-1. Catherine creates the agent in the **Flow Studio Demo** environment via https://make.powerapps.com → Copilot Studio → New agent → name "Helpdesk Triage Agent". She notes the assigned schemaName (e.g., `crXXX_helpdesktriage`).
-2. SharePoint provisioning script has run and the real tenant URL is known.
-3. The two Power Automate flows (`ITSM-ProposeAction`, `ITSM-LogHumanTicket`) are deployed and connection references generated in the agent's environment.
+The orchestrator parses the agent's reply by **substring extraction** between the two delimiters, so `TriageFromFlow` is built to emit the JSON block and nothing else — no preamble, no markdown fences, no suggested actions.
 
-Power Automate flow actions must also be in a named unmanaged solution before Copilot Studio can bind them. Default solution containers are not enough. If publish reports `CloudFlow ... not found` for an `InvokeFlowAction` / `InvokeFlowTaskAction`, check the flow's Dataverse `solutioncomponents` membership and add the workflow component to a named solution such as `FS Demo`. Cloud flows are solution component type `29`; for `ITSM-ProposeAction`, the Dataverse workflow ID is `00000000-0000-4000-8000-000000000036`.
+The agent is **not** a user-facing chatbot and does **not** create tickets itself. It is invoked only by `ITSM-Triage-Orchestrator`, classifies the incoming ticket, and returns the JSON decision — the orchestrator performs every write (ticket, Provisioning Job, approval routing). The non-`TriageFromFlow` topics still present in the published agent (`Greeting`, `CreateTicket`, `CheckTicketStatus`, `SearchKnowledge`, plus the system defaults) are vestigial scaffolding from the original conversational design; they are not on the operative path.
 
-After those three are in place, run a one-shot find-and-replace across all `.mcs.yml` files:
-- `cr1c2_helpdesktriage` → real schemaName from step 1
-- `https://contoso.sharepoint.com` → real tenant URL from step 2
-- `cr1c2_helpdesktriage.shared_powerautomate_proposeaction.PLACEHOLDER` → real connection reference logical name from step 3
-- `cr1c2_helpdesktriage.shared_powerautomate_loghumanticket.PLACEHOLDER` → real connection reference logical name from step 3
+## Status
 
-Then validate with `/copilot-studio:validate` and push with `/copilot-studio:Copilot Studio Manage` sync push.
+**Deployed and live** in the Flow Studio Demo environment. Schema name `cre79_agent`. All tenant-specific values in this public copy are placeholders — `contoso.onmicrosoft.com`, `https://contoso.sharepoint.com`, zero-GUID tenant/environment IDs.
+
+The retired pre-deploy model — an agent-callable `ProposeAction`/`LogHumanTicket` flow-action pair that let the agent write its own audit records — was removed under ADR 0002. The agent no longer holds any flow action; it only returns a decision the orchestrator acts on.
 
 ## File layout
 
-| File | What it is | Status |
-|---|---|---|
-| `README.md` | This file | Done |
-| `SPEC.md` | Canonical agent spec (single source of truth — translate to YAML from here) | Done |
-| `topics.outline.md` | Node-by-node sketches of all 8 topics with Power Fx and conditions | Done |
-| `tools.stubs.md` | 8 tool contracts + canned stub responses | Done |
-| `evals/*.json` | 5 eval scenarios in Copilot Studio Kit format | Done |
-| `Helpdesk Triage Agent/agent.mcs.yml` | Agent manifest with full instructions | Authored (placeholder schemaName) |
-| `Helpdesk Triage Agent/settings.mcs.yml` | Channels (Teams, M365 Copilot), auth (Integrated SSO), schemaName | Authored (placeholder schemaName) |
-| `Helpdesk Triage Agent/topics/*.mcs.yml` | 14 topics (9 system + 5 custom) | Authored |
-| `Helpdesk Triage Agent/actions/*.mcs.yml` | 2 actions: `ProposeAction`, `LogHumanTicket` | Authored (placeholder connection refs) |
-| `Helpdesk Triage Agent/knowledge/*.mcs.yml` | 6 knowledge sources (KB, Tickets, CIs, Categories, Service Catalog, JobTypes) | Authored (placeholder URLs) |
-
-## How to clone (do this before asking me to author YAML)
-
-1. **Create empty agent in the portal:**
-   - https://make.powerapps.com → switch to dev environment → Copilot Studio → New agent → Configure
-   - Name: `Helpdesk Triage Agent`
-   - Enable **Authenticate with Microsoft** at creation time
-   - Save (no need to add anything yet — empty agent is fine)
-2. **Clone via VS Code Copilot Studio extension:**
-   - Open the extension panel
-   - Clone agent → select `Helpdesk Triage Agent` → target `c:/Users/ninih/GitHub/Copilot Studio/agents/triage/`
-3. **Notify Claude.** Once `agent.mcs.yml` exists in this folder, the YAML can be authored from `SPEC.md` and validated.
+| File | What it is |
+|---|---|
+| `README.md` | This file |
+| `SPEC.md` | Canonical agent spec — the single source of truth for behaviour |
+| `Helpdesk Triage Agent/agent.mcs.yml` | Agent manifest: full instructions, tenant identity, Work IQ guardrails, triage protocol; model hint `opus4-1` |
+| `Helpdesk Triage Agent/settings.mcs.yml` | Channels (Teams, M365 Copilot), Integrated (M365 SSO) auth, GroupMembership access, GenerativeAIRecognizer |
+| `Helpdesk Triage Agent/connectionreferences.mcs.yml` | 4 connection references (3 Work IQ MCP + SharePoint Online) |
+| `Helpdesk Triage Agent/topics/*.mcs.yml` | 17 topics — 13 system defaults + 4 custom (`TriageFromFlow`, `CreateTicket`, `CheckTicketStatus`, `SearchKnowledge`) |
+| `Helpdesk Triage Agent/actions/*.mcs.yml` | 4 actions: `SearchKnowledgeBase` (flow) + 3 Work IQ MCP servers (SharePoint, Teams, User) — read-only lookups; no privileged ITSM writes |
+| `Helpdesk Triage Agent/knowledge/*.mcs.yml` | 6 knowledge sources (KnowledgeBase, Tickets, ConfigurationItems, Categories, ServiceCatalog, JobTypes) |
+| `Helpdesk Triage Agent/icon.png` | Agent icon |
 
 ## Auth posture
 
-**M365 SSO (integrated).** Reasons:
-- Caller UPN is required in every tool call (per design memo §4.1) — only available with M365 SSO
-- Surfaces are Teams / Outlook / Service Portal — all in the M365 perimeter
-- DirectLine would require manual UPN passing and lose the Conditional Access integration
+**M365 SSO (Integrated), GroupMembership access policy.** The caller's UPN is required in every Work IQ lookup, and the Work IQ MCP tools run **delegated as the calling user** — so they only ever return data that caller is already entitled to see. Surfaces are Teams / M365 Copilot, all inside the M365 perimeter.
+
+## Tools
+
+All four actions are **read-only** and run **delegated as the calling user** — they only return data that caller is already entitled to. The Work IQ SharePoint and Teams MCP tools are curated to explicit read-only allow-lists (`UseSpecificTools`); write operations (file move / share / delete, channel-membership updates) were deliberately removed. The User/Me MCP exposes only read tools. None of them performs a **privileged ITSM write** (identity, group, licensing, mailbox) — those go only through the propose → approve → executor pipeline below.
+
+| Tool | Purpose |
+|---|---|
+| `SearchKnowledgeBase` | Query the published KB SharePoint list for deflection candidates |
+| Work IQ **SharePoint** MCP | Verify a site exists, find owner/libraries/items before proposing or asking |
+| Work IQ **User** MCP | Resolve a user by name/partial match → UPN, manager, department (identity + approval routing) |
+| Work IQ **Teams** MCP | Verify a team/channel, identify owners (for `teams.addMember` and channel-access requests) |
+
+The agent reasons against the 6 knowledge sources as **grounding** (built-in semantic search) rather than calling a topic to query them. See `SPEC.md` for the Work IQ governance guardrails (no bulk enumeration, no volunteered security info, minimal-PII, scope-to-ticket, refusal expansion, confidentiality cascade).
 
 ## Privileged write boundary
 
-The agent **never** holds Graph write permissions. All proposed writes flow:
+The agent holds **no** write permission. Every privileged change flows:
 
 ```
-Agent → ProposeAction tool → Request ticket/RITM path or Incident + Provisioning Job path
+Agent (TriageFromFlow) → JSON decision { outcome: propose, proposedAction: {jobType, args}, … }
       ↓
-   Approval flow (separate Power Automate flow — see flows/approval/spec.md)
+ITSM-Triage-Orchestrator → writes Provisioning Job row (Status=Proposed)
       ↓
-   JWT issued on full approval
+Approval flow (flows/approval/spec.md) → JWT issued on full approval
       ↓
-   Dispatcher (POST /provisioning/jobs) — see flows/dispatcher/contract.md
+Dispatcher POST /provisioning/jobs (flows/dispatcher/contract.md)
       ↓
-   Service Bus → executor flows (the 6 SPs do the actual writes)
+Service Bus → executor flows (flows/executors/contract.md) — the 6 SPs do the actual writes
 ```
 
-The agent's 8 tools are read-only or proposal-write only. None call Microsoft Graph for privileged operations. `ProposeAction` stamps `TicketSource=ProposeAction`; downstream ticket-type validation and triage guards must preserve that source-specific behavior.
-
-## What's stubbed today
-
-All 8 tools return canned data. The SP lists they will eventually read from (`Tickets`, `Categories`, `Configuration Items`, `Knowledge Base`, `Service Catalog`) are scripted in `infra/sharepoint/` but not yet provisioned to a tenant. See `tools.stubs.md` for each tool's stub shape and the swap-to-real-data plan.
-
-## Eval test cases
-
-5 scenarios in `evals/`. Run via the Copilot Studio Kit eval harness (Dataverse-backed) or via `/copilot-studio:run-tests` once the agent is published.
-
-| # | File | Scenario |
-|---|---|---|
-| 1 | `evals/01-password-reset-deflected.json` | KB deflection succeeds, no ticket created |
-| 2 | `evals/02-password-reset-not-deflected.json` | KB tried but failed, ticket created and reset proposed |
-| 3 | `evals/03-bulk-refusal.json` | Reset for 50 users → refused (>5 user limit) |
-| 4 | `evals/04-ambiguous-ci.json` | "system is down" → agent asks which system |
-| 5 | `evals/05-major-incident-pattern.json` | Outage symptoms → routes to human queue |
+Valid `jobType` values are fixed (see `SPEC.md`); the agent must not invent any. In v1 there is **no auto-approve** — every privileged write goes through the full approval policy regardless of confidence. KB-only deflection (sending a published article and stopping) is allowed without approval because no write occurs.
 
 ## Cross-references
 
-- Design memo: `../../itsm-design-memo.docx` §4.1
-- Dispatcher contract: `../../flows/dispatcher/contract.md`
-- Approval flow spec: `../../flows/approval/spec.md`
-- Executor contract: `../../flows/executors/contract.md`
-- Identity model: `C:/Users/ninih/.claude/projects/c--Users-ninih-GitHub-Copilot-Studio/memory/project_itsm_identity_model.md`
+- Architecture decision: [`decisions/0002-triage-approval-reconciliation.md`](../../decisions/0002-triage-approval-reconciliation.md)
+- Dispatcher contract: [`flows/dispatcher/contract.md`](../../flows/dispatcher/contract.md)
+- Approval flow spec: [`flows/approval/spec.md`](../../flows/approval/spec.md)
+- Executor contract: [`flows/executors/contract.md`](../../flows/executors/contract.md)
+- Canonical agent spec: [`SPEC.md`](SPEC.md)

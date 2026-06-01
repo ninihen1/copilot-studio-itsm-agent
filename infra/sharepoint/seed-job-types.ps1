@@ -111,6 +111,18 @@ $jobTypes = @(
         CompensationJobType = ''
         Description = 'Clear all MFA methods for a user, forcing re-registration on next sign-in. Use when user lost a phone or token.'
     },
+    @{
+        JobType = 'identity.unlockAccount'
+        Category = 'identity'
+        RiskTier = 'medium'
+        DefaultPolicy = 'AP-MED-RISK-V1'
+        InputSchema = @"
+{ "type": "object", "properties": { "reason": { "type": "string" } } }
+"@
+        RequiredScopes = "User.ReadWrite.All"
+        CompensationJobType = ''
+        Description = 'Revoke the user''s active sign-in sessions (cloud equivalent of unlocking — forces fresh re-authentication everywhere). Use after a lockout or suspected compromise.'
+    },
     # ===== Groups =====
     @{
         JobType = 'groups.addMember'
@@ -149,6 +161,26 @@ $jobTypes = @(
         RequiredScopes = "GroupMember.ReadWrite.All"
         CompensationJobType = 'groups.addMember'
         Description = 'Remove a user from a group. Higher risk than add — verify the group is not the user''s only access path to a system.'
+    },
+    @{
+        JobType = 'groups.createGroup'
+        Category = 'groups'
+        RiskTier = 'medium'
+        DefaultPolicy = 'AP-MED-RISK-V1'
+        InputSchema = @"
+{
+  "type": "object",
+  "required": ["groupName"],
+  "properties": {
+    "groupName": { "type": "string" },
+    "description": { "type": "string" },
+    "mailNickname": { "type": "string" }
+  }
+}
+"@
+        RequiredScopes = "Group.Create"
+        CompensationJobType = ''
+        Description = 'Create a new mail-disabled security group. mailNickname auto-derived from groupName when omitted. No auto-compensation — group deletion is manual.'
     },
     # ===== Licensing =====
     @{
@@ -189,6 +221,27 @@ $jobTypes = @(
         CompensationJobType = 'licensing.assign'
         Description = 'Revoke a license SKU from a user. Triggers data retention policies for the affected service.'
     },
+    @{
+        JobType = 'licensing.changeSku'
+        Category = 'licensing'
+        RiskTier = 'medium'
+        DefaultPolicy = 'AP-MED-RISK-V1'
+        InputSchema = @"
+{
+  "type": "object",
+  "required": ["newSkuId", "oldSkuId"],
+  "properties": {
+    "newSkuId": { "type": "string", "description": "SkuId GUID to assign" },
+    "oldSkuId": { "type": "string", "description": "SkuId GUID to remove" },
+    "newSkuPartNumber": { "type": "string" },
+    "oldSkuPartNumber": { "type": "string" }
+  }
+}
+"@
+        RequiredScopes = "Directory.ReadWrite.All`nOrganization.Read.All"
+        CompensationJobType = ''
+        Description = 'Swap one license SKU for another in a single assignLicense call (add new, remove old). E.g., upgrade E3 to E5. To reverse, run again with newSkuId/oldSkuId swapped.'
+    },
     # ===== Exchange =====
     @{
         JobType = 'exchange.grantFullAccess'
@@ -227,6 +280,135 @@ $jobTypes = @(
         CompensationJobType = 'exchange.grantFullAccess'
         Description = 'Revoke Full Access permission from a user on a mailbox.'
     },
+    @{
+        JobType = 'exchange.grantSendAs'
+        Category = 'exchange'
+        RiskTier = 'medium'
+        DefaultPolicy = 'AP-MED-RISK-V1'
+        InputSchema = @"
+{
+  "type": "object",
+  "required": ["mailboxUpn"],
+  "properties": {
+    "mailboxUpn": { "type": "string", "format": "email", "description": "Mailbox to grant Send As on" }
+  }
+}
+"@
+        RequiredScopes = "Exchange.ManageAsApp + Recipient Management (EXO app-only via SP-IT-Exchange)"
+        CompensationJobType = 'exchange.revokeSendAs'
+        Description = 'Grant Send As on a mailbox to a user (Target.upn). Add-RecipientPermission via the EXO Function.'
+    },
+    @{
+        JobType = 'exchange.revokeSendAs'
+        Category = 'exchange'
+        RiskTier = 'low'
+        DefaultPolicy = 'AP-LOW-RISK-V1'
+        InputSchema = @"
+{
+  "type": "object",
+  "required": ["mailboxUpn"],
+  "properties": {
+    "mailboxUpn": { "type": "string", "format": "email" }
+  }
+}
+"@
+        RequiredScopes = "Exchange.ManageAsApp + Recipient Management (EXO app-only via SP-IT-Exchange)"
+        CompensationJobType = 'exchange.grantSendAs'
+        Description = 'Revoke Send As on a mailbox from a user (Target.upn). Remove-RecipientPermission via the EXO Function.'
+    },
+    @{
+        JobType = 'exchange.grantSendOnBehalf'
+        Category = 'exchange'
+        RiskTier = 'medium'
+        DefaultPolicy = 'AP-MED-RISK-V1'
+        InputSchema = @"
+{
+  "type": "object",
+  "required": ["mailboxUpn"],
+  "properties": {
+    "mailboxUpn": { "type": "string", "format": "email", "description": "Mailbox to grant Send on Behalf on" }
+  }
+}
+"@
+        RequiredScopes = "Exchange.ManageAsApp + Recipient Management (EXO app-only via SP-IT-Exchange)"
+        CompensationJobType = 'exchange.revokeSendOnBehalf'
+        Description = 'Grant Send on Behalf on a mailbox to a user (Target.upn). Set-Mailbox -GrantSendOnBehalfTo @{Add} via the EXO Function.'
+    },
+    @{
+        JobType = 'exchange.revokeSendOnBehalf'
+        Category = 'exchange'
+        RiskTier = 'low'
+        DefaultPolicy = 'AP-LOW-RISK-V1'
+        InputSchema = @"
+{
+  "type": "object",
+  "required": ["mailboxUpn"],
+  "properties": {
+    "mailboxUpn": { "type": "string", "format": "email" }
+  }
+}
+"@
+        RequiredScopes = "Exchange.ManageAsApp + Recipient Management (EXO app-only via SP-IT-Exchange)"
+        CompensationJobType = 'exchange.grantSendOnBehalf'
+        Description = 'Revoke Send on Behalf on a mailbox from a user (Target.upn). Set-Mailbox -GrantSendOnBehalfTo @{Remove} via the EXO Function.'
+    },
+    @{
+        JobType = 'exchange.createDistributionList'
+        Category = 'exchange'
+        RiskTier = 'medium'
+        DefaultPolicy = 'AP-MED-RISK-V1'
+        InputSchema = @"
+{
+  "type": "object",
+  "required": ["dlName"],
+  "properties": {
+    "dlName": { "type": "string" },
+    "dlAlias": { "type": "string", "description": "Optional; EXO derives from dlName when omitted" },
+    "dlSmtp": { "type": "string", "format": "email" },
+    "dlType": { "type": "string", "enum": ["Distribution","Security"], "default": "Distribution" }
+  }
+}
+"@
+        RequiredScopes = "Exchange.ManageAsApp + Recipient Management (EXO app-only via SP-IT-Exchange)"
+        CompensationJobType = ''
+        Description = 'Create a distribution list. New-DistributionGroup via the EXO Function. No auto-compensation (DL removal is manual).'
+    },
+    @{
+        JobType = 'exchange.addDLMember'
+        Category = 'exchange'
+        RiskTier = 'low'
+        DefaultPolicy = 'AP-LOW-RISK-V1'
+        InputSchema = @"
+{
+  "type": "object",
+  "required": ["dlIdentity"],
+  "properties": {
+    "dlIdentity": { "type": "string", "description": "DL alias or SMTP address" }
+  }
+}
+"@
+        RequiredScopes = "Exchange.ManageAsApp + Recipient Management (EXO app-only via SP-IT-Exchange)"
+        CompensationJobType = 'exchange.removeDLMember'
+        Description = 'Add a user (Target.upn) to a distribution list. Add-DistributionGroupMember via the EXO Function.'
+    },
+    @{
+        JobType = 'exchange.removeDLMember'
+        Category = 'exchange'
+        RiskTier = 'medium'
+        DefaultPolicy = 'AP-MED-RISK-V1'
+        InputSchema = @"
+{
+  "type": "object",
+  "required": ["dlIdentity"],
+  "properties": {
+    "dlIdentity": { "type": "string", "description": "DL alias or SMTP address" }
+  }
+}
+"@
+        RequiredScopes = "Exchange.ManageAsApp + Recipient Management (EXO app-only via SP-IT-Exchange)"
+        CompensationJobType = 'exchange.addDLMember'
+        Description = 'Remove a user (Target.upn) from a distribution list. Remove-DistributionGroupMember via the EXO Function.'
+    },
     # ===== SharePoint =====
     @{
         JobType = 'sharepoint.restoreFile'
@@ -246,6 +428,64 @@ $jobTypes = @(
         RequiredScopes = "Sites.Selected (sites/ITSM, fullcontrol)"
         CompensationJobType = ''
         Description = 'Restore a file from the SharePoint recycle bin within sites/ITSM.'
+    },
+    @{
+        JobType = 'sharepoint.grantPermission'
+        Category = 'sharepoint'
+        RiskTier = 'medium'
+        DefaultPolicy = 'AP-MED-RISK-V1'
+        InputSchema = @"
+{
+  "type": "object",
+  "required": ["siteUrl","groupName","upn"],
+  "properties": {
+    "siteUrl": { "type": "string" },
+    "groupName": { "type": "string", "description": "SharePoint group display name, e.g. 'ITSM Members'" },
+    "upn": { "type": "string", "format": "email" }
+  }
+}
+"@
+        RequiredScopes = "Sites.FullControl.All"
+        CompensationJobType = 'sharepoint.removePermission'
+        Description = 'Add a user to a SharePoint site group (grant site access) via SP REST sitegroups/users.'
+    },
+    @{
+        JobType = 'sharepoint.removePermission'
+        Category = 'sharepoint'
+        RiskTier = 'medium'
+        DefaultPolicy = 'AP-MED-RISK-V1'
+        InputSchema = @"
+{
+  "type": "object",
+  "required": ["siteUrl","groupName","upn"],
+  "properties": {
+    "siteUrl": { "type": "string" },
+    "groupName": { "type": "string", "description": "SharePoint group display name to remove the user from" },
+    "upn": { "type": "string", "format": "email" }
+  }
+}
+"@
+        RequiredScopes = "Sites.FullControl.All"
+        CompensationJobType = 'sharepoint.grantPermission'
+        Description = 'Remove a user from a SharePoint site group (revoke site access) via SP REST removeByLoginName.'
+    },
+    @{
+        JobType = 'sharepoint.restoreSite'
+        Category = 'sharepoint'
+        RiskTier = 'high'
+        DefaultPolicy = 'AP-MED-RISK-V1'
+        InputSchema = @"
+{
+  "type": "object",
+  "required": ["siteUrl"],
+  "properties": {
+    "siteUrl": { "type": "string", "description": "Full URL of the deleted site collection to restore" }
+  }
+}
+"@
+        RequiredScopes = "SharePoint Administrator (PnP Restore-PnPTenantRecycleBinItem via spo-site-restore Function; needs a SharePoint-admin Entra app, NOT site-scoped SP-IT-SharePoint)"
+        CompensationJobType = ''
+        Description = 'Restore a deleted SharePoint site collection from the tenant recycle bin. Routes through the spo-site-restore Azure Function (PnP tenant-admin), not site-scoped REST.'
     },
     # ===== Teams (Phase 3.1 — added 2026-05-02 to match SP-IT-Teams executor scope) =====
     @{
@@ -286,6 +526,41 @@ $jobTypes = @(
         RequiredScopes = "ChannelMember.ReadWrite.All`nGroup.ReadWrite.All"
         CompensationJobType = ''
         Description = 'Add a user as a member (or owner) of a Teams channel. Target.upn is the user being added; Target.id is the team id.'
+    },
+    @{
+        JobType = 'teams.removeChannelMember'
+        Category = 'teams'
+        RiskTier = 'medium'
+        DefaultPolicy = 'AP-MED-RISK-V1'
+        InputSchema = @"
+{
+  "type": "object",
+  "required": ["channelId"],
+  "properties": {
+    "channelId": { "type": "string", "description": "Channel id within the team" }
+  }
+}
+"@
+        RequiredScopes = "ChannelMember.ReadWrite.All`nGroup.ReadWrite.All"
+        CompensationJobType = 'teams.addChannelMember'
+        Description = 'Remove a user from a Teams channel. Looks up the membership id by userId, then deletes it. Target.upn is the user; Target.id is the team id.'
+    },
+    @{
+        JobType = 'teams.archiveTeam'
+        Category = 'teams'
+        RiskTier = 'medium'
+        DefaultPolicy = 'AP-MED-RISK-V1'
+        InputSchema = @"
+{
+  "type": "object",
+  "properties": {
+    "shouldSetSpoSiteReadOnlyForMembers": { "type": "boolean", "default": false }
+  }
+}
+"@
+        RequiredScopes = "Group.ReadWrite.All"
+        CompensationJobType = ''
+        Description = 'Archive a team (sets it read-only). Reversible via unarchive. Target.id is the team id.'
     }
 )
 

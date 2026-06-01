@@ -2,16 +2,16 @@
 
 **Status:** Retained-deferred  
 **Applies to:** `Configuration Items` and `Assets` SharePoint lists  
-**Day 4 impact:** No blocker
+**Pilot impact:** No blocker
 
 The ITSM schema intentionally keeps the `Configuration Items` and `Assets` lists even though they are not yet wired to the SPFx frontend or active Copilot Studio agent flows. They are part of the ServiceNow-style target model and are ready for future CMDB and asset-management phases.
 
 ## Current State
 
-| List | Provisioning file | Current pilot use | Day 4 decision |
+| List | Provisioning file | Current pilot use | Decision |
 |---|---|---|---|
-| `Configuration Items` | `infra/sharepoint/lists/02-configuration-items.ps1` | Empty CMDB list. Ticket schema includes `Tickets.CmdbCi` lookup, but frontend and agent do not yet populate it. | Retain. Not a Day 4 blocker. |
-| `Assets` | `infra/sharepoint/lists/03-assets.ps1` | Empty asset inventory list. Schema supports assignment and CI linkage, but no frontend or flow currently reads/writes it. | Retain. Not a Day 4 blocker. |
+| `Configuration Items` | `infra/sharepoint/lists/02-configuration-items.ps1` | Empty CMDB list. Ticket schema includes `Tickets.CmdbCi` lookup, but frontend and agent do not yet populate it. | Retain. Not a blocker. |
+| `Assets` | `infra/sharepoint/lists/03-assets.ps1` | Empty asset inventory list. Schema supports assignment and CI linkage, but no frontend or flow currently reads/writes it. | Retain. Not a blocker. |
 
 The lists exist to preserve the target data model:
 
@@ -32,7 +32,7 @@ The following are intentionally deferred:
 - No asset-to-user device view in My Tickets or Admin views.
 - No automated Intune, Entra, SharePoint, or ServiceNow import into either list.
 
-This means Day 4 work can proceed without seeding CIs or Assets.
+This means Work can proceed without seeding CIs or Assets.
 
 ## Future Wiring Target
 
@@ -117,17 +117,15 @@ Ticket: "Finance payroll site is unavailable"
   -> Assets linked to CI = related licenses, subscriptions, or devices where applicable
 ```
 
-## Day 4 Guidance
+## Guidance
 
 Do not remove these lists.
 
-Do not block Day 4 pilot readiness on these lists being empty.
+Do not block pilot readiness on these lists being empty.
 
-For Day 4, treat both lists as retained-deferred schema:
+Treat both lists as retained-deferred schema:
 
 - They are valid provisioned lists.
-- They are not required for ProposeAction deployment.
-- They are not required for Adaptive Card notifications.
 - They are not required for KB import.
 - They are not required for subcategory frontend wiring.
 - They are not required for license cost frontend wiring.

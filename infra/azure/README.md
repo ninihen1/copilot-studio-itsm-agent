@@ -31,7 +31,7 @@ Bicep / Terraform not yet authored. Pilot deploys via `az` CLI per `DEPLOYMENT.m
 
 ### Idempotency storage
 
-Day 4 production hardening provisions the dispatcher idempotency backing store with:
+Production hardening provisions the dispatcher idempotency backing store with:
 
 ```powershell
 ./infra/azure/provision-idempotency-storage.ps1 -EnvFile .env.production
@@ -60,7 +60,7 @@ response must return the existing job status without dispatching another executo
 
 ### Service Bus executor dispatch
 
-Day 4 production hardening provisions the executor dispatch queueing topology with:
+Production hardening provisions the executor dispatch queueing topology with:
 
 ```powershell
 ./infra/azure/provision-servicebus-dispatch.ps1 -EnvFile .env.production

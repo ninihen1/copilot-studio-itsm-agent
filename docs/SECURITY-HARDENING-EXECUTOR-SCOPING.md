@@ -1,6 +1,6 @@
 # Executor Security Hardening Guide
 
-Scope: Day 4 recommendations for the six ITSM executor service principals  
+Scope: Recommendations for the six ITSM executor service principals  
 Principle: AI proposes, humans approve, scoped service principals execute
 
 ## Current Executor Identities

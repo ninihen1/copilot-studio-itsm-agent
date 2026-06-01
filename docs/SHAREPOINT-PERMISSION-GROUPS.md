@@ -1,7 +1,7 @@
 # SharePoint Permission Group Definitions - ITSM Pilot
 
 Scope: `https://contoso.sharepoint.com/sites/ITSM`  
-Status: Day 4 readiness definition  
+Status: readiness definition  
 Applies to: SharePoint site groups, list permissions, and item-level permission sync design
 
 ## Goals

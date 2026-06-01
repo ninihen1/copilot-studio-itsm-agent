@@ -1,7 +1,7 @@
-# Phase 3.1 fix #5 — Exchange Online PowerShell wrapper Function
+# Phase 3.1 + capability expansion 2026-06-01 — Exchange Online PowerShell wrapper Function
 #
-# Wraps Add-MailboxPermission / Remove-MailboxPermission for the SP-IT-Exchange executor.
-# Pure Graph cannot grant Exchange Full Access — see reference_graph_cannot_grant_exchange_fullaccess.md.
+# Wraps EXO cmdlets for the SP-IT-Exchange executor. Pure Graph cannot do these —
+# see reference_graph_cannot_grant_exchange_fullaccess.md.
 #
 # Auth: cert-based app-only Connect-ExchangeOnline using SP-IT-Exchange Entra app.
 # Cert PFX is stored in Key Vault `kv-itsm-demo`, secret name `SP-IT-Exchange-EXO-CertPfxBase64`,
@@ -9,16 +9,25 @@
 #
 # Request shape (POST):
 #   {
-#     "action": "grant" | "revoke",
-#     "mailboxUpn": "shared.mailbox@example.com",
-#     "delegateUpn": "delegate@example.com",
-#     "accessRights": "FullAccess",         // optional, default "FullAccess"
-#     "autoMapping": true,                   // optional, default true (only for grant)
-#     "correlationId": "<ulid>"              // optional, echoed in response
+#     "action": "grant" | "revoke" |                       // mailbox FullAccess (default accessRights)
+#               "grantSendAs" | "revokeSendAs" |           // Send As (Add/Remove-RecipientPermission)
+#               "grantSendOnBehalf" | "revokeSendOnBehalf" |  // Send on Behalf (Set-Mailbox -GrantSendOnBehalfTo)
+#               "createDistributionList" |                  // New-DistributionGroup
+#               "addDLMember" | "removeDLMember",           // Add/Remove-DistributionGroupMember
+#     "mailboxUpn": "shared.mailbox@example.com",          // FullAccess/SendAs/SendOnBehalf
+#     "delegateUpn": "delegate@example.com",               // FullAccess/SendAs/SendOnBehalf; DL member for addDLMember/removeDLMember
+#     "accessRights": "FullAccess",                         // optional, default "FullAccess" (FullAccess actions only)
+#     "autoMapping": true,                                  // optional, default true (grant FullAccess only)
+#     "dlName": "All Engineering",                          // createDistributionList
+#     "dlAlias": "all-engineering",                         // optional, EXO derives from dlName when omitted
+#     "dlSmtp": "all-engineering@example.com",              // optional createDistributionList primary SMTP
+#     "dlType": "Distribution",                             // optional, "Distribution" | "Security", default "Distribution"
+#     "dlIdentity": "all-engineering@example.com",          // addDLMember/removeDLMember (DL alias or SMTP)
+#     "correlationId": "<ulid>"                             // optional, echoed in response
 #   }
 #
 # Response 200:
-#   { "ok": true, "action": "grant", "mailbox": "...", "delegate": "...", "correlationId": "..." }
+#   { "ok": true, "action": "...", <action-specific fields>, "correlationId": "..." }
 #
 # Response 4xx/5xx:
 #   { "ok": false, "error": "<code>", "reason": "<message>", "correlationId": "..." }
@@ -56,19 +65,36 @@ try {
     return
 }
 
-$action       = [string]$body.action
-$mailboxUpn   = [string]$body.mailboxUpn
-$delegateUpn  = [string]$body.delegateUpn
-$accessRights = if ($body.accessRights) { [string]$body.accessRights } else { 'FullAccess' }
-$autoMapping  = if ($null -ne $body.autoMapping) { [bool]$body.autoMapping } else { $true }
+$action        = [string]$body.action
+$mailboxUpn    = [string]$body.mailboxUpn
+$delegateUpn   = [string]$body.delegateUpn
+$accessRights  = if ($body.accessRights) { [string]$body.accessRights } else { 'FullAccess' }
+$autoMapping   = if ($null -ne $body.autoMapping) { [bool]$body.autoMapping } else { $true }
+$dlName        = [string]$body.dlName
+$dlAlias       = [string]$body.dlAlias
+$dlSmtp        = [string]$body.dlSmtp
+$dlType        = if ($body.dlType) { [string]$body.dlType } else { 'Distribution' }
+$dlIdentity    = [string]$body.dlIdentity
 $correlationId = if ($body.correlationId) { [string]$body.correlationId } else { [guid]::NewGuid().ToString() }
 
-if ($action -notin @('grant','revoke')) {
-    Send-Response -StatusCode 400 -Body @{ ok = $false; error = 'invalid_action'; reason = "action must be 'grant' or 'revoke'"; correlationId = $correlationId }
+$validActions = @('grant','revoke','grantSendAs','revokeSendAs','grantSendOnBehalf','revokeSendOnBehalf','createDistributionList','addDLMember','removeDLMember')
+if ($action -notin $validActions) {
+    Send-Response -StatusCode 400 -Body @{ ok = $false; error = 'invalid_action'; reason = "action must be one of: $($validActions -join ', ')"; correlationId = $correlationId }
     return
 }
-if (-not $mailboxUpn -or -not $delegateUpn) {
+
+# Per-action required-field validation
+$needsMailboxDelegate = $action -in @('grant','revoke','grantSendAs','revokeSendAs','grantSendOnBehalf','revokeSendOnBehalf')
+if ($needsMailboxDelegate -and (-not $mailboxUpn -or -not $delegateUpn)) {
     Send-Response -StatusCode 400 -Body @{ ok = $false; error = 'missing_field'; reason = 'mailboxUpn and delegateUpn are required'; correlationId = $correlationId }
+    return
+}
+if ($action -eq 'createDistributionList' -and -not $dlName) {
+    Send-Response -StatusCode 400 -Body @{ ok = $false; error = 'missing_field'; reason = 'dlName is required for createDistributionList'; correlationId = $correlationId }
+    return
+}
+if ($action -in @('addDLMember','removeDLMember') -and (-not $dlIdentity -or -not $delegateUpn)) {
+    Send-Response -StatusCode 400 -Body @{ ok = $false; error = 'missing_field'; reason = 'dlIdentity and delegateUpn (member) are required for DL member changes'; correlationId = $correlationId }
     return
 }
 
@@ -120,38 +146,54 @@ try {
     return
 }
 
-# === 3. Perform the permission change ===
+# === 3. Perform the action ===
 try {
-    if ($action -eq 'grant') {
-        $result = Add-MailboxPermission `
-            -Identity        $mailboxUpn `
-            -User            $delegateUpn `
-            -AccessRights    $accessRights `
-            -InheritanceType All `
-            -AutoMapping:    $autoMapping `
-            -Confirm:$false `
-            -ErrorAction     Stop
-    } else {
-        $result = Remove-MailboxPermission `
-            -Identity        $mailboxUpn `
-            -User            $delegateUpn `
-            -AccessRights    $accessRights `
-            -InheritanceType All `
-            -Confirm:$false `
-            -ErrorAction     Stop
+    switch ($action) {
+        'grant' {
+            $result = Add-MailboxPermission -Identity $mailboxUpn -User $delegateUpn -AccessRights $accessRights -InheritanceType All -AutoMapping:$autoMapping -Confirm:$false -ErrorAction Stop
+        }
+        'revoke' {
+            $result = Remove-MailboxPermission -Identity $mailboxUpn -User $delegateUpn -AccessRights $accessRights -InheritanceType All -Confirm:$false -ErrorAction Stop
+        }
+        'grantSendAs' {
+            $result = Add-RecipientPermission -Identity $mailboxUpn -Trustee $delegateUpn -AccessRights SendAs -Confirm:$false -ErrorAction Stop
+        }
+        'revokeSendAs' {
+            $result = Remove-RecipientPermission -Identity $mailboxUpn -Trustee $delegateUpn -AccessRights SendAs -Confirm:$false -ErrorAction Stop
+        }
+        'grantSendOnBehalf' {
+            $result = Set-Mailbox -Identity $mailboxUpn -GrantSendOnBehalfTo @{ Add = $delegateUpn } -Confirm:$false -ErrorAction Stop
+        }
+        'revokeSendOnBehalf' {
+            $result = Set-Mailbox -Identity $mailboxUpn -GrantSendOnBehalfTo @{ Remove = $delegateUpn } -Confirm:$false -ErrorAction Stop
+        }
+        'createDistributionList' {
+            $dlParams = @{ Name = $dlName; Type = $dlType; Confirm = $false; ErrorAction = 'Stop' }
+            if ($dlAlias) { $dlParams.Alias = $dlAlias }
+            if ($dlSmtp)  { $dlParams.PrimarySmtpAddress = $dlSmtp }
+            $result = New-DistributionGroup @dlParams
+        }
+        'addDLMember' {
+            $result = Add-DistributionGroupMember -Identity $dlIdentity -Member $delegateUpn -BypassSecurityGroupManagerCheck -Confirm:$false -ErrorAction Stop
+        }
+        'removeDLMember' {
+            $result = Remove-DistributionGroupMember -Identity $dlIdentity -Member $delegateUpn -BypassSecurityGroupManagerCheck -Confirm:$false -ErrorAction Stop
+        }
     }
 } catch {
     $exMsg = $_.Exception.Message
     Send-Response -StatusCode 500 -Body @{
         ok = $false
-        error = if ($exMsg -match 'is already a delegate') { 'already_granted' }
-                elseif ($exMsg -match 'is not a delegate')  { 'not_granted' }
-                elseif ($exMsg -match 'couldn''t be found') { 'mailbox_not_found' }
-                else                                          { 'exo_command_failed' }
+        error = if ($exMsg -match 'is already a delegate|already has|already a member') { 'already_present' }
+                elseif ($exMsg -match 'is not a delegate|not a member|wasn''t found as a member') { 'not_present' }
+                elseif ($exMsg -match 'couldn''t be found|can''t be found') { 'recipient_not_found' }
+                elseif ($exMsg -match 'already exists') { 'already_exists' }
+                else { 'exo_command_failed' }
         reason = $exMsg
         action = $action
         mailbox = $mailboxUpn
         delegate = $delegateUpn
+        dlIdentity = $dlIdentity
         correlationId = $correlationId
     }
     return
@@ -160,13 +202,15 @@ try {
 }
 
 # === 4. Success ===
-Send-Response -StatusCode 200 -Body @{
+$resp = @{
     ok = $true
     action = $action
-    mailbox = $mailboxUpn
-    delegate = $delegateUpn
-    accessRights = $accessRights
-    autoMapping = $autoMapping
     correlationId = $correlationId
     completedAt = (Get-Date).ToUniversalTime().ToString('o')
 }
+if ($mailboxUpn)  { $resp.mailbox = $mailboxUpn }
+if ($delegateUpn) { $resp.delegate = $delegateUpn }
+if ($dlName)      { $resp.dlName = $dlName }
+if ($dlIdentity)  { $resp.dlIdentity = $dlIdentity }
+if ($action -in @('grant','revoke')) { $resp.accessRights = $accessRights; $resp.autoMapping = $autoMapping }
+Send-Response -StatusCode 200 -Body $resp

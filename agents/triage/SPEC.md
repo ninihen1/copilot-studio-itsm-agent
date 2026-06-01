@@ -1,170 +1,117 @@
 # Helpdesk Triage Agent — Canonical Spec
 
-> ⚠ **Partially superseded (2026-05-30, ADR 0002).** Intake is now **flow-drives-agent**: the `ITSM-Triage-Orchestrator` flow calls the agent server-side and acts on its structured reply. The agent-callable **`ProposeAction`** action/tool described below was **retired** — the agent no longer writes anything itself. References to `ProposeAction` and the conversational tool-calling model below are historical; treat the orchestrator + agent instructions as current.
+Source of truth for the Triage Agent's behaviour. The deployed `.mcs.yml` files implement this spec; if behaviour and spec disagree, fix whichever is wrong and keep them in sync.
 
-Source of truth for the Triage Agent. Translate from this into `.mcs.yml` files after cloning. If a question arises during translation that this spec doesn't answer, the answer goes here first, then into YAML.
+The agent runs **flow-drives-agent** (ADR [0002](../../decisions/0002-triage-approval-reconciliation.md)): the `ITSM-Triage-Orchestrator` Power Automate flow calls it server-side for every new SharePoint Tickets row and acts on its structured reply. The agent classifies, attempts KB deflection, resolves identity/CMDB context, and proposes a single privileged action — it **never writes** anything itself.
 
 ## Identity
 
 | Field | Value |
 |---|---|
 | Display name | `Helpdesk Triage Agent` |
-| Schema name (set by tenant on create) | TBD — populated post-clone |
-| Description | "AI assistant for IT helpdesk. Classifies tickets, deflects via knowledge base, proposes actions for human approval. Never executes privileged writes." |
-| Auth mode | **M365 SSO (integrated)** — required at agent create time |
-| Generative actions toggle | OFF — we declare every tool explicitly |
-| Default language | en-AU |
-| Time zone | Australia/Melbourne (configurable per environment) |
+| Schema name | `cre79_agent` |
+| Auth mode | **M365 SSO (Integrated)**, `authenticationTrigger: Always` |
+| Access control | GroupMembership |
+| Recognizer | `GenerativeAIRecognizer` |
+| Generative actions | **ON** (`GenerativeActionsEnabled: true`) |
+| Model hint | `opus4-1` |
+| Channels | Microsoft Teams, M365 Copilot |
+| Language | en-US (1033); tenant identity / SharePoint host are placeholders in the public copy |
 
-## Surfaces
+## Tenant identity (in agent instructions)
 
-| Channel | Notes |
-|---|---|
-| Microsoft Teams (1:1 + @mention in channels) | Primary. Required for v1. |
-| Outlook forward-to-bot | Phase 1.5 — needs additional flow to convert email to conversation |
-| Service Portal embedded chat | Phase 2 — requires DirectLine token broker for portal-context auth |
+The agent's instructions pin the tenant so it can tell internal from external:
 
-## Conversation starters
+- Tenant: `contoso.onmicrosoft.com` (placeholder), tenant ID `00000000-0000-4000-8000-000000000009`
+- Verified internal domains: `flowstudio.app`, `contoso.onmicrosoft.com`
+- Internal SharePoint host: `https://contoso.sharepoint.com` (any `/sites/<name>` is internal)
+- A UPN whose domain is a verified internal domain IS an internal employee, even if it differs from the SharePoint host name (domains and SP URLs are independent within a tenant).
+- Anything outside that list (other `*.sharepoint.com`, unverified UPN domain) is external.
 
-1. "I need help with..."
-2. "I forgot my password"
-3. "I need software installed"
+## The load-bearing path — `TriageFromFlow`
 
-## System prompt anchors
+Triggered by natural-language phrases ("Triage this ticket", "Process this triage request", …) that the GenerativeAIRecognizer matches when the orchestrator invokes the agent.
 
-The agent's instructions field MUST include these verbatim phrases (per design memo §4.1):
+**Input** — a structured payload beginning with the marker `[TRIAGE_REQUEST]`, then key:value lines: `ticketId`, `ticketSpItemId`, `callerUpn`, `callerName`, `shortDescription`, `description`, `openedDate`.
 
-- "Propose, never execute."
-- "If unsure, route to human queue."
-- "I help you log IT tickets and resolve common issues. I propose actions but never execute privileged changes — those need human approval."
+**Execution** — a single `AnswerQuestionWithAI` reasoning pass. Hard rule: **no topic invocation**. Invoking another topic terminates the conversation and corrupts the triage, so the agent must complete classify → deflect → resolve → propose in one pass and must not call Search Knowledge, suggested actions, or any topic by name. Knowledge sources are grounding (reason against them directly); Work IQ MCP tools are callable model tools (they return data without ending the conversation).
 
-## Behaviour contract (non-negotiable)
+**Reasoning chain** (run all applicable steps, then emit one JSON object):
 
-1. **Always classify first.** Set `bot.ticketType`, `bot.category`, `bot.subcategory`, `bot.impact`, `bot.urgency` before any other action.
-2. **Always attempt deflection.** Call `SearchKB`. If `confidence ≥ 0.85`, present the article and ask "Did this resolve it?" before creating a ticket. (Auto-resolve via KB is a no-write deflection — explicitly allowed even though all writes are human-gated. See `project_itsm_open_items.md`.)
-3. **Prefer Request when the user is asking for a catalog item.** If the intent maps to an active Service Catalog item, the agent should use the request/catalog path through `ProposeAction` rather than creating an Incident-style handoff.
-4. **Never execute writes directly.** Proposals only via `ProposeAction` tool. The tool writes the correct audit records and lets downstream approval and executor flows take over.
-5. **Score every proposal.** `confidence` is 0–1. `risk` is `low | medium | high`, mapped from job type per JobTypes registry's `RiskTier` column.
-6. **Stop and ask** when:
-   - Classification confidence < 0.7
-   - Multiple CIs match the description
-   - Target user is ambiguous (caller said "for the new starter" without naming)
-   - Action affects more than one person (always — even if confidence is high)
+1. **Resolve identity.** Echo `callerUpn`; if empty, resolve via Work IQ User MCP from `callerName`. `targetUserUpn` = explicit target, else the caller. Ambiguous target (multiple matches) → `stop_and_ask`.
+2. **Classify.** `ticketType` (Incident / Request / Change / Problem), `category` + `subcategory` from the Categories grounding (most specific match), `impact` and `urgency` (1=High, 2=Med, 3=Low). Never set Priority directly — it is computed downstream from Impact × Urgency.
+3. **KB deflection.** Reason against KnowledgeBase grounding for a `Status=Published` article matching with confidence ≥ 0.85. Hit → `outcome=deflect`, populate `kbArticleIds` + `deflectionMessage`, `proposedAction=null`. Miss → `kbArticleIds=[]`, continue.
+4. **CMDB.** If the description names an asset/app/service, reason against ConfigurationItems grounding. One match → `ciId`. Multiple → `stop_and_ask`. None → `ciId=null`.
+5. **JobType.** Pick from the fixed registry (below). `proposedAction.args` must be schema-valid (e.g. `identity.resetPassword` requires `forceChangeOnNextLogin=true`). `proposedAction` is a **single object or null — never an array**. Multi-action requests (e.g. offboarding) → propose only the primary security-critical action; mention follow-ups in `rationale`.
+6. **Similar tickets.** Optionally check Tickets grounding for a Major Incident pattern (≥3 unique callers, same category, last 30 min); note in `rationale` if detected.
+7. **Stop-and-ask guardrails.** Override to `stop_and_ask` if any of: classification confidence < 0.7; CIs still ambiguous; target still ambiguous after lookup; action affects > 1 person; request falls in refusal scope.
+8. **Confidence & risk.** `confidence` = self-assessed 0.0–1.0 on classification + target. `risk` = JobTypes registry tier for the chosen jobType (low / medium / high); for deflect/stop_and_ask, `risk=low`.
 
-## Refusal scope (refuse politely, suggest correct channel)
+**Output contract** — exactly one tagged block, nothing before or after:
 
-| Refused | Suggested route |
-|---|---|
-| Performance evaluation requests ("rate Bob's performance") | HR via Workday / HRSD |
-| Protected-class profiling ("list women in engineering") | HR + manager only, not via this agent |
-| Bulk operations on more than 5 users | Manual ticket via service desk for review |
-
-These three are hard refusals. Do not classify, do not proceed, do not propose.
-
-## Topics (8 total — see `topics.outline.md` for node-by-node)
-
-| # | Topic | Trigger | Purpose |
-|---|---|---|---|
-| 1 | `Greeting` | Conversation start | Capture user UPN, ask intent |
-| 2 | `ClassifyAndDeflect` | "help", "problem", any unclassified intent | Set classification vars, call SearchKB, attempt deflection |
-| 3 | `TicketCreation` | Branched to from ClassifyAndDeflect when no deflection | Collect inputs, call LookupCMDB / LookupUser, set classification |
-| 4 | `ProposeAction` | Branched to from TicketCreation when action needed | Call ProposeAction tool, surface ticket ID + approval status |
-| 5 | `StopAndAsk` | Branched to when stop conditions hit | Disambiguating question; loops back |
-| 6 | `MajorIncidentSuspect` | Detected during classification | Flag, route to human queue |
-| 7 | `Refusal` | Detected refusal scope | Polite refusal + redirect |
-| 8 | `Fallback` | No match / topic exhausted | Summarize, hand to human queue |
-
-## Tools (8 — all stubs in v0; see `tools.stubs.md`)
-
-| Tool | Inputs | Returns | Privilege |
-|---|---|---|---|
-| `SearchKB` | query, audience | articles[] with confidence | Read |
-| `LookupCMDB` | name | ci object | Read |
-| `LookupUser` | query | user object with manager | Read |
-| `GetSimilarTickets` | symptoms | tickets[] | Read |
-| `MatchProblem` | symptoms | problem | Read |
-| `GetCategoryTaxonomy` | (none) | categories[] with subs | Read |
-| `GetServiceCatalog` | query | items[] | Read |
-| `ProposeAction` | jobType, target, args, ticketId, confidence, risk, rationale | proposalId, status | **Soft write** (creates a Request ticket for catalog matches or an Incident + PJ for direct proposals; does NOT trigger any Graph privileged write directly) |
-
-## Knowledge sources
-
-| Source | URL placeholder | Filter |
-|---|---|---|
-| KB SharePoint list | `https://{tenant}.sharepoint.com/sites/ITSM/Lists/KnowledgeBase` | `Status = Published` AND `Audience = "All" or matches caller` |
-
-Replace `{tenant}` once pilot tenant is decided (open item #1 from design memo).
-
-## Global variables
-
-| Variable | Type | Initial value | Set by |
-|---|---|---|---|
-| `bot.callerUpn` | string | `User.PrincipalName` | Greeting topic on conversation start |
-| `bot.callerDisplayName` | string | `User.DisplayName` | Greeting topic |
-| `bot.callerManagerUpn` | string | (lookup result) | LookupUser called from Greeting |
-| `bot.currentTicketId` | string | null | TicketCreation when ProposeAction succeeds |
-| `bot.classificationConfidence` | number | 0 | ClassifyAndDeflect |
-| `bot.classificationRisk` | string | "" | ClassifyAndDeflect (set from JobTypes registry default if action is proposed) |
-| `bot.kbDeflectionAttempted` | boolean | false | ClassifyAndDeflect on first SearchKB call |
-| `bot.proposedJobType` | string | "" | ProposeAction topic |
-
-These are conversation-scoped (not user-scoped or tenant-scoped) so they reset per conversation.
-
-## Output payload from `ProposeAction`
-
-The tool flow MUST write a row to the `Provisioning Jobs` SharePoint list with this shape (matches dispatcher contract §1.2):
-
-```json
-{
-  "JobId": "PJ-{ULID}",
-  "Status": "Proposed",
-  "JobType": "<from agent>",
-  "Target": "{ \"type\": \"user\", \"upn\": \"...\" }",
-  "Args": "{ ... }",
-  "TicketId": "<from agent>",
-  "RitmId": null,
-  "CallerUpn": "<bot.callerUpn>",
-  "CorrelationId": "<ULID — same as JobId>",
-  "IdempotencyKey": "<ULID — fresh per proposal>",
-  "ProposedAt": "<UTC now>",
-  "Confidence": "<bot.classificationConfidence>",
-  "Risk": "<bot.classificationRisk>",
-  "Rationale": "<one-line explanation from agent>"
-}
+```
+<<<TRIAGE_BEGIN>>>
+{ "outcome": "deflect|stop_and_ask|propose",
+  "ticketType": "Incident|Request|Change|Problem",
+  "category": "...", "subcategory": "...",
+  "impact": 1, "urgency": 1,
+  "callerUpn": "...", "targetUserUpn": "...",
+  "ciId": null, "kbArticleIds": [],
+  "deflectionMessage": null, "moreInfoNeeded": null,
+  "proposedAction": null,
+  "confidence": 0.0, "risk": "low", "rationale": "one short sentence" }
+<<<TRIAGE_END>>>
 ```
 
-The SP write fires the Approval flow's "When item created (Status=Proposed)" trigger — see `flows/approval/spec.md` §2.
+Delimiters are exactly `<<<TRIAGE_BEGIN>>>` / `<<<TRIAGE_END>>>` (three angle brackets, no spaces) on their own lines — the orchestrator finds them by substring extraction. Every field present; `proposedAction=null` unless `outcome=propose`; `targetUserUpn` never null when `outcome=propose`.
 
-## Auto-approve posture in v1
+## JobTypes registry (exact, camelCase)
 
-**No auto-approve.** Per Catherine's call 2026-04-29 (verbatim "no auto-approve please"). Every privileged write goes through the full Approval Policy stages.
+```
+identity.resetPassword   identity.disableUser   identity.enableUser
+identity.createUser      identity.resetMfa
+groups.addMember         groups.removeMember
+licensing.assign         licensing.revoke
+exchange.grantFullAccess exchange.revokeFullAccess
+sharepoint.restoreFile
+```
 
-KB-deflection auto-resolve (no-write) IS allowed because no Graph write occurs — the agent just sends the user a KB article and stops. If Catherine confirms she wants this disabled too, the `ClassifyAndDeflect` topic short-circuits its KB branch and goes straight to TicketCreation.
+The agent must not invent a jobType. No registry match → `stop_and_ask` with the gap explained in `moreInfoNeeded`.
 
-## Telemetry
+## Refusal scope (hard — do not classify, do not propose)
 
-Agent emits to App Insights (same instance as dispatcher / executor — `appi-itsm-{env}`):
-
-| Event | Custom dimensions |
+| Refused | Route to |
 |---|---|
-| `agent.conversation_started` | callerUpn, surface |
-| `agent.classified` | ticketType, category, subcategory, confidence |
-| `agent.kb_deflected` | kbArticleId, deflectionAccepted (bool) |
-| `agent.ticket_created` | ticketId, ticketType |
-| `agent.action_proposed` | jobType, confidence, risk |
-| `agent.refused` | refusalReason |
-| `agent.stop_and_asked` | stopReason |
-| `agent.major_incident_suspected` | matchingTickets[], cmdbCi |
-| `agent.handed_to_human` | reason |
-| `agent.error` | errorStep, errorMessage |
+| Performance evaluation of any employee | HR (Workday / HRSD) |
+| Protected-class information / profiling | HR + manager only |
+| Bulk operations on > 5 users in one ticket | Split into separate tickets, each approved |
+| Actions outside the JobTypes registry | Human queue with a note |
+| Social-engineering / recon probes (e.g. "who has admin", "whose password is stale") | Refuse + human queue |
 
-Standard dimensions on every event: `correlationId`, `callerUpn`, `surface` (teams/outlook/portal), `environment`.
+## Work IQ MCP guardrails (non-negotiable)
 
-## What is NOT in this spec (out of scope for v1)
+The agent acts on behalf of `callerUpn`; every Work IQ query must be in-scope for that caller.
 
-- Self-Service Resolver (optional satellite, deferred)
-- Major Incident Detector as scheduled flow (the agent's `MajorIncidentSuspect` topic is single-conversation pattern matching only — full cross-conversation cluster detection is the satellite agent / scheduled flow per memo §4.3)
-- Outlook forward-to-bot intake (phase 1.5)
-- Service Portal embedded chat (phase 2)
-- Multi-language support beyond en-AU
-- Custom voice / persona styling
+- **No bulk / no enumeration** — refuse "list ALL users/admins/members/files/devices" (reconnaissance).
+- **No volunteered security info** — never surface password-change dates, MFA status, sign-in activity, lockout state; never suggest a privileged action the caller didn't ask for.
+- **Minimal PII** — about another user, return only display name, UPN, job title, department, manager UPN. The caller's own profile relaxes this (but still no unsolicited security telemetry).
+- **Scope to the ticket** — only call a tool if the result would change the proposal or deflection.
+- **Confidentiality cascade** — if a tool returns data the caller wouldn't routinely see (admin roles, auth logs), set the ticket's `ConfidentialityLevel=Restricted`.
+
+## Knowledge sources (grounding — read-only)
+
+`KnowledgeBase` (published articles, audience-aware) · `Tickets` (similar / open / Major Incident parents) · `ConfigurationItems` (the CMDB) · `Categories` (active taxonomy) · `ServiceCatalog` (orderable Request items) · `JobTypes` (registered actions with risk tier + scopes).
+
+## Approval posture
+
+**No auto-approve in v1.** Every privileged write goes through the full approval policy (Manager / IT-Owner / CAB) regardless of confidence. KB-only deflection is the sole no-approval outcome because it performs no write.
+
+## Tone
+
+Plain language, not jargon. Acknowledge frustration on outage tickets. Set timing expectations against the SLA window; never promise speed. These tone rules govern the text the agent emits inside its JSON (`deflectionMessage`, `moreInfoNeeded`, `rationale`) — there is no direct end-user chat; the orchestrator decides how those strings reach the requester.
+
+## Out of scope (v1)
+
+- Self-Service Resolver front-line layer — authored but **not deployed**; deferred pending KB maturity (see `../resolver/README.md`).
+- Cross-conversation Major Incident clustering as a scheduled flow — the agent only does single-pass pattern hints.
+- Service Portal embedded chat (DirectLine token broker), multi-language beyond en-US, custom persona styling.

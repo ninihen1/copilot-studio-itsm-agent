@@ -299,30 +299,30 @@ Action taken:
 
 ---
 
-## Current Capabilities (Day 4 In Progress - see `flows/CURRENT-STATUS.md`)
+## Current Capabilities
 
-### ✅ Working Right Now (Deployed & Validated)
+### ✅ Working today (deployed and validated)
 
-1. **Flow-invoked AI Triage** — a Power Automate flow calls the Copilot Studio Helpdesk Triage Agent to classify tickets, search KB, and propose actions (deployed Day 1)
-2. **6 Executor Types — ALL E2E VALIDATED** (Day 2):
-   - **Identity Executor** — Password reset, MFA reset, enable/disable accounts (Tickets 22 → PJ 6)
-   - **Groups Executor** — Add/remove members, create groups (Tickets 30-31 → PJs 11-12)
-   - **Licensing Executor** — Assign/revoke licenses (Tickets 32-33 → PJs 13-14)
-   - **Exchange Executor** — Grant/revoke mailbox permissions (Tickets 34-35 → PJs 15-16)
-   - **SharePoint Executor** — File restore, permission grants (Ticket 36 → PJ 17)
-   - **Teams Executor** — Channel create, member management (Tickets 37-38 → PJs 18-19)
-3. **Service Catalog** — 8 catalog items (6 single-task + 2 Order Guides: New Hire Onboarding, User Offboarding)
-4. **Request Fulfillment Pipeline** — RITM Generator → Approval → SCTASK Orchestrator → SCTASK-PJ Bridge → Dispatcher → Executors (full chain working when tickets are correctly created as Requests)
-5. **SLA Timer Flow** — Business hours (Mon-Fri 9-16h Sydney), 15min intervals, pause-on-hold, 75% warning, 100% breach (Day 3, validated Tickets 66-67)
-6. **Archival Flow** — Daily 2 AM schedule, 90-day threshold, auto-copy to Tickets-Archive (Day 3, validated Ticket 68)
-7. **Major Incident Detection** — Triage Agent semantic clustering, 1-hour window, parent MI creation (Day 3, validated Tickets 78-80 → MI 81)
-8. **18 Categories + 80 Subcategories** — ITIL-aligned taxonomy with JobTypeHints (Day 1)
-9. **Approval Workflows** — Manager approval via Approval-Bridge flow (pilot version, full multi-stage policies designed but not wired)
-10. **Full Audit Trail** — Every Provisioning Job with caller UPN, approver, timestamps, Graph request ID, result JSON
-11. **Kill Switch** — Emergency stop via Config list KillSwitch=true (tested, works)
-12. **Knowledge Base** — 40 seeded articles are published, with current published count tracking at 40-42 depending on environment/system rows.
-13. **Flow-driven intake** — the `ITSM-Triage-Orchestrator` flow calls the agent server-side on each new ticket and acts on its reply. (The earlier agent-callable *ProposeAction* HTTP handoff was retired 2026-05-30; see ADR 0002.)
-14. **Azure Hardening Resources** — App Insights, Service Bus dispatch topology, and Azure Table idempotency storage are provisioned for the pilot hardening path.
+1. **Flow-invoked AI Triage** — a Power Automate flow calls the Copilot Studio Helpdesk Triage Agent to classify tickets, search the KB, and propose actions.
+2. **6 Executor Types — all end-to-end validated:**
+   - **Identity Executor** — password reset, MFA reset, enable/disable accounts
+   - **Groups Executor** — add/remove members, create groups
+   - **Licensing Executor** — assign/revoke licenses
+   - **Exchange Executor** — grant/revoke mailbox permissions
+   - **SharePoint Executor** — file restore, permission grants
+   - **Teams Executor** — channel create, member management
+3. **Service Catalog** — 8 catalog items (6 single-task + 2 order guides: New Hire Onboarding, User Offboarding)
+4. **Request Fulfillment Pipeline** — RITM Generator → Approval → SCTASK Orchestrator → SCTASK-PJ Bridge → Dispatcher → Executors
+5. **SLA Timer Flow** — business hours (Mon–Fri 9–16 Sydney), 15-min intervals, pause-on-hold, 75% warning, 100% breach
+6. **Archival Flow** — daily 02:00 schedule, 90-day threshold, auto-copy to Tickets-Archive
+7. **Major Incident Detection** — Triage Agent semantic clustering, 1-hour window, parent MI creation
+8. **18 Categories + 80 Subcategories** — ITIL-aligned taxonomy with JobTypeHints
+9. **Approval Workflows** — manager approval (pilot single-stage; full multi-stage policies designed)
+10. **Full Audit Trail** — every Provisioning Job with caller UPN, approver, timestamps, Graph request ID, result JSON
+11. **Kill Switch** — emergency stop via the Config list `KillSwitch=true`
+12. **Knowledge Base** — 40+ published starter articles across common scenarios
+13. **Flow-driven intake** — the `ITSM-Triage-Orchestrator` flow calls the agent server-side on each new ticket and acts on its reply
+14. **Azure Hardening Resources** — App Insights, Service Bus dispatch topology, and Azure Table idempotency storage provisioned for the pilot hardening path
 
 ### Ticket Type Validation Target Design
 
@@ -339,15 +339,15 @@ The planned correction is a two-layer validation system:
 
 ### 🚧 Pilot Shortcuts (Production-Ready Alternatives Designed)
 
-The Day 3 pilot intentionally uses simplified patterns to prove the loop end-to-end. Each has a production migration path:
+The pilot intentionally uses simplified patterns to prove the loop end-to-end. Each has a production migration path:
 
 | Pilot Shortcut | Production Replacement | Why It Matters |
 |---|---|---|
 | **Dispatcher trusts SAS URL** | JWT signed by Approval flow, validated by Dispatcher | Secure cross-flow authentication |
-| **SharePoint IdempotencyKey field** | Azure Table Storage with If-None-Match ETag | Azure Table idempotency storage is now provisioned; current adoption status is tracked in `flows/CURRENT-STATUS.md` |
-| **Executor polls SharePoint list** | Service Bus topic + 6 executor subscriptions | Service Bus dispatch topology is now provisioned; current adoption status is tracked in `flows/CURRENT-STATUS.md` |
+| **SharePoint IdempotencyKey field** | Azure Table Storage with If-None-Match ETag | Azure Table idempotency storage is provisioned; ETag-based concurrency control |
+| **Executor polls SharePoint list** | Service Bus topic + 6 executor subscriptions | Service Bus dispatch topology is provisioned; smooths Graph throttling |
 | **Client secret in Key Vault** | Certificate in HSM-backed Key Vault | Rotation automation, audit compliance |
-| **Power Automate run history (28 days)** | App Insights structured logs | App Insights is now provisioned for ProposeAction telemetry and pilot audit hardening |
+| **Power Automate run history (28 days)** | App Insights structured logs | App Insights is provisioned for structured audit/telemetry |
 | **Manual re-drive for failed jobs** | DLQ + scheduled re-driver flow | Automatic retry with exponential backoff |
 | **Single-approver Approval-Bridge** | Multi-stage Approval Policy engine | Manager → IT Owner → CAB workflow |
 
@@ -355,28 +355,17 @@ The Day 3 pilot intentionally uses simplified patterns to prove the loop end-to-
 
 ---
 
-## What's Coming Next (Day 4 & Beyond)
+## Roadmap
 
-Current Day 4 task status is tracked in `flows/CURRENT-STATUS.md`: 56 tasks total, 31 done, 20 pending review, and 5 blocked.
+Beyond the current pilot:
 
-### Day 4 (Pilot Readiness):
-- **Flow-driven intake** — the Triage Orchestrator calls the agent server-side (the ProposeAction handoff was retired 2026-05-30)
-- **6 Adaptive Card Notifications** — Approval request, granted, denied, resolved, SLA breach, major incident
-- **SharePoint Permission Groups** — ITSM Admins, Approvers, Agents, Users
-- **Knowledge Base** — 40-42 published articles across common scenarios
-- **Permission Hardening** — SharePoint Sites.Selected, Teams role narrowing
-- **App Insights / Service Bus / Storage** — provisioned for audit, dispatch, and idempotency hardening
-- **Idempotency Checks** — safe retries for all executors
-
-### Phase 2 (Production Readiness):
-- **Multi-tenant installer** — Deploy to any M365 tenant with one command
-- **End-user UI** — Power Apps form or Teams app (replace SharePoint list edits)
-- **Email-to-ticket** — Forward to helpdesk mailbox creates ticket automatically
+- **Multi-tenant installer** — deploy to any M365 tenant with one command
+- **End-user UI enhancements** — richer Power Apps / Teams app intake
+- **Email-to-ticket** — forwarding to a helpdesk mailbox creates a ticket automatically
 - **Power BI dashboards** — SLA attainment, MTTR, agent accuracy, deflection rates
-- **Problem Management** — Root cause analysis, known errors, workarounds
-- **Change Management** — Risk assessment, CAB workflow, implementation plans
-- **Advanced SLA** — Breach workflows, escalation chains, OLAs (operational level agreements)
-- **Order Guides** — Pre-bundled multi-item requests (New Hire, Offboarding, etc.)
+- **Problem Management** — root cause analysis, known errors, workarounds
+- **Change Management** — risk assessment, CAB workflow, implementation plans
+- **Advanced SLA** — breach workflows, escalation chains, OLAs (operational level agreements)
 
 ---
 
@@ -469,7 +458,7 @@ Current Day 4 task status is tracked in `flows/CURRENT-STATUS.md`: 56 tasks tota
 ```
 ┌─────────────┐
 │   Portal    │  User submits a ticket (SPFx web part on SharePoint)
-│  (SPFx app) │  — Outlook / email intake on the roadmap
+│  (SPFx app) │  — email intake on the roadmap
 └──────┬──────┘
        │  creates a Ticket row in
        ▼

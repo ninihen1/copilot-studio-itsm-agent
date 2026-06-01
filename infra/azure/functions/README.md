@@ -1,6 +1,6 @@
 # Azure Functions — `func-itsm-dev`
 
-PowerShell-based Function App. Hosts Phase 3.1 wrappers for capabilities that have no Graph
+PowerShell-based Function App. Hosts wrappers for capabilities that have no Graph
 equivalent.
 
 ## Functions

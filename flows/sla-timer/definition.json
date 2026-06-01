@@ -13,7 +13,6 @@
   },
   "triggers": {
     "Run_Every_15_Min_Business_Hours": {
-      "type": "Recurrence",
       "recurrence": {
         "frequency": "Week",
         "interval": 1,
@@ -43,7 +42,38 @@
           ]
         },
         "timeZone": "AUS Eastern Standard Time"
-      }
+      },
+      "evaluatedRecurrence": {
+        "frequency": "Week",
+        "interval": 1,
+        "schedule": {
+          "weekDays": [
+            "Monday",
+            "Tuesday",
+            "Wednesday",
+            "Thursday",
+            "Friday"
+          ],
+          "hours": [
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15,
+            16
+          ],
+          "minutes": [
+            0,
+            15,
+            30,
+            45
+          ]
+        },
+        "timeZone": "AUS Eastern Standard Time"
+      },
+      "type": "Recurrence"
     }
   },
   "actions": {
@@ -66,12 +96,6 @@
       }
     },
     "ForEach_Open_Ticket": {
-      "runAfter": {
-        "Get_Open_Tickets": [
-          "Succeeded"
-        ]
-      },
-      "type": "Foreach",
       "foreach": "@body('Get_Open_Tickets')?['value']",
       "actions": {
         "Compose_TargetMinutes": {
@@ -80,22 +104,6 @@
           "inputs": "@if(or(contains(toLower(coalesce(items('ForEach_Open_Ticket')?['Priority']?['Value'], items('ForEach_Open_Ticket')?['Priority'], '')), 'critical'), contains(toLower(coalesce(items('ForEach_Open_Ticket')?['Priority']?['Value'], items('ForEach_Open_Ticket')?['Priority'], '')), 'high')), 240, if(or(contains(toLower(coalesce(items('ForEach_Open_Ticket')?['Priority']?['Value'], items('ForEach_Open_Ticket')?['Priority'], '')), 'normal'), contains(toLower(coalesce(items('ForEach_Open_Ticket')?['Priority']?['Value'], items('ForEach_Open_Ticket')?['Priority'], '')), 'moderate')), 480, 1440))"
         },
         "If_On_Hold": {
-          "runAfter": {
-            "Compose_TargetMinutes": [
-              "Succeeded"
-            ]
-          },
-          "type": "If",
-          "expression": {
-            "and": [
-              {
-                "equals": [
-                  "@items('ForEach_Open_Ticket')?['TicketState']?['Value']",
-                  "On Hold"
-                ]
-              }
-            ]
-          },
           "actions": {
             "Patch_On_Hold_Pause": {
               "runAfter": {},
@@ -128,6 +136,11 @@
               }
             }
           },
+          "runAfter": {
+            "Compose_TargetMinutes": [
+              "Succeeded"
+            ]
+          },
           "else": {
             "actions": {
               "Compose_ResumePausedMinutes": {
@@ -154,22 +167,6 @@
                 "inputs": "@div(mul(outputs('Compose_NewBusinessMinutes'), 100), outputs('Compose_TargetMinutes'))"
               },
               "If_Breached": {
-                "runAfter": {
-                  "Compose_PercentElapsed": [
-                    "Succeeded"
-                  ]
-                },
-                "type": "If",
-                "expression": {
-                  "and": [
-                    {
-                      "greaterOrEquals": [
-                        "@outputs('Compose_PercentElapsed')",
-                        100
-                      ]
-                    }
-                  ]
-                },
                 "actions": {
                   "Patch_Ticket_Breached": {
                     "runAfter": {},
@@ -206,22 +203,6 @@
                     }
                   },
                   "If_First_SLA_Breach_Notification": {
-                    "runAfter": {
-                      "Patch_Ticket_Breached": [
-                        "Succeeded"
-                      ]
-                    },
-                    "type": "If",
-                    "expression": {
-                      "and": [
-                        {
-                          "equals": [
-                            "@empty(items('ForEach_Open_Ticket')?['SlaBreachedAt'])",
-                            true
-                          ]
-                        }
-                      ]
-                    },
                     "actions": {
                       "Post_SLA_Breach_Notification": {
                         "runAfter": {},
@@ -243,27 +224,36 @@
                         "description": "Day 4 task 12: first SLA breach notification to service desk/admin via Teams Flow bot."
                       }
                     },
+                    "runAfter": {
+                      "Patch_Ticket_Breached": [
+                        "Succeeded"
+                      ]
+                    },
                     "else": {
                       "actions": {}
                     },
+                    "expression": {
+                      "and": [
+                        {
+                          "equals": [
+                            "@empty(items('ForEach_Open_Ticket')?['SlaBreachedAt'])",
+                            true
+                          ]
+                        }
+                      ]
+                    },
+                    "type": "If",
                     "description": "Only send the breach notification the first time a ticket crosses the SLA threshold."
                   }
+                },
+                "runAfter": {
+                  "Compose_PercentElapsed": [
+                    "Succeeded"
+                  ]
                 },
                 "else": {
                   "actions": {
                     "If_Warning": {
-                      "runAfter": {},
-                      "type": "If",
-                      "expression": {
-                        "and": [
-                          {
-                            "greaterOrEquals": [
-                              "@outputs('Compose_PercentElapsed')",
-                              75
-                            ]
-                          }
-                        ]
-                      },
                       "actions": {
                         "Patch_Ticket_Warning": {
                           "runAfter": {},
@@ -300,6 +290,7 @@
                           }
                         }
                       },
+                      "runAfter": {},
                       "else": {
                         "actions": {
                           "Patch_Ticket_OnTrack": {
@@ -335,15 +326,54 @@
                             }
                           }
                         }
-                      }
+                      },
+                      "expression": {
+                        "and": [
+                          {
+                            "greaterOrEquals": [
+                              "@outputs('Compose_PercentElapsed')",
+                              75
+                            ]
+                          }
+                        ]
+                      },
+                      "type": "If"
                     }
                   }
-                }
+                },
+                "expression": {
+                  "and": [
+                    {
+                      "greaterOrEquals": [
+                        "@outputs('Compose_PercentElapsed')",
+                        100
+                      ]
+                    }
+                  ]
+                },
+                "type": "If"
               }
             }
-          }
+          },
+          "expression": {
+            "and": [
+              {
+                "equals": [
+                  "@items('ForEach_Open_Ticket')?['TicketState']?['Value']",
+                  "On Hold"
+                ]
+              }
+            ]
+          },
+          "type": "If"
         }
-      }
+      },
+      "runAfter": {
+        "Get_Open_Tickets": [
+          "Succeeded"
+        ]
+      },
+      "type": "Foreach"
     }
   }
 }

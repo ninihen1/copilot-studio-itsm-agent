@@ -13,6 +13,7 @@
   },
   "triggers": {
     "manual": {
+      "metadata": {},
       "type": "Request",
       "kind": "Http",
       "inputs": {
@@ -24,7 +25,8 @@
               "description": "License name, partNumber, or alias to search. Empty/missing returns all SKUs in the tenant."
             }
           }
-        }
+        },
+        "triggerAuthenticationType": "All"
       }
     }
   },
@@ -61,11 +63,11 @@
       "type": "Http",
       "inputs": {
         "method": "POST",
-        "uri": "https://login.microsoftonline.com/00000000-0000-4000-8000-000000000009/oauth2/v2.0/token",
+        "uri": "https://login.microsoftonline.com/00000000-0000-0000-0000-000000000001/oauth2/v2.0/token",
         "headers": {
           "Content-Type": "application/x-www-form-urlencoded"
         },
-        "body": "@{concat('grant_type=client_credentials&client_id=00000000-0000-4000-8000-000000000014&scope=https%3A%2F%2Fgraph.microsoft.com%2F.default&client_secret=', encodeUriComponent(body('Get_KV_Secret')?['value']))}"
+        "body": "@{concat('grant_type=client_credentials&client_id=00000000-0000-0000-0000-000000000003&scope=https%3A%2F%2Fgraph.microsoft.com%2F.default&client_secret=', encodeUriComponent(body('Get_KV_Secret')?['value']))}"
       },
       "runtimeConfiguration": {
         "secureData": {
@@ -315,12 +317,6 @@
       }
     },
     "Apply_To_Each_Match": {
-      "runAfter": {
-        "Initialize_EnrichedMatches": [
-          "Succeeded"
-        ]
-      },
-      "type": "Foreach",
       "foreach": "@body('Filter_Matches')",
       "actions": {
         "Filter_Cost_Row": {
@@ -357,7 +353,13 @@
             }
           }
         }
-      }
+      },
+      "runAfter": {
+        "Initialize_EnrichedMatches": [
+          "Succeeded"
+        ]
+      },
+      "type": "Foreach"
     }
   }
 }

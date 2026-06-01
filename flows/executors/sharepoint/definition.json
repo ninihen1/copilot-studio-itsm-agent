@@ -13,6 +13,15 @@
   },
   "triggers": {
     "When_a_PJ_is_Modified": {
+      "recurrence": {
+        "frequency": "Minute",
+        "interval": 3
+      },
+      "evaluatedRecurrence": {
+        "frequency": "Minute",
+        "interval": 3
+      },
+      "splitOn": "@triggerOutputs()?['body/value']",
       "type": "OpenApiConnection",
       "inputs": {
         "host": {
@@ -25,34 +34,11 @@
           "table": "Provisioning Jobs"
         },
         "authentication": "@parameters('$authentication')"
-      },
-      "recurrence": {
-        "frequency": "Minute",
-        "interval": 3
-      },
-      "splitOn": "@triggerOutputs()?['body/value']"
+      }
     }
   },
   "actions": {
     "If_Sharepoint_Dispatched": {
-      "runAfter": {},
-      "type": "If",
-      "expression": {
-        "and": [
-          {
-            "equals": [
-              "@triggerOutputs()?['body/JobStatus/Value']",
-              "Dispatched"
-            ]
-          },
-          {
-            "startsWith": [
-              "@coalesce(triggerOutputs()?['body/JobType'],'')",
-              "sharepoint."
-            ]
-          }
-        ]
-      },
       "actions": {
         "Update_Status_InProgress": {
           "runAfter": {},
@@ -117,11 +103,11 @@
           "type": "Http",
           "inputs": {
             "method": "POST",
-            "uri": "https://login.microsoftonline.com/00000000-0000-4000-8000-000000000009/oauth2/v2.0/token",
+            "uri": "https://login.microsoftonline.com/00000000-0000-0000-0000-000000000001/oauth2/v2.0/token",
             "headers": {
               "Content-Type": "application/x-www-form-urlencoded"
             },
-            "body": "@{concat('grant_type=client_credentials&client_id=00000000-0000-4000-8000-000000000046&scope=https%3A%2F%2Fgraph.microsoft.com%2F.default&client_secret=', encodeUriComponent(body('Get_KV_Secret')?['value']))}"
+            "body": "@{concat('grant_type=client_credentials&client_id=00000000-0000-0000-0000-000000000003&scope=https%3A%2F%2Fgraph.microsoft.com%2F.default&client_secret=', encodeUriComponent(body('Get_KV_Secret')?['value']))}"
           },
           "runtimeConfiguration": {
             "secureData": {
@@ -194,40 +180,6 @@
             "Parse_Target": [
               "Succeeded"
             ]
-          },
-          "type": "Switch",
-          "expression": "@triggerOutputs()?['body/JobType']",
-          "default": {
-            "actions": {
-              "Update_Failed_UnsupportedJobType": {
-                "runAfter": {},
-                "type": "OpenApiConnection",
-                "inputs": {
-                  "host": {
-                    "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
-                    "connectionName": "shared_sharepointonline",
-                    "operationId": "PatchItem"
-                  },
-                  "parameters": {
-                    "dataset": "https://contoso.sharepoint.com/sites/ITSM",
-                    "table": "Provisioning Jobs",
-                    "id": "@triggerOutputs()?['body/ID']",
-                    "item/Title": "@coalesce(triggerOutputs()?['body/Title'], 'PJ-fallback')",
-                    "item/JobType": "@triggerOutputs()?['body/JobType']",
-                    "item/ParentTicket/Id": "@triggerOutputs()?['body/ParentTicket/Id']",
-                    "item/JobStatus/Value": "Failed",
-                    "item/CallerUpn": "@triggerOutputs()?['body/CallerUpn']",
-                    "item/TargetJson": "@triggerOutputs()?['body/TargetJson']",
-                    "item/IdempotencyKey": "@triggerOutputs()?['body/IdempotencyKey']",
-                    "item/CorrelationId": "@triggerOutputs()?['body/CorrelationId']",
-                    "item/ServicePrincipal": "SP-IT-SharePoint",
-                    "item/CompletedAt": "@utcNow()",
-                    "item/ErrorJson": "@{concat('{\"reason\":\"unsupported_jobtype\",\"jobType\":\"', triggerOutputs()?['body/JobType'], '\",\"executor\":\"SP-IT-SharePoint\"}')}"
-                  },
-                  "authentication": "@parameters('$authentication')"
-                }
-              }
-            }
           },
           "cases": {
             "JobType_RestoreFile": {
@@ -320,12 +272,407 @@
                   }
                 }
               }
+            },
+            "JobType_GrantPermission": {
+              "case": "sharepoint.grantPermission",
+              "actions": {
+                "Http_SP_GrantPermission": {
+                  "runAfter": {},
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "host": {
+                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                      "connectionName": "shared_sharepointonline",
+                      "operationId": "HttpRequest"
+                    },
+                    "parameters": {
+                      "dataset": "@coalesce(json(triggerOutputs()?['body/ArgsJson'])?['siteUrl'], 'https://contoso.sharepoint.com/sites/ITSM')",
+                      "parameters/method": "POST",
+                      "parameters/uri": "@{concat('_api/web/sitegroups/getbyname(''', json(triggerOutputs()?['body/ArgsJson'])?['groupName'], ''')/users')}",
+                      "parameters/headers": {
+                        "Accept": "application/json;odata=verbose",
+                        "Content-Type": "application/json;odata=verbose"
+                      },
+                      "parameters/body": "@{concat('{\"__metadata\":{\"type\":\"SP.User\"},\"LoginName\":\"i:0#.f|membership|', coalesce(json(triggerOutputs()?['body/ArgsJson'])?['upn'], body('Parse_Target')?['upn']), '\"}')}"
+                    },
+                    "authentication": "@parameters('$authentication')"
+                  }
+                },
+                "Update_Succeeded_GrantPermission": {
+                  "runAfter": {
+                    "Http_SP_GrantPermission": [
+                      "Succeeded"
+                    ]
+                  },
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "host": {
+                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                      "connectionName": "shared_sharepointonline",
+                      "operationId": "PatchItem"
+                    },
+                    "parameters": {
+                      "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+                      "table": "Provisioning Jobs",
+                      "id": "@triggerOutputs()?['body/ID']",
+                      "item/Title": "@coalesce(triggerOutputs()?['body/Title'], 'PJ-fallback')",
+                      "item/JobType": "@triggerOutputs()?['body/JobType']",
+                      "item/ParentTicket/Id": "@triggerOutputs()?['body/ParentTicket/Id']",
+                      "item/JobStatus/Value": "Succeeded",
+                      "item/CallerUpn": "@triggerOutputs()?['body/CallerUpn']",
+                      "item/TargetJson": "@triggerOutputs()?['body/TargetJson']",
+                      "item/IdempotencyKey": "@triggerOutputs()?['body/IdempotencyKey']",
+                      "item/CorrelationId": "@triggerOutputs()?['body/CorrelationId']",
+                      "item/ServicePrincipal": "SP-IT-SharePoint",
+                      "item/CompletedAt": "@utcNow()",
+                      "item/DurationMs": "@div(sub(ticks(utcNow()), ticks(body('Update_Status_InProgress')?['StartedAt'])), 10000)",
+                      "item/GraphRequestId": "@coalesce(outputs('Http_SP_GrantPermission')?['headers']?['x-ms-correlation-id'], outputs('Http_SP_GrantPermission')?['headers']?['request-id'])",
+                      "item/ResultJson": "@{concat('{\"permissionGranted\":true,\"groupName\":\"', json(triggerOutputs()?['body/ArgsJson'])?['groupName'], '\",\"targetUpn\":\"', coalesce(json(triggerOutputs()?['body/ArgsJson'])?['upn'], body('Parse_Target')?['upn']), '\"}')}"
+                    },
+                    "authentication": "@parameters('$authentication')"
+                  }
+                },
+                "Update_Failed_GrantPermission": {
+                  "runAfter": {
+                    "Http_SP_GrantPermission": [
+                      "Failed",
+                      "TimedOut"
+                    ]
+                  },
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "host": {
+                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                      "connectionName": "shared_sharepointonline",
+                      "operationId": "PatchItem"
+                    },
+                    "parameters": {
+                      "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+                      "table": "Provisioning Jobs",
+                      "id": "@triggerOutputs()?['body/ID']",
+                      "item/Title": "@coalesce(triggerOutputs()?['body/Title'], 'PJ-fallback')",
+                      "item/JobType": "@triggerOutputs()?['body/JobType']",
+                      "item/ParentTicket/Id": "@triggerOutputs()?['body/ParentTicket/Id']",
+                      "item/JobStatus/Value": "Failed",
+                      "item/CallerUpn": "@triggerOutputs()?['body/CallerUpn']",
+                      "item/TargetJson": "@triggerOutputs()?['body/TargetJson']",
+                      "item/IdempotencyKey": "@triggerOutputs()?['body/IdempotencyKey']",
+                      "item/CorrelationId": "@triggerOutputs()?['body/CorrelationId']",
+                      "item/ServicePrincipal": "SP-IT-SharePoint",
+                      "item/CompletedAt": "@utcNow()",
+                      "item/DurationMs": "@div(sub(ticks(utcNow()), ticks(body('Update_Status_InProgress')?['StartedAt'])), 10000)",
+                      "item/GraphRequestId": "@coalesce(outputs('Http_SP_GrantPermission')?['headers']?['x-ms-correlation-id'], outputs('Http_SP_GrantPermission')?['headers']?['request-id'])",
+                      "item/ErrorJson": "@{string(body('Http_SP_GrantPermission'))}"
+                    },
+                    "authentication": "@parameters('$authentication')"
+                  }
+                }
+              }
+            },
+            "JobType_RemovePermission": {
+              "case": "sharepoint.removePermission",
+              "actions": {
+                "Http_SP_RemovePermission": {
+                  "runAfter": {},
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "host": {
+                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                      "connectionName": "shared_sharepointonline",
+                      "operationId": "HttpRequest"
+                    },
+                    "parameters": {
+                      "dataset": "@coalesce(json(triggerOutputs()?['body/ArgsJson'])?['siteUrl'], 'https://contoso.sharepoint.com/sites/ITSM')",
+                      "parameters/method": "POST",
+                      "parameters/uri": "@{concat('_api/web/sitegroups/getbyname(''', json(triggerOutputs()?['body/ArgsJson'])?['groupName'], ''')/users/removeByLoginName(''', encodeUriComponent(concat('i:0#.f|membership|', coalesce(json(triggerOutputs()?['body/ArgsJson'])?['upn'], body('Parse_Target')?['upn']))), ''')')}",
+                      "parameters/headers": {
+                        "Accept": "application/json;odata=verbose"
+                      }
+                    },
+                    "authentication": "@parameters('$authentication')"
+                  }
+                },
+                "Update_Succeeded_RemovePermission": {
+                  "runAfter": {
+                    "Http_SP_RemovePermission": [
+                      "Succeeded"
+                    ]
+                  },
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "host": {
+                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                      "connectionName": "shared_sharepointonline",
+                      "operationId": "PatchItem"
+                    },
+                    "parameters": {
+                      "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+                      "table": "Provisioning Jobs",
+                      "id": "@triggerOutputs()?['body/ID']",
+                      "item/Title": "@coalesce(triggerOutputs()?['body/Title'], 'PJ-fallback')",
+                      "item/JobType": "@triggerOutputs()?['body/JobType']",
+                      "item/ParentTicket/Id": "@triggerOutputs()?['body/ParentTicket/Id']",
+                      "item/JobStatus/Value": "Succeeded",
+                      "item/CallerUpn": "@triggerOutputs()?['body/CallerUpn']",
+                      "item/TargetJson": "@triggerOutputs()?['body/TargetJson']",
+                      "item/IdempotencyKey": "@triggerOutputs()?['body/IdempotencyKey']",
+                      "item/CorrelationId": "@triggerOutputs()?['body/CorrelationId']",
+                      "item/ServicePrincipal": "SP-IT-SharePoint",
+                      "item/CompletedAt": "@utcNow()",
+                      "item/DurationMs": "@div(sub(ticks(utcNow()), ticks(body('Update_Status_InProgress')?['StartedAt'])), 10000)",
+                      "item/GraphRequestId": "@coalesce(outputs('Http_SP_RemovePermission')?['headers']?['x-ms-correlation-id'], outputs('Http_SP_RemovePermission')?['headers']?['request-id'])",
+                      "item/ResultJson": "@{concat('{\"permissionRemoved\":true,\"groupName\":\"', json(triggerOutputs()?['body/ArgsJson'])?['groupName'], '\",\"targetUpn\":\"', coalesce(json(triggerOutputs()?['body/ArgsJson'])?['upn'], body('Parse_Target')?['upn']), '\"}')}"
+                    },
+                    "authentication": "@parameters('$authentication')"
+                  }
+                },
+                "Update_Failed_RemovePermission": {
+                  "runAfter": {
+                    "Http_SP_RemovePermission": [
+                      "Failed",
+                      "TimedOut"
+                    ]
+                  },
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "host": {
+                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                      "connectionName": "shared_sharepointonline",
+                      "operationId": "PatchItem"
+                    },
+                    "parameters": {
+                      "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+                      "table": "Provisioning Jobs",
+                      "id": "@triggerOutputs()?['body/ID']",
+                      "item/Title": "@coalesce(triggerOutputs()?['body/Title'], 'PJ-fallback')",
+                      "item/JobType": "@triggerOutputs()?['body/JobType']",
+                      "item/ParentTicket/Id": "@triggerOutputs()?['body/ParentTicket/Id']",
+                      "item/JobStatus/Value": "Failed",
+                      "item/CallerUpn": "@triggerOutputs()?['body/CallerUpn']",
+                      "item/TargetJson": "@triggerOutputs()?['body/TargetJson']",
+                      "item/IdempotencyKey": "@triggerOutputs()?['body/IdempotencyKey']",
+                      "item/CorrelationId": "@triggerOutputs()?['body/CorrelationId']",
+                      "item/ServicePrincipal": "SP-IT-SharePoint",
+                      "item/CompletedAt": "@utcNow()",
+                      "item/DurationMs": "@div(sub(ticks(utcNow()), ticks(body('Update_Status_InProgress')?['StartedAt'])), 10000)",
+                      "item/GraphRequestId": "@coalesce(outputs('Http_SP_RemovePermission')?['headers']?['x-ms-correlation-id'], outputs('Http_SP_RemovePermission')?['headers']?['request-id'])",
+                      "item/ErrorJson": "@{string(body('Http_SP_RemovePermission'))}"
+                    },
+                    "authentication": "@parameters('$authentication')"
+                  }
+                }
+              }
+            },
+            "JobType_RestoreSite": {
+              "case": "sharepoint.restoreSite",
+              "actions": {
+                "Get_FunctionKey_RestoreSite": {
+                  "runAfter": {},
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "host": {
+                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_keyvault",
+                      "connectionName": "shared_keyvault",
+                      "operationId": "GetSecret"
+                    },
+                    "parameters": {
+                      "secretName": "SpoSiteRestore-FunctionKey"
+                    },
+                    "authentication": "@parameters('$authentication')"
+                  },
+                  "runtimeConfiguration": {
+                    "secureData": {
+                      "properties": [
+                        "inputs",
+                        "outputs"
+                      ]
+                    }
+                  }
+                },
+                "Compose_Body_RestoreSite": {
+                  "runAfter": {
+                    "Get_FunctionKey_RestoreSite": [
+                      "Succeeded"
+                    ]
+                  },
+                  "type": "Compose",
+                  "inputs": {
+                    "siteUrl": "@{coalesce(if(empty(coalesce(triggerOutputs()?['body/ArgsJson'],'')), null, json(triggerOutputs()?['body/ArgsJson'])?['siteUrl']), '')}",
+                    "correlationId": "@{triggerOutputs()?['body/CorrelationId']}"
+                  }
+                },
+                "Http_Func_RestoreSite": {
+                  "runAfter": {
+                    "Compose_Body_RestoreSite": [
+                      "Succeeded"
+                    ]
+                  },
+                  "type": "Http",
+                  "inputs": {
+                    "method": "POST",
+                    "uri": "@{concat('https://func-itsm-dev.azurewebsites.net/api/spo-site-restore?code=', body('Get_FunctionKey_RestoreSite')?['value'])}",
+                    "headers": {
+                      "Content-Type": "application/json"
+                    },
+                    "body": "@outputs('Compose_Body_RestoreSite')"
+                  },
+                  "runtimeConfiguration": {
+                    "secureData": {
+                      "properties": [
+                        "inputs"
+                      ]
+                    }
+                  }
+                },
+                "Update_Succeeded_RestoreSite": {
+                  "runAfter": {
+                    "Http_Func_RestoreSite": [
+                      "Succeeded"
+                    ]
+                  },
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "host": {
+                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                      "connectionName": "shared_sharepointonline",
+                      "operationId": "PatchItem"
+                    },
+                    "parameters": {
+                      "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+                      "table": "Provisioning Jobs",
+                      "id": "@triggerOutputs()?['body/ID']",
+                      "item/Title": "@coalesce(triggerOutputs()?['body/Title'], 'PJ-fallback')",
+                      "item/JobType": "@triggerOutputs()?['body/JobType']",
+                      "item/ParentTicket/Id": "@triggerOutputs()?['body/ParentTicket/Id']",
+                      "item/JobStatus/Value": "Succeeded",
+                      "item/CallerUpn": "@triggerOutputs()?['body/CallerUpn']",
+                      "item/TargetJson": "@triggerOutputs()?['body/TargetJson']",
+                      "item/IdempotencyKey": "@triggerOutputs()?['body/IdempotencyKey']",
+                      "item/CorrelationId": "@triggerOutputs()?['body/CorrelationId']",
+                      "item/ServicePrincipal": "SP-IT-SharePoint",
+                      "item/CompletedAt": "@utcNow()",
+                      "item/DurationMs": "@div(sub(ticks(utcNow()), ticks(body('Update_Status_InProgress')?['StartedAt'])), 10000)",
+                      "item/GraphRequestId": "@coalesce(outputs('Http_Func_RestoreSite')?['headers']?['x-ms-correlation-id'], outputs('Http_Func_RestoreSite')?['headers']?['request-id'])",
+                      "item/ResultJson": "@{concat('{\"siteRestored\":true,\"siteUrl\":\"', coalesce(if(empty(coalesce(triggerOutputs()?['body/ArgsJson'],'')), null, json(triggerOutputs()?['body/ArgsJson'])?['siteUrl']), ''), '\",\"functionResponse\":', string(body('Http_Func_RestoreSite')), '}')}"
+                    },
+                    "authentication": "@parameters('$authentication')"
+                  }
+                },
+                "Update_Failed_RestoreSite": {
+                  "runAfter": {
+                    "Http_Func_RestoreSite": [
+                      "Failed",
+                      "TimedOut"
+                    ]
+                  },
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "host": {
+                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                      "connectionName": "shared_sharepointonline",
+                      "operationId": "PatchItem"
+                    },
+                    "parameters": {
+                      "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+                      "table": "Provisioning Jobs",
+                      "id": "@triggerOutputs()?['body/ID']",
+                      "item/Title": "@coalesce(triggerOutputs()?['body/Title'], 'PJ-fallback')",
+                      "item/JobType": "@triggerOutputs()?['body/JobType']",
+                      "item/ParentTicket/Id": "@triggerOutputs()?['body/ParentTicket/Id']",
+                      "item/JobStatus/Value": "Failed",
+                      "item/CallerUpn": "@triggerOutputs()?['body/CallerUpn']",
+                      "item/TargetJson": "@triggerOutputs()?['body/TargetJson']",
+                      "item/IdempotencyKey": "@triggerOutputs()?['body/IdempotencyKey']",
+                      "item/CorrelationId": "@triggerOutputs()?['body/CorrelationId']",
+                      "item/ServicePrincipal": "SP-IT-SharePoint",
+                      "item/CompletedAt": "@utcNow()",
+                      "item/DurationMs": "@div(sub(ticks(utcNow()), ticks(body('Update_Status_InProgress')?['StartedAt'])), 10000)",
+                      "item/GraphRequestId": "@coalesce(outputs('Http_Func_RestoreSite')?['headers']?['x-ms-correlation-id'], outputs('Http_Func_RestoreSite')?['headers']?['request-id'])",
+                      "item/ErrorJson": "@{string(body('Http_Func_RestoreSite'))}"
+                    },
+                    "authentication": "@parameters('$authentication')"
+                  }
+                }
+              }
             }
-          }
+          },
+          "default": {
+            "actions": {
+              "Update_Failed_UnsupportedJobType": {
+                "runAfter": {},
+                "type": "OpenApiConnection",
+                "inputs": {
+                  "host": {
+                    "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                    "connectionName": "shared_sharepointonline",
+                    "operationId": "PatchItem"
+                  },
+                  "parameters": {
+                    "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+                    "table": "Provisioning Jobs",
+                    "id": "@triggerOutputs()?['body/ID']",
+                    "item/Title": "@coalesce(triggerOutputs()?['body/Title'], 'PJ-fallback')",
+                    "item/JobType": "@triggerOutputs()?['body/JobType']",
+                    "item/ParentTicket/Id": "@triggerOutputs()?['body/ParentTicket/Id']",
+                    "item/JobStatus/Value": "Failed",
+                    "item/CallerUpn": "@triggerOutputs()?['body/CallerUpn']",
+                    "item/TargetJson": "@triggerOutputs()?['body/TargetJson']",
+                    "item/IdempotencyKey": "@triggerOutputs()?['body/IdempotencyKey']",
+                    "item/CorrelationId": "@triggerOutputs()?['body/CorrelationId']",
+                    "item/ServicePrincipal": "SP-IT-SharePoint",
+                    "item/CompletedAt": "@utcNow()",
+                    "item/ErrorJson": "@{concat('{\"reason\":\"unsupported_jobtype\",\"jobType\":\"', triggerOutputs()?['body/JobType'], '\",\"executor\":\"SP-IT-SharePoint\"}')}"
+                  },
+                  "authentication": "@parameters('$authentication')"
+                }
+              }
+            }
+          },
+          "expression": "@triggerOutputs()?['body/JobType']",
+          "type": "Switch"
         }
+      },
+      "runAfter": {
+        "Get_PJ_Fresh": [
+          "Succeeded"
+        ]
       },
       "else": {
         "actions": {}
+      },
+      "expression": {
+        "and": [
+          {
+            "equals": [
+              "@outputs('Get_PJ_Fresh')?['body/JobStatus/Value']",
+              "Dispatched"
+            ]
+          },
+          {
+            "startsWith": [
+              "@coalesce(outputs('Get_PJ_Fresh')?['body/JobType'],'')",
+              "sharepoint."
+            ]
+          }
+        ]
+      },
+      "type": "If"
+    },
+    "Get_PJ_Fresh": {
+      "runAfter": {},
+      "type": "OpenApiConnection",
+      "inputs": {
+        "host": {
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+          "connectionName": "shared_sharepointonline",
+          "operationId": "GetItem"
+        },
+        "parameters": {
+          "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+          "table": "Provisioning Jobs",
+          "id": "@triggerOutputs()?['body/ID']"
+        },
+        "authentication": "@parameters('$authentication')"
       }
     }
   }

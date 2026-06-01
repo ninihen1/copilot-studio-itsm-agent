@@ -7,7 +7,7 @@ interface IKnowledgeListItem {
   Title: string;
   ArticleNumber?: string;
   Summary?: string;
-  ArticleBody?: string;
+  Body?: string;
   Category?: unknown;
 }
 
@@ -24,7 +24,7 @@ export class KnowledgeService extends SharePointServiceBase {
   public constructor(context: ISharePointServiceContext) { super(context); }
 
   public async search(_query: string): Promise<KnowledgeArticle[]> {
-    const select = '$select=Id,Title,ArticleNumber,Summary,ArticleBody,Category/Title';
+    const select = '$select=Id,Title,ArticleNumber,Summary,Body,Category/Title';
     const response = await this.get<IListResponse<IKnowledgeListItem>>(
       this.listItemsUrl('Knowledge Base',
         `?${select}&$expand=Category&$filter=ArticleStatus eq 'Published'&$orderby=PublishedDate desc&$top=20`));
@@ -34,7 +34,7 @@ export class KnowledgeService extends SharePointServiceBase {
       title: item.Title,
       articleNumber: item.ArticleNumber || `KB-${item.Id}`,
       summary: item.Summary || '',
-      body: item.ArticleBody || '',
+      body: item.Body || '',
       category: this.lookupValue(item.Category)
     }));
   }

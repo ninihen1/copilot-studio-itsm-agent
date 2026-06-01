@@ -1,0 +1,172 @@
+{
+  "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "$connections": {
+      "defaultValue": {},
+      "type": "Object"
+    },
+    "$authentication": {
+      "defaultValue": {},
+      "type": "SecureObject"
+    }
+  },
+  "triggers": {
+    "When_a_PJ_is_Modified": {
+      "recurrence": {
+        "frequency": "Minute",
+        "interval": 3
+      },
+      "splitOn": "@triggerOutputs()?['body/value']",
+      "type": "OpenApiConnection",
+      "inputs": {
+        "host": {
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+          "connectionName": "shared_sharepointonline",
+          "operationId": "GetOnUpdatedItems"
+        },
+        "parameters": {
+          "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+          "table": "Provisioning Jobs"
+        },
+        "authentication": "@parameters('$authentication')"
+      }
+    }
+  },
+  "actions": {
+    "Get_PJ_Fresh": {
+      "runAfter": {},
+      "type": "OpenApiConnection",
+      "inputs": {
+        "host": {
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+          "connectionName": "shared_sharepointonline",
+          "operationId": "GetItem"
+        },
+        "parameters": {
+          "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+          "table": "Provisioning Jobs",
+          "id": "@triggerOutputs()?['body/ID']"
+        },
+        "authentication": "@parameters('$authentication')"
+      }
+    },
+    "If_PJ_Succeeded_ProposePath": {
+      "runAfter": {
+        "Get_PJ_Fresh": [
+          "Succeeded"
+        ]
+      },
+      "type": "If",
+      "expression": {
+        "and": [
+          {
+            "equals": [
+              "@outputs('Get_PJ_Fresh')?['body/JobStatus/Value']",
+              "Succeeded"
+            ]
+          },
+          {
+            "not": {
+              "startsWith": [
+                "@coalesce(outputs('Get_PJ_Fresh')?['body/IdempotencyKey'], '')",
+                "SCTASK-"
+              ]
+            }
+          },
+          {
+            "greater": [
+              "@coalesce(outputs('Get_PJ_Fresh')?['body/ParentTicket/Id'], 0)",
+              0
+            ]
+          }
+        ]
+      },
+      "actions": {
+        "Get_Parent_Ticket": {
+          "runAfter": {},
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+              "connectionName": "shared_sharepointonline",
+              "operationId": "GetItem"
+            },
+            "parameters": {
+              "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+              "table": "Tickets",
+              "id": "@outputs('Get_PJ_Fresh')?['body/ParentTicket/Id']"
+            },
+            "authentication": "@parameters('$authentication')"
+          }
+        },
+        "If_Ticket_Open": {
+          "runAfter": {
+            "Get_Parent_Ticket": [
+              "Succeeded"
+            ]
+          },
+          "type": "If",
+          "expression": {
+            "and": [
+              {
+                "not": {
+                  "equals": [
+                    "@coalesce(outputs('Get_Parent_Ticket')?['body/TicketState/Value'], '')",
+                    "Resolved"
+                  ]
+                }
+              },
+              {
+                "not": {
+                  "equals": [
+                    "@coalesce(outputs('Get_Parent_Ticket')?['body/TicketState/Value'], '')",
+                    "Closed"
+                  ]
+                }
+              },
+              {
+                "not": {
+                  "equals": [
+                    "@coalesce(outputs('Get_Parent_Ticket')?['body/TicketState/Value'], '')",
+                    "Cancelled"
+                  ]
+                }
+              }
+            ]
+          },
+          "actions": {
+            "Resolve_Ticket": {
+              "runAfter": {},
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": {
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                  "connectionName": "shared_sharepointonline",
+                  "operationId": "PatchItem"
+                },
+                "parameters": {
+                  "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+                  "table": "Tickets",
+                  "id": "@outputs('Get_PJ_Fresh')?['body/ParentTicket/Id']",
+                  "item/Title": "@outputs('Get_Parent_Ticket')?['body/Title']",
+                  "item/ShortDescription": "@outputs('Get_Parent_Ticket')?['body/ShortDescription']",
+                  "item/TicketState/Value": "Resolved",
+                  "item/ResolvedDate": "@utcNow()"
+                },
+                "authentication": "@parameters('$authentication')"
+              }
+            }
+          },
+          "else": {
+            "actions": {}
+          }
+        }
+      },
+      "else": {
+        "actions": {}
+      }
+    }
+  },
+  "description": "Propose-path ticket resolution: when a Provisioning Job reaches Succeeded and is NOT part of a SCTASK chain (IdempotencyKey not 'SCTASK-'), resolve the parent Ticket (TicketState=Resolved). Fills the gap where the Triage Orchestrator propose path dispatches a PJ and exits without writing the ticket back to Resolved. Re-reads the PJ fresh (Get_PJ_Fresh) to avoid the GetOnUpdatedItems stale-trigger race."
+}

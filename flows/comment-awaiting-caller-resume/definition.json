@@ -1,0 +1,146 @@
+{
+  "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "$connections": {
+      "defaultValue": {},
+      "type": "Object"
+    },
+    "$authentication": {
+      "defaultValue": {},
+      "type": "SecureObject"
+    }
+  },
+  "triggers": {
+    "When_a_Ticket_is_Modified": {
+      "recurrence": {
+        "frequency": "Minute",
+        "interval": 1
+      },
+      "evaluatedRecurrence": {
+        "frequency": "Minute",
+        "interval": 1
+      },
+      "splitOn": "@triggerOutputs()?['body/value']",
+      "type": "OpenApiConnection",
+      "inputs": {
+        "host": {
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+          "connectionName": "shared_sharepointonline",
+          "operationId": "GetOnUpdatedItems"
+        },
+        "parameters": {
+          "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+          "table": "Tickets"
+        },
+        "authentication": "@parameters('$authentication')"
+      },
+      "conditions": [
+        {
+          "expression": "@and(equals(triggerOutputs()?['body/TicketState/Value'], 'On Hold'), equals(triggerOutputs()?['body/HoldReason/Value'], 'Awaiting Caller'))"
+        }
+      ]
+    }
+  },
+  "actions": {
+    "Get_Changes_For_Ticket": {
+      "runAfter": {},
+      "type": "OpenApiConnection",
+      "inputs": {
+        "host": {
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+          "connectionName": "shared_sharepointonline",
+          "operationId": "GetItemChanges"
+        },
+        "parameters": {
+          "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+          "table": "Tickets",
+          "id": "@triggerOutputs()?['body/ID']",
+          "since": "@triggerOutputs()?['body/{TriggerWindowStartToken}']",
+          "includeDrafts": false
+        },
+        "authentication": "@parameters('$authentication')"
+      }
+    },
+    "If_Caller_Comment_On_Awaiting_Caller": {
+      "actions": {
+        "Compose_Resume_WorkNote": {
+          "runAfter": {},
+          "type": "Compose",
+          "inputs": "@concat('Caller comment received at ', utcNow(), '. Clearing Awaiting Caller hold and resuming triage/orchestration. Latest caller comment excerpt: ', if(greater(length(coalesce(triggerOutputs()?['body/Comments'], '')), 300), concat(substring(coalesce(triggerOutputs()?['body/Comments'], ''), sub(length(coalesce(triggerOutputs()?['body/Comments'], '')), 300), 300), '...'), coalesce(triggerOutputs()?['body/Comments'], '')))"
+        },
+        "Resume_Ticket_From_Awaiting_Caller": {
+          "runAfter": {
+            "Compose_Resume_WorkNote": [
+              "Succeeded"
+            ]
+          },
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+              "connectionName": "shared_sharepointonline",
+              "operationId": "PatchItem"
+            },
+            "parameters": {
+              "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+              "table": "Tickets",
+              "id": "@triggerOutputs()?['body/ID']",
+              "item/Title": "@triggerOutputs()?['body/Title']",
+              "item/TicketType/Value": "@triggerOutputs()?['body/TicketType/Value']",
+              "item/TicketTypeValidationStatus/Value": "@triggerOutputs()?['body/TicketTypeValidationStatus/Value']",
+              "item/CategoryRef/Id": "@triggerOutputs()?['body/CategoryRef/Id']",
+              "item/Caller/Claims": "@triggerOutputs()?['body/Caller/Claims']",
+              "item/TicketState/Value": "In Progress",
+              "item/HoldReason/Value": "@null",
+              "item/Impact/Value": "@triggerOutputs()?['body/Impact/Value']",
+              "item/Urgency/Value": "@triggerOutputs()?['body/Urgency/Value']",
+              "item/ShortDescription": "@triggerOutputs()?['body/ShortDescription']",
+              "item/ConfidentialityLevel/Value": "@triggerOutputs()?['body/ConfidentialityLevel/Value']",
+              "item/WorkNotes": "@outputs('Compose_Resume_WorkNote')"
+            },
+            "authentication": "@parameters('$authentication')"
+          }
+        }
+      },
+      "runAfter": {
+        "Get_Changes_For_Ticket": [
+          "Succeeded"
+        ]
+      },
+      "else": {
+        "actions": {}
+      },
+      "expression": {
+        "and": [
+          {
+            "equals": [
+              "@coalesce(body('Get_Changes_For_Ticket')?['ColumnHasChanged']?['Comments'], false)",
+              true
+            ]
+          },
+          {
+            "equals": [
+              "@triggerOutputs()?['body/TicketState/Value']",
+              "On Hold"
+            ]
+          },
+          {
+            "equals": [
+              "@triggerOutputs()?['body/HoldReason/Value']",
+              "Awaiting Caller"
+            ]
+          },
+          {
+            "equals": [
+              "@toLower(coalesce(triggerOutputs()?['body/Editor/Email'], last(split(coalesce(triggerOutputs()?['body/Editor/Claims'], ''), '|'))))",
+              "@toLower(coalesce(triggerOutputs()?['body/Caller/Email'], last(split(coalesce(triggerOutputs()?['body/Caller/Claims'], ''), '|'))))"
+            ]
+          }
+        ]
+      },
+      "type": "If"
+    }
+  },
+  "description": "ITSM-Comment-Awaiting-Caller-Resume: watches Tickets updates, confirms Comments changed by Caller while TicketState=On Hold and HoldReason=Awaiting Caller, then clears the hold by moving the ticket to In Progress and appending a resume WorkNotes entry. #flowstudio-mcp"
+}

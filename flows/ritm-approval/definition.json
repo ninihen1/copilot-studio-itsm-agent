@@ -311,29 +311,6 @@
                   "authentication": "@parameters('$authentication')"
                 }
               },
-              "Post_Approval_Denied_Notification": {
-                "runAfter": {
-                  "Patch_Parent_Ticket_Rejected": [
-                    "Succeeded"
-                  ]
-                },
-                "type": "OpenApiConnection",
-                "inputs": {
-                  "host": {
-                    "apiId": "/providers/Microsoft.PowerApps/apis/shared_teams",
-                    "connectionName": "shared_teams",
-                    "operationId": "PostMessageToConversation"
-                  },
-                  "parameters": {
-                    "poster": "Flow bot",
-                    "location": "Chat with Flow bot",
-                    "body/recipient": "@coalesce(body('Get_Parent_Ticket_Rejected')?['RequestedForUser']?['Email'], last(split(coalesce(body('Get_Parent_Ticket_Rejected')?['RequestedForUser']?['Claims'], body('Get_Parent_Ticket_Rejected')?['Caller']?['Claims'], ''), '|')), 'catherine.han@flowstudio.app')",
-                    "body/messageBody": "@{concat('<h2>Request denied</h2><p><b>RITM:</b> ', triggerOutputs()?['body/RitmNumber'], ' (item ID ', string(triggerOutputs()?['body/ID']), ')</p><p><b>Parent ticket:</b> ', body('Get_Parent_Ticket_Rejected')?['Title'], ' (item ID ', string(triggerOutputs()?['body/ParentTicket/Id']), ')</p><p><b>Catalog item:</b> ', body('Get_Catalog_Item')?['ItemName'], '</p><p><b>Denied by:</b> ', outputs('Compose_Approver_Upn'), '</p><p><b>Denied at:</b> ', utcNow(), '</p><p><b>Reason:</b> ', coalesce(first(body('Wait_For_Approval')?['responses'])?['comments'], '(none provided)'), '</p><p>The parent ticket was cancelled and the reason was added to ticket work notes.</p><p><a href=\\\"https://contoso.sharepoint.com/sites/ITSM/Lists/Tickets/DispForm.aspx?ID=', string(triggerOutputs()?['body/ParentTicket/Id']), '\\\">Open ticket</a></p>')}"
-                  },
-                  "authentication": "@parameters('$authentication')"
-                },
-                "description": "Day 4 task 10: approval-denied notification to requester via Teams Flow bot."
-              },
               "Get_Parent_Ticket_Rejected": {
                 "runAfter": {
                   "Patch_RITM_Rejected": [
@@ -389,6 +366,29 @@
                   },
                   "authentication": "@parameters('$authentication')"
                 }
+              },
+              "Post_Approval_Denied_Notification": {
+                "runAfter": {
+                  "Patch_Parent_Ticket_Rejected": [
+                    "Succeeded"
+                  ]
+                },
+                "type": "OpenApiConnection",
+                "inputs": {
+                  "host": {
+                    "apiId": "/providers/Microsoft.PowerApps/apis/shared_teams",
+                    "connectionName": "shared_teams",
+                    "operationId": "PostMessageToConversation"
+                  },
+                  "parameters": {
+                    "poster": "Flow bot",
+                    "location": "Chat with Flow bot",
+                    "body/recipient": "@coalesce(body('Get_Parent_Ticket_Rejected')?['RequestedForUser']?['Email'], last(split(coalesce(body('Get_Parent_Ticket_Rejected')?['RequestedForUser']?['Claims'], body('Get_Parent_Ticket_Rejected')?['Caller']?['Claims'], ''), '|')), 'catherine.han@flowstudio.app')",
+                    "body/messageBody": "@{concat('<h2>Request denied</h2><p><b>RITM:</b> ', triggerOutputs()?['body/RitmNumber'], ' (item ID ', string(triggerOutputs()?['body/ID']), ')</p><p><b>Parent ticket:</b> ', body('Get_Parent_Ticket_Rejected')?['Title'], ' (item ID ', string(triggerOutputs()?['body/ParentTicket/Id']), ')</p><p><b>Catalog item:</b> ', body('Get_Catalog_Item')?['ItemName'], '</p><p><b>Denied by:</b> ', outputs('Compose_Approver_Upn'), '</p><p><b>Denied at:</b> ', utcNow(), '</p><p><b>Reason:</b> ', coalesce(first(body('Wait_For_Approval')?['responses'])?['comments'], '(none provided)'), '</p><p>The parent ticket was cancelled and the reason was added to ticket work notes.</p><p><a href=\\\"https://contoso.sharepoint.com/sites/ITSM/Lists/Tickets/DispForm.aspx?ID=', string(triggerOutputs()?['body/ParentTicket/Id']), '\\\">Open ticket</a></p>')}"
+                  },
+                  "authentication": "@parameters('$authentication')"
+                },
+                "description": "Day 4 task 10: approval-denied notification to requester via Teams Flow bot."
               },
               "ForEach_TicketFollower_Denial": {
                 "foreach": "@coalesce(body('Get_Parent_Ticket_Rejected')?['TicketFollowers'], createArray())",
@@ -451,5 +451,5 @@
       "type": "If"
     }
   },
-  "description": "Fix: approval details render plain-text Variables fallback and rejected parent tickets store visible approval outcome. #flowstudio-mcp"
+  "description": "ACTION 3: RITM approval now starts when validation updates a RITM to Pending Approval. #flowstudio-mcp"
 }

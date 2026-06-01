@@ -236,7 +236,3 @@ After deployment:
 3. Confirm the frontend loads without console errors.
 4. Confirm calls to SharePoint lists are read-only unless the UX explicitly performs a user action.
 5. Confirm no privileged Graph writes exist in the frontend.
-
-## Known Current Limitation
-
-This repository did not contain an SPFx scaffold at the time this pipeline was added. The workflow and scripts are ready for the SPFx project structure, but CI will only pass once the SPFx `config/`, `src/`, and `sharepoint/solution` scaffold are present and `heft package-solution --production` emits an `.sppkg`.

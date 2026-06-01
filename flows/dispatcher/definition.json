@@ -1,0 +1,415 @@
+{
+  "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "$connections": {
+      "defaultValue": {},
+      "type": "Object"
+    },
+    "$authentication": {
+      "defaultValue": {},
+      "type": "SecureObject"
+    }
+  },
+  "triggers": {
+    "manual": {
+      "metadata": {},
+      "type": "Request",
+      "kind": "Http",
+      "inputs": {
+        "schema": {
+          "type": "object",
+          "required": [
+            "pjId",
+            "idempotencyKey",
+            "callerUpn",
+            "jobType",
+            "correlationId"
+          ],
+          "properties": {
+            "pjId": {
+              "type": "integer",
+              "description": "SP item id of the existing Provisioning Jobs row"
+            },
+            "idempotencyKey": {
+              "type": "string",
+              "description": "Caller-supplied; same value across retries"
+            },
+            "callerUpn": {
+              "type": "string",
+              "description": "Human who originated the request"
+            },
+            "approverUpn": {
+              "type": "string",
+              "description": "Approver who authorised dispatch (or 'system' for auto-approved policies)"
+            },
+            "approvalSessionId": {
+              "type": "string",
+              "description": "Approvals row session id (null for system-bypass)"
+            },
+            "jobType": {
+              "type": "string",
+              "description": "Anti-tamper: must match PJ.JobType"
+            },
+            "correlationId": {
+              "type": "string",
+              "description": "ULID; flows through approval > dispatch > execute > audit"
+            }
+          }
+        },
+        "triggerAuthenticationType": "All"
+      }
+    }
+  },
+  "actions": {
+    "Get_PJ": {
+      "runAfter": {},
+      "type": "OpenApiConnection",
+      "inputs": {
+        "host": {
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+          "connectionName": "shared_sharepointonline",
+          "operationId": "GetItem"
+        },
+        "parameters": {
+          "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+          "table": "Provisioning Jobs",
+          "id": "@triggerBody()?['pjId']"
+        },
+        "authentication": "@parameters('$authentication')"
+      }
+    },
+    "Validate_JobType_Matches": {
+      "actions": {
+        "Reject_JobType_Mismatch": {
+          "runAfter": {},
+          "type": "Response",
+          "kind": "Http",
+          "inputs": {
+            "statusCode": 400,
+            "headers": {
+              "Content-Type": "application/json"
+            },
+            "body": {
+              "error": "bad_request",
+              "field": "jobType",
+              "reason": "jobType in request does not match jobType on the Provisioning Job row",
+              "expected": "@body('Get_PJ')?['JobType']",
+              "received": "@triggerBody()?['jobType']"
+            }
+          }
+        },
+        "Terminate_JobType_Mismatch": {
+          "runAfter": {
+            "Reject_JobType_Mismatch": [
+              "Succeeded"
+            ]
+          },
+          "type": "Terminate",
+          "inputs": {
+            "runStatus": "Cancelled"
+          }
+        }
+      },
+      "runAfter": {
+        "Get_PJ": [
+          "Succeeded"
+        ]
+      },
+      "expression": {
+        "and": [
+          {
+            "not": {
+              "equals": [
+                "@body('Get_PJ')?['JobType']",
+                "@triggerBody()?['jobType']"
+              ]
+            }
+          }
+        ]
+      },
+      "type": "If"
+    },
+    "Check_PJ_State_Allowed": {
+      "actions": {
+        "Reject_PJ_Bad_State": {
+          "runAfter": {},
+          "type": "Response",
+          "kind": "Http",
+          "inputs": {
+            "statusCode": 409,
+            "headers": {
+              "Content-Type": "application/json"
+            },
+            "body": {
+              "error": "invalid_state",
+              "reason": "Provisioning Job is not in Proposed or AwaitingApproval; cannot dispatch",
+              "currentState": "@body('Get_PJ')?['JobStatus']?['Value']",
+              "pjId": "@triggerBody()?['pjId']",
+              "jobId": "@body('Get_PJ')?['JobId']"
+            }
+          }
+        },
+        "Terminate_Bad_State": {
+          "runAfter": {
+            "Reject_PJ_Bad_State": [
+              "Succeeded"
+            ]
+          },
+          "type": "Terminate",
+          "inputs": {
+            "runStatus": "Cancelled"
+          }
+        }
+      },
+      "runAfter": {
+        "Validate_JobType_Matches": [
+          "Succeeded"
+        ]
+      },
+      "expression": {
+        "and": [
+          {
+            "not": {
+              "or": [
+                {
+                  "equals": [
+                    "@body('Get_PJ')?['JobStatus']?['Value']",
+                    "Proposed"
+                  ]
+                },
+                {
+                  "equals": [
+                    "@body('Get_PJ')?['JobStatus']?['Value']",
+                    "AwaitingApproval"
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "type": "If"
+    },
+    "Get_KillSwitch": {
+      "runAfter": {
+        "Check_PJ_State_Allowed": [
+          "Succeeded"
+        ]
+      },
+      "type": "OpenApiConnection",
+      "inputs": {
+        "host": {
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+          "connectionName": "shared_sharepointonline",
+          "operationId": "GetItems"
+        },
+        "parameters": {
+          "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+          "table": "Config",
+          "$filter": "Key eq 'KillSwitch'",
+          "$top": 1
+        },
+        "authentication": "@parameters('$authentication')"
+      }
+    },
+    "Check_KillSwitch": {
+      "actions": {
+        "Reject_KillSwitch": {
+          "runAfter": {},
+          "type": "Response",
+          "kind": "Http",
+          "inputs": {
+            "statusCode": 503,
+            "headers": {
+              "Content-Type": "application/json"
+            },
+            "body": {
+              "error": "kill_switch",
+              "reason": "Dispatcher kill switch is engaged; all dispatch writes paused.",
+              "pjId": "@triggerBody()?['pjId']"
+            }
+          }
+        },
+        "Terminate_KillSwitch": {
+          "runAfter": {
+            "Reject_KillSwitch": [
+              "Succeeded"
+            ]
+          },
+          "type": "Terminate",
+          "inputs": {
+            "runStatus": "Cancelled"
+          }
+        }
+      },
+      "runAfter": {
+        "Get_KillSwitch": [
+          "Succeeded"
+        ]
+      },
+      "expression": {
+        "and": [
+          {
+            "equals": [
+              "@toLower(coalesce(first(body('Get_KillSwitch')?['value'])?['Value'], 'false'))",
+              "true"
+            ]
+          }
+        ]
+      },
+      "type": "If"
+    },
+    "Check_Idempotency": {
+      "runAfter": {
+        "Check_KillSwitch": [
+          "Succeeded"
+        ]
+      },
+      "type": "OpenApiConnection",
+      "inputs": {
+        "host": {
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+          "connectionName": "shared_sharepointonline",
+          "operationId": "GetItems"
+        },
+        "parameters": {
+          "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+          "table": "Provisioning Jobs",
+          "$filter": "@{concat('IdempotencyKey eq ''', triggerBody()?['idempotencyKey'], ''' and ID ne ', triggerBody()?['pjId'])}",
+          "$top": 5
+        },
+        "authentication": "@parameters('$authentication')"
+      }
+    },
+    "Check_Idempotent_Replay": {
+      "actions": {
+        "Respond_Idempotent": {
+          "runAfter": {},
+          "type": "Response",
+          "kind": "Http",
+          "inputs": {
+            "statusCode": 200,
+            "headers": {
+              "Content-Type": "application/json"
+            },
+            "body": {
+              "idempotent": true,
+              "reason": "Existing Provisioning Job row found with same IdempotencyKey; dispatch is a replay no-op.",
+              "originalPjId": "@first(body('Check_Idempotency')?['value'])?['ID']",
+              "originalJobId": "@first(body('Check_Idempotency')?['value'])?['JobId']",
+              "originalStatus": "@first(body('Check_Idempotency')?['value'])?['JobStatus']?['Value']",
+              "trackingUrl": "@{concat('https://contoso.sharepoint.com/sites/ITSM/Lists/Provisioning%20Jobs/DispForm.aspx?ID=', first(body('Check_Idempotency')?['value'])?['ID'])}"
+            }
+          }
+        },
+        "Terminate_Idempotent": {
+          "runAfter": {
+            "Respond_Idempotent": [
+              "Succeeded"
+            ]
+          },
+          "type": "Terminate",
+          "inputs": {
+            "runStatus": "Succeeded"
+          }
+        }
+      },
+      "runAfter": {
+        "Check_Idempotency": [
+          "Succeeded"
+        ]
+      },
+      "expression": {
+        "and": [
+          {
+            "greater": [
+              "@length(coalesce(body('Check_Idempotency')?['value'], createArray()))",
+              0
+            ]
+          }
+        ]
+      },
+      "type": "If"
+    },
+    "Patch_PJ_To_Dispatched": {
+      "runAfter": {
+        "Check_Idempotent_Replay": [
+          "Succeeded"
+        ]
+      },
+      "type": "OpenApiConnection",
+      "inputs": {
+        "host": {
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+          "connectionName": "shared_sharepointonline",
+          "operationId": "PatchItem"
+        },
+        "parameters": {
+          "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+          "table": "Provisioning Jobs",
+          "id": "@triggerBody()?['pjId']",
+          "item/Title": "@coalesce(body('Get_PJ')?['Title'], body('Get_PJ')?['JobId'])",
+          "item/JobType": "@body('Get_PJ')?['JobType']",
+          "item/ParentTicket/Id": "@body('Get_PJ')?['ParentTicket']?['Id']",
+          "item/JobStatus/Value": "Dispatched",
+          "item/CallerUpn": "@body('Get_PJ')?['CallerUpn']",
+          "item/TargetJson": "@body('Get_PJ')?['TargetJson']",
+          "item/IdempotencyKey": "@triggerBody()?['idempotencyKey']",
+          "item/CorrelationId": "@triggerBody()?['correlationId']",
+          "item/DispatchedAt": "@utcNow()",
+          "item/ApprovalSessionId": "@triggerBody()?['approvalSessionId']"
+        },
+        "authentication": "@parameters('$authentication')"
+      }
+    },
+    "Respond_202": {
+      "runAfter": {
+        "Patch_PJ_To_Dispatched": [
+          "Succeeded"
+        ]
+      },
+      "type": "Response",
+      "kind": "Http",
+      "inputs": {
+        "statusCode": 202,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "body": {
+          "idempotent": false,
+          "pjId": "@triggerBody()?['pjId']",
+          "jobId": "@body('Get_PJ')?['JobId']",
+          "jobType": "@body('Get_PJ')?['JobType']",
+          "status": "Dispatched",
+          "ticketId": "@body('Get_PJ')?['ParentTicket']?['Value']",
+          "correlationId": "@triggerBody()?['correlationId']",
+          "dispatchedAt": "@utcNow()",
+          "trackingUrl": "@{concat('https://contoso.sharepoint.com/sites/ITSM/Lists/Provisioning%20Jobs/DispForm.aspx?ID=', triggerBody()?['pjId'])}"
+        }
+      }
+    },
+    "Respond_Patch_Failed": {
+      "runAfter": {
+        "Patch_PJ_To_Dispatched": [
+          "Failed",
+          "TimedOut"
+        ]
+      },
+      "type": "Response",
+      "kind": "Http",
+      "inputs": {
+        "statusCode": 500,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "body": {
+          "error": "patch_failed",
+          "reason": "Failed to patch Provisioning Job to Dispatched",
+          "pjId": "@triggerBody()?['pjId']",
+          "patchError": "@coalesce(string(body('Patch_PJ_To_Dispatched')), 'unknown')"
+        }
+      }
+    }
+  }
+}

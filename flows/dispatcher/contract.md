@@ -2,7 +2,7 @@
 
 **Status:** Draft v1 (production-grade target)
 **Date:** 2026-04-29
-**Pilot deployed:** 2026-05-01 — flow `00000000-0000-4000-8000-000000000033` in env `d0897dde-...`
+**Pilot deployed:** 2026-05-01 — flow `00000000-0000-4000-8000-000000000033` in env `<env-id>`
 **Host:** Power Automate HTTP-request-triggered flow (see [ADR 0001](../../decisions/0001-dispatcher-host.md))
 
 This is the load-bearing artefact. The host is swappable; the contract is not. Any caller (Approval flow, future re-driver, ops console) and any executor flow must conform to this spec.

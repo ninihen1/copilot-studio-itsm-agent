@@ -6,9 +6,7 @@ Step-by-step manual setup for the M365 ITSM build, in dependency order. Some ste
 
 ---
 
-## Status as of 2026-05-01
-
-> **Historical snapshot as of 2026-05-01:** This table is retained for deployment-history context. For the current deployment state, see [`flows/CURRENT-STATUS.md`](flows/CURRENT-STATUS.md).
+## Deployment phases
 
 | Phase | Status | Notes |
 |---|---|---|
@@ -117,7 +115,7 @@ Secrets:        SP-IT-Identity-ClientSecret  (1-year, expires 2027-05-01)
 RBAC:           Catherine = Key Vault Secrets Officer
 ```
 
-The PA Key Vault connection runs as Catherine's identity (oauthDefault auth type). Connection ID `3902492e65ec448ea29a4c6752190756` in env `d0897dde-...`.
+The PA Key Vault connection runs as Catherine's identity (oauthDefault auth type). Connection ID `<connection-id>` in env `<env-id>`.
 
 ### Phase 2 deferrals
 
@@ -235,11 +233,11 @@ For Phase 3/3.1 schema updates:
 ./migrate-tickets-subcategory.ps1 ...
 ./migrate-tickets-subcategory.ps1 ... -Confirm
 
-# Re-run Tasks provisioning after Phase 3.1 to add Tasks.JobType.
+# Re-run Tasks provisioning to add Tasks.JobType.
 ./provision-lists.ps1 ... -ListsToProvision "13"
 ```
 
-See `PHASE-3-DEPLOYMENT.md` for the detailed taxonomy, Service Catalog, RITM/SCTASK, and executor deployment history.
+The taxonomy, Service Catalog, RITM/SCTASK, and executor pieces ship as the provisioning scripts in `infra/sharepoint/` and the flow definitions under `flows/`.
 
 ---
 
@@ -317,7 +315,7 @@ Pilot order (matches the 6-week plan):
 - `flows/sctask-orchestrator/definition.json` — closes RITMs when all SCTASKs close, then resolves the parent Ticket when all RITMs close.
 - `flows/executors/groups/definition.json` — handles `groups.*` jobs after SP-IT-Groups is provisioned.
 - `flows/executors/licensing/definition.json` — handles `licensing.*` jobs after SP-IT-Licensing is provisioned.
-- `flows/executors/exchange/definition.json` — handles Exchange mailbox permission jobs through the Phase 3.1 EXO Function wrapper.
+- `flows/executors/exchange/definition.json` — handles Exchange mailbox permission jobs through the EXO Function wrapper.
 - `flows/executors/sharepoint/definition.json` — handles `sharepoint.*` jobs.
 - `flows/executors/teams/definition.json` — handles `teams.*` jobs.
 - `flows/sla-timer/definition.json` — updates SLA warning and breach state during business hours.

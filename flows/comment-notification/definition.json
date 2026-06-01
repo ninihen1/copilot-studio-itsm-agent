@@ -1,0 +1,204 @@
+{
+  "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "$connections": {
+      "defaultValue": {},
+      "type": "Object"
+    },
+    "$authentication": {
+      "defaultValue": {},
+      "type": "SecureObject"
+    }
+  },
+  "triggers": {
+    "When_a_Ticket_is_Modified": {
+      "recurrence": {
+        "frequency": "Minute",
+        "interval": 1
+      },
+      "evaluatedRecurrence": {
+        "frequency": "Minute",
+        "interval": 1
+      },
+      "splitOn": "@triggerOutputs()?['body/value']",
+      "type": "OpenApiConnection",
+      "inputs": {
+        "host": {
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+          "connectionName": "shared_sharepointonline",
+          "operationId": "GetOnUpdatedItems"
+        },
+        "parameters": {
+          "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+          "table": "Tickets"
+        },
+        "authentication": "@parameters('$authentication')"
+      },
+      "conditions": [
+        {
+          "expression": "@or(not(or(startsWith(trim(coalesce(triggerOutputs()?['body/WorkNotes'], '')), 'SLA Timer:'), startsWith(trim(coalesce(triggerOutputs()?['body/WorkNotes'], '')), 'RITM Generator:'), startsWith(trim(coalesce(triggerOutputs()?['body/WorkNotes'], '')), 'Caller comment received after resolution'), startsWith(trim(coalesce(triggerOutputs()?['body/WorkNotes'], '')), 'Ticket Type Validator:'), startsWith(trim(coalesce(triggerOutputs()?['body/WorkNotes'], '')), 'ProposeAction mapped jobType '), startsWith(trim(coalesce(triggerOutputs()?['body/WorkNotes'], '')), 'Major Incident Detector '), startsWith(trim(coalesce(triggerOutputs()?['body/WorkNotes'], '')), 'Archival Flow:'), startsWith(trim(coalesce(triggerOutputs()?['body/WorkNotes'], '')), 'Auto-bridged to PJ '), contains(coalesce(triggerOutputs()?['body/WorkNotes'], ''), ' reached terminal state: '))), not(empty(coalesce(triggerOutputs()?['body/Comments'], ''))))"
+        }
+      ]
+    }
+  },
+  "actions": {
+    "Get_Changes_For_Ticket": {
+      "runAfter": {},
+      "type": "OpenApiConnection",
+      "inputs": {
+        "host": {
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+          "connectionName": "shared_sharepointonline",
+          "operationId": "GetItemChanges"
+        },
+        "parameters": {
+          "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+          "table": "Tickets",
+          "id": "@triggerOutputs()?['body/ID']",
+          "since": "@triggerOutputs()?['body/{TriggerWindowStartToken}']",
+          "includeDrafts": false
+        },
+        "authentication": "@parameters('$authentication')"
+      }
+    },
+    "If_Comment_Or_WorkNotes_Changed": {
+      "actions": {
+        "Compose_Latest_Comment_Source": {
+          "runAfter": {},
+          "type": "Compose",
+          "inputs": "@if(equals(coalesce(body('Get_Changes_For_Ticket')?['ColumnHasChanged']?['Comments'], false), true), coalesce(triggerOutputs()?['body/Comments'], ''), coalesce(triggerOutputs()?['body/WorkNotes'], ''))"
+        },
+        "Compose_Latest_Comment_Excerpt": {
+          "runAfter": {
+            "Compose_Latest_Comment_Source": [
+              "Succeeded"
+            ]
+          },
+          "type": "Compose",
+          "inputs": "@if(greater(length(outputs('Compose_Latest_Comment_Source')), 180), concat(substring(outputs('Compose_Latest_Comment_Source'), sub(length(outputs('Compose_Latest_Comment_Source')), 180), 180), '...'), outputs('Compose_Latest_Comment_Source'))"
+        },
+        "ForEach_TicketFollower": {
+          "foreach": "@coalesce(triggerOutputs()?['body/TicketFollowers'], createArray())",
+          "actions": {
+            "Post_Teams_Comment_Notification": {
+              "runAfter": {},
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": {
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_teams",
+                  "connectionName": "shared_teams",
+                  "operationId": "PostMessageToConversation"
+                },
+                "parameters": {
+                  "poster": "Flow bot",
+                  "location": "Chat with Flow bot",
+                  "body/recipient": "@coalesce(items('ForEach_TicketFollower')?['Email'], items('ForEach_TicketFollower')?['EMail'], last(split(coalesce(items('ForEach_TicketFollower')?['Claims'], ''), '|')))",
+                  "body/messageBody": "@{concat('New comment on ticket ', triggerOutputs()?['body/Title'], ': ', outputs('Compose_Latest_Comment_Excerpt'))}"
+                },
+                "authentication": "@parameters('$authentication')"
+              }
+            }
+          },
+          "runAfter": {
+            "Compose_Latest_Comment_Excerpt": [
+              "Succeeded"
+            ]
+          },
+          "type": "Foreach"
+        },
+        "Post_Teams_Caller_Comment_Notification": {
+          "runAfter": {
+            "Compose_Latest_Comment_Excerpt": [
+              "Succeeded"
+            ]
+          },
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_teams",
+              "connectionName": "shared_teams",
+              "operationId": "PostMessageToConversation"
+            },
+            "parameters": {
+              "poster": "Flow bot",
+              "location": "Chat with Flow bot",
+              "body/recipient": "@coalesce(triggerOutputs()?['body/Caller/Email'], triggerOutputs()?['body/Caller/EMail'], last(split(coalesce(triggerOutputs()?['body/Caller/Claims'], ''), '|')))",
+              "body/messageBody": "@{concat('New comment on your ticket ', triggerOutputs()?['body/Title'], ': ', outputs('Compose_Latest_Comment_Excerpt'))}"
+            },
+            "authentication": "@parameters('$authentication')"
+          },
+          "description": "Notify the ticket caller even when no explicit TicketFollowers are set."
+        }
+      },
+      "runAfter": {
+        "Get_Changes_For_Ticket": [
+          "Succeeded"
+        ]
+      },
+      "else": {
+        "actions": {}
+      },
+      "expression": {
+        "and": [
+          {
+            "or": [
+              {
+                "equals": [
+                  "@coalesce(body('Get_Changes_For_Ticket')?['ColumnHasChanged']?['Comments'], false)",
+                  true
+                ]
+              },
+              {
+                "and": [
+                  {
+                    "equals": [
+                      "@coalesce(body('Get_Changes_For_Ticket')?['ColumnHasChanged']?['WorkNotes'], false)",
+                      true
+                    ]
+                  },
+                  {
+                    "not": {
+                      "equals": [
+                        "@or(equals(toLower(coalesce(triggerOutputs()?['body/Editor/Email'], triggerOutputs()?['body/Editor/EMail'], last(split(coalesce(triggerOutputs()?['body/Editor/Claims'], ''), '|')), '')), 'catherine.han@flowstudio.app'), equals(toLower(coalesce(triggerOutputs()?['body/Editor/DisplayName'], '')), 'sharepoint app'))",
+                        true
+                      ]
+                    }
+                  },
+                  {
+                    "not": {
+                      "equals": [
+                        "@or(startsWith(trim(coalesce(triggerOutputs()?['body/WorkNotes'], '')), 'SLA Timer:'), contains(coalesce(triggerOutputs()?['body/WorkNotes'], ''), concat(decodeUriComponent('%0A'), 'SLA Timer:')), startsWith(trim(coalesce(triggerOutputs()?['body/WorkNotes'], '')), 'RITM Generator:'), contains(coalesce(triggerOutputs()?['body/WorkNotes'], ''), concat(decodeUriComponent('%0A'), 'RITM Generator:')), startsWith(trim(coalesce(triggerOutputs()?['body/WorkNotes'], '')), 'Caller comment received after resolution'), contains(coalesce(triggerOutputs()?['body/WorkNotes'], ''), concat(decodeUriComponent('%0A'), 'Caller comment received after resolution')), startsWith(trim(coalesce(triggerOutputs()?['body/WorkNotes'], '')), 'Ticket Type Validator:'), contains(coalesce(triggerOutputs()?['body/WorkNotes'], ''), concat(decodeUriComponent('%0A'), 'Ticket Type Validator:')), startsWith(trim(coalesce(triggerOutputs()?['body/WorkNotes'], '')), 'ProposeAction mapped jobType '), contains(coalesce(triggerOutputs()?['body/WorkNotes'], ''), concat(decodeUriComponent('%0A'), 'ProposeAction mapped jobType ')), startsWith(trim(coalesce(triggerOutputs()?['body/WorkNotes'], '')), 'Major Incident Detector '), contains(coalesce(triggerOutputs()?['body/WorkNotes'], ''), concat(decodeUriComponent('%0A'), 'Major Incident Detector ')), startsWith(trim(coalesce(triggerOutputs()?['body/WorkNotes'], '')), 'Archival Flow:'), contains(coalesce(triggerOutputs()?['body/WorkNotes'], ''), concat(decodeUriComponent('%0A'), 'Archival Flow:')), startsWith(trim(coalesce(triggerOutputs()?['body/WorkNotes'], '')), 'Auto-bridged to PJ '), contains(coalesce(triggerOutputs()?['body/WorkNotes'], ''), concat(decodeUriComponent('%0A'), 'Auto-bridged to PJ ')), contains(coalesce(triggerOutputs()?['body/WorkNotes'], ''), ' reached terminal state: '))",
+                        true
+                      ]
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "or": [
+              {
+                "greater": [
+                  "@length(coalesce(triggerOutputs()?['body/TicketFollowers'], createArray()))",
+                  0
+                ]
+              },
+              {
+                "not": {
+                  "equals": [
+                    "@coalesce(triggerOutputs()?['body/Caller/Claims'], triggerOutputs()?['body/Caller/Email'], triggerOutputs()?['body/Caller/EMail'], '')",
+                    ""
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "type": "If"
+    }
+  },
+  "description": "ITSM-Comment-Notification: notifies ticket caller and followers when Comments or WorkNotes changes. #flowstudio-mcp"
+}

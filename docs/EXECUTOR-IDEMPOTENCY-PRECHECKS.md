@@ -1,7 +1,7 @@
 # Executor Idempotency Pre-Check Patterns
 
-Scope: six ITSM executor flows and their current Day 2 job types  
-Status: Day 4 design guidance for safe retries
+Scope: six ITSM executor flows and their current job types  
+Status: Design guidance for safe retries
 
 ## Why This Exists
 
@@ -227,7 +227,7 @@ Each job type needs at least three tests:
 
 For operations like `identity.resetPassword`, replay is not a no-op. The safer pattern is dispatcher/executor idempotency table short-circuit before another password reset is attempted.
 
-## Day 4 Implementation Priority
+## Implementation Priority
 
 1. Add pre-checks for non-idempotent membership operations: `groups.addMember`, `teams.addChannelMember`.
 2. Add license present/absent checks for `licensing.assign` and `licensing.revoke`.

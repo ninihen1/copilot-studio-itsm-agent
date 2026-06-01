@@ -1,0 +1,272 @@
+{
+  "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "$connections": {
+      "defaultValue": {},
+      "type": "Object"
+    },
+    "$authentication": {
+      "defaultValue": {},
+      "type": "SecureObject"
+    }
+  },
+  "triggers": {
+    "manual": {
+      "metadata": {
+        "operationMetadataId": "29e510d3-ceaa-4ce8-a89e-f7d7ecff3033"
+      },
+      "type": "Request",
+      "kind": "Skills",
+      "inputs": {
+        "schema": {
+          "type": "object",
+          "required": [
+            "query"
+          ],
+          "properties": {
+            "query": {
+              "title": "query",
+              "type": "string",
+              "x-ms-dynamically-added": true,
+              "description": "Raw user question or issue text to search for in the Knowledge Base.",
+              "x-ms-content-hint": "TEXT"
+            },
+            "top": {
+              "title": "top",
+              "type": "number",
+              "x-ms-dynamically-added": true,
+              "description": "Maximum number of matching articles to return.",
+              "x-ms-content-hint": "NUMBER"
+            }
+          }
+        }
+      }
+    }
+  },
+  "actions": {
+    "Normalize_Query": {
+      "runAfter": {},
+      "type": "Compose",
+      "inputs": "@trim(replace(replace(replace(replace(replace(replace(replace(replace(toLower(coalesce(triggerBody()?['query'], '')), 'pasword', 'password'), 'rset', 'reset'), 'log in', 'login'), 'sign in', 'signin'), '?', ''), '.', ''), ',', ' '), '/', ' '))"
+    },
+    "Top_Count": {
+      "runAfter": {
+        "Query_Tokens": [
+          "Succeeded"
+        ]
+      },
+      "type": "Compose",
+      "inputs": "@if(or(equals(triggerBody()?['top'], null), lessOrEquals(int(triggerBody()?['top']), 0)), 3, int(triggerBody()?['top']))"
+    },
+    "Is_Password_Query": {
+      "runAfter": {
+        "Top_Count": [
+          "Succeeded"
+        ]
+      },
+      "type": "Compose",
+      "inputs": "@or(contains(outputs('Normalize_Query'), 'password'), contains(outputs('Normalize_Query'), 'forgot'), contains(outputs('Normalize_Query'), 'reset'), contains(outputs('Normalize_Query'), 'signin'), contains(outputs('Normalize_Query'), 'login'), contains(outputs('Normalize_Query'), 'locked'))"
+    },
+    "Get_Published_KB_Items": {
+      "runAfter": {
+        "Is_Reset_Password_Query": [
+          "Succeeded"
+        ]
+      },
+      "type": "OpenApiConnection",
+      "inputs": {
+        "host": {
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+          "connectionName": "shared_sharepointonline",
+          "operationId": "GetItems"
+        },
+        "parameters": {
+          "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+          "table": "Knowledge Base",
+          "$filter": "ArticleStatus eq 'Published'",
+          "$top": 500
+        },
+        "authentication": "@parameters('$authentication')"
+      }
+    },
+    "Score_Articles": {
+      "runAfter": {
+        "Get_Published_KB_Items": [
+          "Succeeded"
+        ]
+      },
+      "type": "Select",
+      "inputs": {
+        "from": "@body('Get_Published_KB_Items')?['value']",
+        "select": {
+          "score": "@add(add(add(add(add(add(add(add(add(add(add(add(add(add(add(add(add(add(add(if(equals(toLower(coalesce(item()?['ArticleNumber'], '')), outputs('Normalize_Query')), 1200, 0), if(and(not(empty(coalesce(item()?['ArticleNumber'], ''))), contains(outputs('Normalize_Query'), toLower(coalesce(item()?['ArticleNumber'], '')))), 1100, 0)), if(and(not(empty(outputs('Normalize_Query'))), contains(replace(replace(replace(replace(replace(replace(replace(replace(toLower(coalesce(item()?['Title'], '')), 'pasword', 'password'), 'rset', 'reset'), 'log in', 'login'), 'sign in', 'signin'), '-', ' '), '/', ' '), ',', ' '), '.', ''), outputs('Normalize_Query'))), 300, 0)), if(and(not(empty(outputs('Normalize_Query'))), contains(replace(replace(replace(replace(replace(replace(replace(replace(toLower(coalesce(item()?['Keywords'], '')), 'pasword', 'password'), 'rset', 'reset'), 'log in', 'login'), 'sign in', 'signin'), '-', ' '), '/', ' '), ',', ' '), '.', ''), outputs('Normalize_Query'))), 250, 0)), if(and(not(empty(outputs('Normalize_Query'))), contains(replace(replace(replace(replace(replace(replace(replace(replace(toLower(coalesce(item()?['Summary'], '')), 'pasword', 'password'), 'rset', 'reset'), 'log in', 'login'), 'sign in', 'signin'), '-', ' '), '/', ' '), ',', ' '), '.', ''), outputs('Normalize_Query'))), 200, 0)), if(and(not(empty(outputs('Normalize_Query'))), contains(replace(replace(replace(replace(replace(replace(replace(replace(toLower(coalesce(item()?['Body'], '')), 'pasword', 'password'), 'rset', 'reset'), 'log in', 'login'), 'sign in', 'signin'), '-', ' '), '/', ' '), ',', ' '), '.', ''), outputs('Normalize_Query'))), 150, 0)), mul(length(intersection(outputs('Query_Tokens'), split(replace(replace(replace(replace(replace(replace(replace(replace(toLower(coalesce(item()?['Title'], '')), 'pasword', 'password'), 'rset', 'reset'), 'log in', 'login'), 'sign in', 'signin'), '-', ' '), '/', ' '), ',', ' '), '.', ''), ' '))), 70)), mul(length(intersection(outputs('Query_Tokens'), split(replace(replace(replace(replace(replace(replace(replace(replace(toLower(coalesce(item()?['Keywords'], '')), 'pasword', 'password'), 'rset', 'reset'), 'log in', 'login'), 'sign in', 'signin'), '-', ' '), '/', ' '), ',', ' '), '.', ''), ' '))), 90)), mul(length(intersection(outputs('Query_Tokens'), split(replace(replace(replace(replace(replace(replace(replace(replace(toLower(coalesce(item()?['Summary'], '')), 'pasword', 'password'), 'rset', 'reset'), 'log in', 'login'), 'sign in', 'signin'), '-', ' '), '/', ' '), ',', ' '), '.', ''), ' '))), 45)), mul(length(intersection(outputs('Query_Tokens'), split(replace(replace(replace(replace(replace(replace(replace(replace(toLower(coalesce(item()?['Body'], '')), 'pasword', 'password'), 'rset', 'reset'), 'log in', 'login'), 'sign in', 'signin'), '-', ' '), '/', ' '), ',', ' '), '.', ''), ' '))), 25)), if(and(outputs('Is_Change_Password_Query'), contains(replace(replace(replace(replace(replace(replace(replace(replace(toLower(coalesce(item()?['Keywords'], '')), 'pasword', 'password'), 'rset', 'reset'), 'log in', 'login'), 'sign in', 'signin'), '-', ' '), '/', ' '), ',', ' '), '.', ''), 'change password')), 520, 0)), if(and(outputs('Is_Change_Password_Query'), contains(replace(replace(replace(replace(replace(replace(replace(replace(toLower(coalesce(item()?['Title'], '')), 'pasword', 'password'), 'rset', 'reset'), 'log in', 'login'), 'sign in', 'signin'), '-', ' '), '/', ' '), ',', ' '), '.', ''), 'change')), 260, 0)), if(and(outputs('Is_Change_Password_Query'), contains(replace(replace(replace(replace(replace(replace(replace(replace(toLower(coalesce(item()?['Summary'], '')), 'pasword', 'password'), 'rset', 'reset'), 'log in', 'login'), 'sign in', 'signin'), '-', ' '), '/', ' '), ',', ' '), '.', ''), 'still signin')), 120, 0)), if(and(outputs('Is_Reset_Password_Query'), equals(toLower(coalesce(item()?['ResolvesJobType'], '')), 'identity.resetpassword')), 420, 0)), if(and(outputs('Is_Reset_Password_Query'), contains(replace(replace(replace(replace(replace(replace(replace(replace(toLower(coalesce(item()?['Keywords'], '')), 'pasword', 'password'), 'rset', 'reset'), 'log in', 'login'), 'sign in', 'signin'), '-', ' '), '/', ' '), ',', ' '), '.', ''), 'forgot password')), 260, 0)), if(and(outputs('Is_Reset_Password_Query'), contains(replace(replace(replace(replace(replace(replace(replace(replace(toLower(coalesce(item()?['Keywords'], '')), 'pasword', 'password'), 'rset', 'reset'), 'log in', 'login'), 'sign in', 'signin'), '-', ' '), '/', ' '), ',', ' '), '.', ''), 'reset')), 180, 0)), if(and(outputs('Is_Reset_Password_Query'), contains(replace(replace(replace(replace(replace(replace(replace(replace(toLower(coalesce(item()?['Title'], '')), 'pasword', 'password'), 'rset', 'reset'), 'log in', 'login'), 'sign in', 'signin'), '-', ' '), '/', ' '), ',', ' '), '.', ''), 'forgot')), 140, 0)), if(and(outputs('Is_Reset_Password_Query'), contains(replace(replace(replace(replace(replace(replace(replace(replace(toLower(coalesce(item()?['Title'], '')), 'pasword', 'password'), 'rset', 'reset'), 'log in', 'login'), 'sign in', 'signin'), '-', ' '), '/', ' '), ',', ' '), '.', ''), 'password')), 90, 0)), if(and(outputs('Is_Reset_Password_Query'), contains(replace(replace(replace(replace(replace(replace(replace(replace(toLower(coalesce(item()?['Body'], '')), 'pasword', 'password'), 'rset', 'reset'), 'log in', 'login'), 'sign in', 'signin'), '-', ' '), '/', ' '), ',', ' '), '.', ''), 'reset')), 120, 0)), if(and(outputs('Is_Reset_Password_Query'), contains(replace(replace(replace(replace(replace(replace(replace(replace(toLower(coalesce(item()?['Body'], '')), 'pasword', 'password'), 'rset', 'reset'), 'log in', 'login'), 'sign in', 'signin'), '-', ' '), '/', ' '), ',', ' '), '.', ''), 'password')), 80, 0))",
+          "articleNumber": "@coalesce(item()?['ArticleNumber'], '')",
+          "title": "@coalesce(item()?['Title'], '')",
+          "summary": "@coalesce(item()?['Summary'], '')",
+          "body": "@coalesce(item()?['Body'], '')",
+          "bodyExcerpt": "@substring(coalesce(item()?['Body'], ''), 0, min(length(coalesce(item()?['Body'], '')), 500))",
+          "keywords": "@coalesce(item()?['Keywords'], '')",
+          "articleStatus": "@coalesce(item()?['ArticleStatus']?['Value'], item()?['ArticleStatus'], '')",
+          "audience": "@coalesce(item()?['Audience']?['Value'], item()?['Audience'], '')",
+          "resolvesJobType": "@coalesce(item()?['ResolvesJobType'], '')",
+          "itemId": "@string(item()?['ID'])",
+          "url": "@concat('https://contoso.sharepoint.com/sites/ITSM/Lists/Knowledge%20Base/DispForm.aspx?ID=', string(item()?['ID']))"
+        }
+      }
+    },
+    "Filter_Matches": {
+      "runAfter": {
+        "Score_Articles": [
+          "Succeeded"
+        ]
+      },
+      "type": "Query",
+      "inputs": {
+        "from": "@body('Score_Articles')",
+        "where": "@greater(int(item()?['score']), 0)"
+      }
+    },
+    "Top_Matches": {
+      "runAfter": {
+        "Filter_Matches": [
+          "Succeeded"
+        ]
+      },
+      "type": "Compose",
+      "inputs": "@take(reverse(sort(body('Filter_Matches'), 'score')), outputs('Top_Count'))"
+    },
+    "Response": {
+      "runAfter": {
+        "Top_Matches": [
+          "Succeeded"
+        ]
+      },
+      "type": "Response",
+      "kind": "Skills",
+      "inputs": {
+        "statusCode": 200,
+        "body": {
+          "query": "@triggerBody()?['query']",
+          "normalizedQuery": "@outputs('Normalize_Query')",
+          "matchCount": "@length(body('Filter_Matches'))",
+          "articles": "@outputs('Top_Matches')",
+          "hasMatches": "@greater(length(body('Filter_Matches')), 0)",
+          "queryTokens": "@outputs('Query_Tokens')"
+        },
+        "schema": {
+          "type": "object",
+          "properties": {
+            "query": {
+              "title": "query",
+              "type": "string",
+              "x-ms-dynamically-added": true,
+              "x-ms-content-hint": "TEXT"
+            },
+            "normalizedQuery": {
+              "title": "normalizedQuery",
+              "type": "string",
+              "x-ms-dynamically-added": true,
+              "x-ms-content-hint": "TEXT"
+            },
+            "queryTokens": {
+              "title": "queryTokens",
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "x-ms-dynamically-added": true
+            },
+            "matchCount": {
+              "title": "matchCount",
+              "type": "integer",
+              "x-ms-dynamically-added": true,
+              "x-ms-content-hint": "NUMBER"
+            },
+            "hasMatches": {
+              "title": "hasMatches",
+              "type": "boolean",
+              "x-ms-dynamically-added": true,
+              "x-ms-content-hint": "BOOLEAN"
+            },
+            "articles": {
+              "title": "articles",
+              "type": "array",
+              "x-ms-dynamically-added": true,
+              "items": {
+                "type": "object",
+                "properties": {
+                  "score": {
+                    "type": "integer"
+                  },
+                  "articleNumber": {
+                    "type": "string"
+                  },
+                  "title": {
+                    "type": "string"
+                  },
+                  "summary": {
+                    "type": "string"
+                  },
+                  "body": {
+                    "type": "string"
+                  },
+                  "bodyExcerpt": {
+                    "type": "string"
+                  },
+                  "keywords": {
+                    "type": "string"
+                  },
+                  "articleStatus": {
+                    "type": "string"
+                  },
+                  "audience": {
+                    "type": "string"
+                  },
+                  "resolvesJobType": {
+                    "type": "string"
+                  },
+                  "itemId": {
+                    "type": "string"
+                  },
+                  "url": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "Query_Tokens": {
+      "runAfter": {
+        "Normalize_Query": [
+          "Succeeded"
+        ]
+      },
+      "type": "Compose",
+      "inputs": "@split(replace(replace(replace(outputs('Normalize_Query'), '  ', ' '), '  ', ' '), '-', ' '), ' ')"
+    },
+    "Is_Change_Password_Query": {
+      "runAfter": {
+        "Is_Password_Query": [
+          "Succeeded"
+        ]
+      },
+      "type": "Compose",
+      "inputs": "@and(contains(outputs('Normalize_Query'), 'password'), or(contains(outputs('Normalize_Query'), 'change'), contains(outputs('Normalize_Query'), 'known'), contains(outputs('Normalize_Query'), 'current')))"
+    },
+    "Is_Reset_Password_Query": {
+      "runAfter": {
+        "Is_Change_Password_Query": [
+          "Succeeded"
+        ]
+      },
+      "type": "Compose",
+      "inputs": "@and(outputs('Is_Password_Query'), not(outputs('Is_Change_Password_Query')), or(contains(outputs('Normalize_Query'), 'reset'), contains(outputs('Normalize_Query'), 'forgot'), contains(outputs('Normalize_Query'), 'password')))"
+    }
+  },
+  "outputs": {},
+  "description": "Deterministic Knowledge Base lookup for Copilot Studio. Queries published SharePoint KB rows, scores matches against ArticleNumber/Title/Keywords/Summary/Body, and returns top articles for grounding. - Updated via Flow Studio MCP #flowstudio-mcp"
+}

@@ -1,254 +1,240 @@
-﻿{
-    "$schema":  "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
-    "contentVersion":  "1.0.0.0",
-    "parameters":  {
-                       "$connections":  {
-                                            "defaultValue":  {
-
-                                                             },
-                                            "type":  "Object"
-                                        },
-                       "$authentication":  {
-                                               "defaultValue":  {
-
-                                                                },
-                                               "type":  "SecureObject"
-                                           }
-                   },
-    "triggers":  {
-                     "When_a_Ticket_is_Created":  {
-                                                      "recurrence":  {
-                                                                         "frequency":  "Minute",
-                                                                         "interval":  1
-                                                                     },
-                                                      "evaluatedRecurrence":  {
-                                                                                  "frequency":  "Minute",
-                                                                                  "interval":  1
-                                                                              },
-                                                      "splitOn":  "@triggerOutputs()?[\u0027body/value\u0027]",
-                                                      "type":  "OpenApiConnection",
-                                                      "inputs":  {
-                                                                     "host":  {
-                                                                                  "apiId":  "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
-                                                                                  "connectionName":  "shared_sharepointonline",
-                                                                                  "operationId":  "GetOnUpdatedItems"
-                                                                              },
-                                                                     "parameters":  {
-                                                                                        "dataset":  "https://contoso.sharepoint.com/sites/ITSM",
-                                                                                        "table":  "Tickets"
-                                                                                    },
-                                                                     "authentication":  "@parameters(\u0027$authentication\u0027)"
-                                                                 },
-                                                      "conditions":  [
-                                                                         {
-                                                                             "expression":  "@and(equals(triggerOutputs()?[\u0027body/TicketType/Value\u0027], \u0027Request\u0027), or(equals(coalesce(triggerOutputs()?[\u0027body/TicketTypeValidated\u0027], false), true), equals(coalesce(triggerOutputs()?[\u0027body/TicketSource/Value\u0027], \u0027\u0027), \u0027ProposeAction\u0027)), not(equals(coalesce(triggerOutputs()?[\u0027body/TicketTypeValidationStatus/Value\u0027], \u0027\u0027), \u0027NeedsConfirmation\u0027)), or(equals(coalesce(triggerOutputs()?[\u0027body/TicketState/Value\u0027], \u0027\u0027), \u0027New\u0027), equals(coalesce(triggerOutputs()?[\u0027body/TicketState/Value\u0027], \u0027\u0027), \u0027In Progress\u0027)))"
-                                                                         }
-                                                                     ]
-                                                  }
-                 },
-    "actions":  {
-                    "If_TicketType_is_Request":  {
-                                                     "actions":  {
-                                                                     "Get_Existing_RITMs_For_Ticket":  {
-                                                                                                           "runAfter":  {
-
-                                                                                                                        },
-                                                                                                           "type":  "OpenApiConnection",
-                                                                                                           "inputs":  {
-                                                                                                                          "host":  {
-                                                                                                                                       "apiId":  "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
-                                                                                                                                       "connectionName":  "shared_sharepointonline",
-                                                                                                                                       "operationId":  "GetItems"
-                                                                                                                                   },
-                                                                                                                          "parameters":  {
-                                                                                                                                             "dataset":  "https://contoso.sharepoint.com/sites/ITSM",
-                                                                                                                                             "table":  "Request Items",
-                                                                                                                                             "$filter":  "@{concat(\u0027ParentTicketId eq \u0027, string(triggerOutputs()?[\u0027body/ID\u0027]))}",
-                                                                                                                                             "$top":  1
-                                                                                                                                         },
-                                                                                                                          "authentication":  "@parameters(\u0027$authentication\u0027)"
-                                                                                                                      },
-                                                                                                           "description":  "Idempotency guard: do not create another RITM for an already-generated request."
-                                                                                                       },
-                                                                     "Find_Catalog_Item_By_Subcategory":  {
-                                                                                                              "runAfter":  {
-                                                                                                                               "Get_Existing_RITMs_For_Ticket":  [
-                                                                                                                                                                     "Succeeded"
-                                                                                                                                                                 ]
-                                                                                                                           },
-                                                                                                              "type":  "OpenApiConnection",
-                                                                                                              "inputs":  {
-                                                                                                                             "host":  {
-                                                                                                                                          "apiId":  "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
-                                                                                                                                          "connectionName":  "shared_sharepointonline",
-                                                                                                                                          "operationId":  "GetItems"
-                                                                                                                                      },
-                                                                                                                             "parameters":  {
-                                                                                                                                                "dataset":  "https://contoso.sharepoint.com/sites/ITSM",
-                                                                                                                                                "table":  "Service Catalog",
-                                                                                                                                                "$filter":  "@{if(equals(coalesce(triggerOutputs()?[\u0027body/SelectedCatalogItem/Id\u0027], 0), 0), concat(\u0027SubcategoryHint/Id eq \u0027, coalesce(string(triggerOutputs()?[\u0027body/Subcategory/Id\u0027]), \u00270\u0027), \u0027 and ItemStatus eq \u0027\u0027active\u0027\u0027\u0027), concat(\u0027ID eq \u0027, string(triggerOutputs()?[\u0027body/SelectedCatalogItem/Id\u0027]), \u0027 and ItemStatus eq \u0027\u0027active\u0027\u0027\u0027))}",
-                                                                                                                                                "$top":  5
-                                                                                                                                            },
-                                                                                                                             "authentication":  "@parameters(\u0027$authentication\u0027)"
-                                                                                                                         }
-                                                                                                          },
-                                                                     "If_Match_Found":  {
-                                                                                            "actions":  {
-                                                                                                            "Compose_Catalog_Item":  {
-                                                                                                                                         "runAfter":  {
-
-                                                                                                                                                      },
-                                                                                                                                         "type":  "Compose",
-                                                                                                                                         "inputs":  "@first(body(\u0027Find_Catalog_Item_By_Subcategory\u0027)?[\u0027value\u0027])"
-                                                                                                                                     },
-                                                                                                            "Compose_Ritm_Number":  {
-                                                                                                                                        "runAfter":  {
-                                                                                                                                                         "Compose_Catalog_Item":  [
-                                                                                                                                                                                      "Succeeded"
-                                                                                                                                                                                  ]
-                                                                                                                                                     },
-                                                                                                                                        "type":  "Compose",
-                                                                                                                                        "inputs":  "@{concat(\u0027RITM\u0027, formatDateTime(utcNow(),\u0027yyMMddHHmm\u0027), substring(replace(guid(),\u0027-\u0027,\u0027\u0027),0,4))}"
-                                                                                                                                    },
-                                                                                                            "Create_RITM":  {
-                                                                                                                                "runAfter":  {
-                                                                                                                                                 "Compose_Ritm_Number":  [
-                                                                                                                                                                             "Succeeded"
-                                                                                                                                                                         ]
-                                                                                                                                             },
-                                                                                                                                "type":  "OpenApiConnection",
-                                                                                                                                "inputs":  {
-                                                                                                                                               "host":  {
-                                                                                                                                                            "apiId":  "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
-                                                                                                                                                            "connectionName":  "shared_sharepointonline",
-                                                                                                                                                            "operationId":  "PostItem"
-                                                                                                                                                        },
-                                                                                                                                               "parameters":  {
-                                                                                                                                                                  "dataset":  "https://contoso.sharepoint.com/sites/ITSM",
-                                                                                                                                                                  "table":  "Request Items",
-                                                                                                                                                                  "item/Title":  "@outputs(\u0027Compose_Ritm_Number\u0027)",
-                                                                                                                                                                  "item/RitmNumber":  "@outputs(\u0027Compose_Ritm_Number\u0027)",
-                                                                                                                                                                  "item/ParentTicket/Id":  "@triggerOutputs()?[\u0027body/ID\u0027]",
-                                                                                                                                                                  "item/CatalogItem/Id":  "@outputs(\u0027Compose_Catalog_Item\u0027)?[\u0027ID\u0027]",
-                                                                                                                                                                  "item/RequestedFor/Claims":  "@coalesce(triggerOutputs()?[\u0027body/RequestedForUser/Claims\u0027], triggerOutputs()?[\u0027body/Caller/Claims\u0027])",
-                                                                                                                                                                  "item/RitmState/Value":  "Pending Validation",
-                                                                                                                                                                  "item/Variables":  "@triggerOutputs()?[\u0027body/Description\u0027]",
-                                                                                                                                                                  "item/OpenedDate":  "@utcNow()",
-                                                                                                                                                                  "item/ConfidentialityLevel/Value":  "@coalesce(triggerOutputs()?[\u0027body/ConfidentialityLevel/Value\u0027], \u0027Public\u0027)",
-                                                                                                                                                                  "item/Cost":  "@outputs(\u0027Compose_Catalog_Item\u0027)?[\u0027Cost\u0027]"
-                                                                                                                                                              },
-                                                                                                                                               "authentication":  "@parameters(\u0027$authentication\u0027)"
-                                                                                                                                           }
-                                                                                                                            },
-                                                                                                            "Patch_Ticket_AwaitingApproval":  {
-                                                                                                                                                  "runAfter":  {
-                                                                                                                                                                   "Create_RITM":  [
-                                                                                                                                                                                       "Succeeded"
-                                                                                                                                                                                   ]
-                                                                                                                                                               },
-                                                                                                                                                  "type":  "OpenApiConnection",
-                                                                                                                                                  "inputs":  {
-                                                                                                                                                                 "host":  {
-                                                                                                                                                                              "apiId":  "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
-                                                                                                                                                                              "connectionName":  "shared_sharepointonline",
-                                                                                                                                                                              "operationId":  "PatchItem"
-                                                                                                                                                                          },
-                                                                                                                                                                 "parameters":  {
-                                                                                                                                                                                    "dataset":  "https://contoso.sharepoint.com/sites/ITSM",
-                                                                                                                                                                                    "table":  "Tickets",
-                                                                                                                                                                                    "id":  "@triggerOutputs()?[\u0027body/ID\u0027]",
-                                                                                                                                                                                    "item/Title":  "@triggerOutputs()?[\u0027body/Title\u0027]",
-                                                                                                                                                                                    "item/TicketType/Value":  "@triggerOutputs()?[\u0027body/TicketType/Value\u0027]",
-                                                                                                                                                                                    "item/CategoryRef/Id":  "@triggerOutputs()?[\u0027body/CategoryRef/Id\u0027]",
-                                                                                                                                                                                    "item/Caller/Claims":  "@triggerOutputs()?[\u0027body/Caller/Claims\u0027]",
-                                                                                                                                                                                    "item/TicketState/Value":  "In Progress",
-                                                                                                                                                                                    "item/Impact/Value":  "@triggerOutputs()?[\u0027body/Impact/Value\u0027]",
-                                                                                                                                                                                    "item/Urgency/Value":  "@triggerOutputs()?[\u0027body/Urgency/Value\u0027]",
-                                                                                                                                                                                    "item/ShortDescription":  "@triggerOutputs()?[\u0027body/ShortDescription\u0027]",
-                                                                                                                                                                                    "item/ConfidentialityLevel/Value":  "@triggerOutputs()?[\u0027body/ConfidentialityLevel/Value\u0027]",
-                                                                                                                                                                                    "item/WorkNotes":  "@{concat(\u0027RITM \u0027, outputs(\u0027Compose_Ritm_Number\u0027), \u0027 generated from catalog item \u0027, outputs(\u0027Compose_Catalog_Item\u0027)?[\u0027Title\u0027], \u0027. Awaiting AI + deterministic validation before approval and task creation.\u0027)}"
-                                                                                                                                                                                },
-                                                                                                                                                                 "authentication":  "@parameters(\u0027$authentication\u0027)"
-                                                                                                                                                             }
-                                                                                                                                              }
-                                                                                                        },
-                                                                                            "runAfter":  {
-                                                                                                             "Find_Catalog_Item_By_Subcategory":  [
-                                                                                                                                                      "Succeeded"
-                                                                                                                                                  ]
-                                                                                                         },
-                                                                                            "else":  {
-                                                                                                         "actions":  {
-                                                                                                                         "Patch_Ticket_NoMatch":  {
-                                                                                                                                                      "runAfter":  {
-
-                                                                                                                                                                   },
-                                                                                                                                                      "type":  "OpenApiConnection",
-                                                                                                                                                      "inputs":  {
-                                                                                                                                                                     "host":  {
-                                                                                                                                                                                  "apiId":  "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
-                                                                                                                                                                                  "connectionName":  "shared_sharepointonline",
-                                                                                                                                                                                  "operationId":  "PatchItem"
-                                                                                                                                                                              },
-                                                                                                                                                                     "parameters":  {
-                                                                                                                                                                                        "dataset":  "https://contoso.sharepoint.com/sites/ITSM",
-                                                                                                                                                                                        "table":  "Tickets",
-                                                                                                                                                                                        "id":  "@triggerOutputs()?[\u0027body/ID\u0027]",
-                                                                                                                                                                                        "item/Title":  "@triggerOutputs()?[\u0027body/Title\u0027]",
-                                                                                                                                                                                        "item/TicketType/Value":  "@triggerOutputs()?[\u0027body/TicketType/Value\u0027]",
-                                                                                                                                                                                        "item/CategoryRef/Id":  "@triggerOutputs()?[\u0027body/CategoryRef/Id\u0027]",
-                                                                                                                                                                                        "item/Caller/Claims":  "@triggerOutputs()?[\u0027body/Caller/Claims\u0027]",
-                                                                                                                                                                                        "item/TicketState/Value":  "@triggerOutputs()?[\u0027body/TicketState/Value\u0027]",
-                                                                                                                                                                                        "item/Impact/Value":  "@triggerOutputs()?[\u0027body/Impact/Value\u0027]",
-                                                                                                                                                                                        "item/Urgency/Value":  "@triggerOutputs()?[\u0027body/Urgency/Value\u0027]",
-                                                                                                                                                                                        "item/ShortDescription":  "@triggerOutputs()?[\u0027body/ShortDescription\u0027]",
-                                                                                                                                                                                        "item/ConfidentialityLevel/Value":  "@triggerOutputs()?[\u0027body/ConfidentialityLevel/Value\u0027]",
-                                                                                                                                                                                        "item/WorkNotes":  "RITM Generator: no Service Catalog item matches this Subcategory. Falling through to manual triage / Triage Orchestrator."
-                                                                                                                                                                                    },
-                                                                                                                                                                     "authentication":  "@parameters(\u0027$authentication\u0027)"
-                                                                                                                                                                 }
-                                                                                                                                                  }
-                                                                                                                     }
-                                                                                                     },
-                                                                                            "expression":  {
-                                                                                                               "and":  [
-                                                                                                                           {
-                                                                                                                               "greater":  [
-                                                                                                                                               "@length(coalesce(body(\u0027Find_Catalog_Item_By_Subcategory\u0027)?[\u0027value\u0027], createArray()))",
-                                                                                                                                               0
-                                                                                                                                           ]
-                                                                                                                           },
-                                                                                                                           {
-                                                                                                                               "equals":  [
-                                                                                                                                              "@length(coalesce(body(\u0027Get_Existing_RITMs_For_Ticket\u0027)?[\u0027value\u0027], createArray()))",
-                                                                                                                                              0
-                                                                                                                                          ]
-                                                                                                                           }
-                                                                                                                       ]
-                                                                                                           },
-                                                                                            "type":  "If"
-                                                                                        }
-                                                                 },
-                                                     "runAfter":  {
-
-                                                                  },
-                                                     "else":  {
-                                                                  "actions":  {
-
-                                                                              }
-                                                              },
-                                                     "expression":  {
-                                                                        "and":  [
-                                                                                    {
-                                                                                        "equals":  [
-                                                                                                       "@triggerOutputs()?[\u0027body/TicketType/Value\u0027]",
-                                                                                                       "Request"
-                                                                                                   ]
-                                                                                    }
-                                                                                ]
-                                                                    },
-                                                     "type":  "If"
-                                                 }
+{
+  "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "$connections": {
+      "defaultValue": {},
+      "type": "Object"
+    },
+    "$authentication": {
+      "defaultValue": {},
+      "type": "SecureObject"
+    }
+  },
+  "triggers": {
+    "When_a_Ticket_is_Created": {
+      "recurrence": {
+        "frequency": "Minute",
+        "interval": 1
+      },
+      "evaluatedRecurrence": {
+        "frequency": "Minute",
+        "interval": 1
+      },
+      "splitOn": "@triggerOutputs()?['body/value']",
+      "type": "OpenApiConnection",
+      "inputs": {
+        "host": {
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+          "connectionName": "shared_sharepointonline",
+          "operationId": "GetOnUpdatedItems"
+        },
+        "parameters": {
+          "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+          "table": "Tickets"
+        },
+        "authentication": "@parameters('$authentication')"
+      },
+      "conditions": [
+        {
+          "expression": "@and(equals(triggerOutputs()?['body/TicketType/Value'], 'Request'), equals(coalesce(triggerOutputs()?['body/TicketTypeValidated'], false), true), not(equals(coalesce(triggerOutputs()?['body/TicketTypeValidationStatus/Value'], ''), 'NeedsConfirmation')), or(equals(coalesce(triggerOutputs()?['body/TicketState/Value'], ''), 'New'), equals(coalesce(triggerOutputs()?['body/TicketState/Value'], ''), 'In Progress')))"
+        }
+      ]
+    }
+  },
+  "actions": {
+    "If_TicketType_is_Request": {
+      "actions": {
+        "Get_Existing_RITMs_For_Ticket": {
+          "runAfter": {},
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+              "connectionName": "shared_sharepointonline",
+              "operationId": "GetItems"
+            },
+            "parameters": {
+              "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+              "table": "Request Items",
+              "$filter": "@{concat('ParentTicketId eq ', string(triggerOutputs()?['body/ID']))}",
+              "$top": 1
+            },
+            "authentication": "@parameters('$authentication')"
+          },
+          "description": "Idempotency guard: do not create another RITM for an already-generated request."
+        },
+        "Find_Catalog_Item_By_Subcategory": {
+          "runAfter": {
+            "Get_Existing_RITMs_For_Ticket": [
+              "Succeeded"
+            ]
+          },
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+              "connectionName": "shared_sharepointonline",
+              "operationId": "GetItems"
+            },
+            "parameters": {
+              "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+              "table": "Service Catalog",
+              "$filter": "@{if(equals(coalesce(triggerOutputs()?['body/SelectedCatalogItem/Id'], 0), 0), concat('SubcategoryHint/Id eq ', coalesce(string(triggerOutputs()?['body/Subcategory/Id']), '0'), ' and ItemStatus eq ''active'''), concat('ID eq ', string(triggerOutputs()?['body/SelectedCatalogItem/Id']), ' and ItemStatus eq ''active'''))}",
+              "$top": 5
+            },
+            "authentication": "@parameters('$authentication')"
+          }
+        },
+        "If_Match_Found": {
+          "actions": {
+            "Compose_Catalog_Item": {
+              "runAfter": {},
+              "type": "Compose",
+              "inputs": "@first(body('Find_Catalog_Item_By_Subcategory')?['value'])"
+            },
+            "Compose_Ritm_Number": {
+              "runAfter": {
+                "Compose_Catalog_Item": [
+                  "Succeeded"
+                ]
+              },
+              "type": "Compose",
+              "inputs": "@{concat('RITM', formatDateTime(utcNow(),'yyMMddHHmm'), substring(replace(guid(),'-',''),0,4))}"
+            },
+            "Create_RITM": {
+              "runAfter": {
+                "Compose_Ritm_Number": [
+                  "Succeeded"
+                ]
+              },
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": {
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                  "connectionName": "shared_sharepointonline",
+                  "operationId": "PostItem"
                 },
-    "description":  "Fix: RITM RequestedFor now maps Tickets.RequestedForUser with Caller fallback for self-service/backward compatibility. #flowstudio-mcp"
+                "parameters": {
+                  "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+                  "table": "Request Items",
+                  "item/Title": "@outputs('Compose_Ritm_Number')",
+                  "item/RitmNumber": "@outputs('Compose_Ritm_Number')",
+                  "item/ParentTicket/Id": "@triggerOutputs()?['body/ID']",
+                  "item/CatalogItem/Id": "@outputs('Compose_Catalog_Item')?['ID']",
+                  "item/RequestedFor/Claims": "@coalesce(triggerOutputs()?['body/RequestedForUser/Claims'], triggerOutputs()?['body/Caller/Claims'])",
+                  "item/RitmState/Value": "Pending Validation",
+                  "item/Variables": "@coalesce(triggerOutputs()?['body/RequestPayloadJson'], triggerOutputs()?['body/Description'])",
+                  "item/OpenedDate": "@utcNow()",
+                  "item/ConfidentialityLevel/Value": "@coalesce(triggerOutputs()?['body/ConfidentialityLevel/Value'], 'Public')",
+                  "item/Cost": "@outputs('Compose_Catalog_Item')?['Cost']"
+                },
+                "authentication": "@parameters('$authentication')"
+              }
+            },
+            "Patch_Ticket_AwaitingApproval": {
+              "runAfter": {
+                "Create_RITM": [
+                  "Succeeded"
+                ]
+              },
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": {
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                  "connectionName": "shared_sharepointonline",
+                  "operationId": "PatchItem"
+                },
+                "parameters": {
+                  "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+                  "table": "Tickets",
+                  "id": "@triggerOutputs()?['body/ID']",
+                  "item/Title": "@triggerOutputs()?['body/Title']",
+                  "item/TicketType/Value": "@triggerOutputs()?['body/TicketType/Value']",
+                  "item/CategoryRef/Id": "@triggerOutputs()?['body/CategoryRef/Id']",
+                  "item/Caller/Claims": "@triggerOutputs()?['body/Caller/Claims']",
+                  "item/TicketState/Value": "In Progress",
+                  "item/Impact/Value": "@triggerOutputs()?['body/Impact/Value']",
+                  "item/Urgency/Value": "@triggerOutputs()?['body/Urgency/Value']",
+                  "item/ShortDescription": "@triggerOutputs()?['body/ShortDescription']",
+                  "item/ConfidentialityLevel/Value": "@triggerOutputs()?['body/ConfidentialityLevel/Value']",
+                  "item/WorkNotes": "@{concat('RITM ', outputs('Compose_Ritm_Number'), ' generated from catalog item ', outputs('Compose_Catalog_Item')?['Title'], '. Awaiting AI + deterministic validation before approval and task creation.')}"
+                },
+                "authentication": "@parameters('$authentication')"
+              }
+            }
+          },
+          "runAfter": {
+            "Find_Catalog_Item_By_Subcategory": [
+              "Succeeded"
+            ]
+          },
+          "else": {
+            "actions": {
+              "Patch_Ticket_NoMatch": {
+                "runAfter": {},
+                "type": "OpenApiConnection",
+                "inputs": {
+                  "host": {
+                    "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                    "connectionName": "shared_sharepointonline",
+                    "operationId": "PatchItem"
+                  },
+                  "parameters": {
+                    "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+                    "table": "Tickets",
+                    "id": "@triggerOutputs()?['body/ID']",
+                    "item/Title": "@triggerOutputs()?['body/Title']",
+                    "item/TicketType/Value": "@triggerOutputs()?['body/TicketType/Value']",
+                    "item/CategoryRef/Id": "@triggerOutputs()?['body/CategoryRef/Id']",
+                    "item/Caller/Claims": "@triggerOutputs()?['body/Caller/Claims']",
+                    "item/TicketState/Value": "@triggerOutputs()?['body/TicketState/Value']",
+                    "item/Impact/Value": "@triggerOutputs()?['body/Impact/Value']",
+                    "item/Urgency/Value": "@triggerOutputs()?['body/Urgency/Value']",
+                    "item/ShortDescription": "@triggerOutputs()?['body/ShortDescription']",
+                    "item/ConfidentialityLevel/Value": "@triggerOutputs()?['body/ConfidentialityLevel/Value']",
+                    "item/WorkNotes": "RITM Generator: no Service Catalog item matches this Subcategory. Falling through to manual triage / Triage Orchestrator."
+                  },
+                  "authentication": "@parameters('$authentication')"
+                }
+              }
+            }
+          },
+          "expression": {
+            "and": [
+              {
+                "greater": [
+                  "@length(coalesce(body('Find_Catalog_Item_By_Subcategory')?['value'], createArray()))",
+                  0
+                ]
+              },
+              {
+                "equals": [
+                  "@length(coalesce(body('Get_Existing_RITMs_For_Ticket')?['value'], createArray()))",
+                  0
+                ]
+              }
+            ]
+          },
+          "type": "If"
+        }
+      },
+      "runAfter": {},
+      "else": {
+        "actions": {}
+      },
+      "expression": {
+        "and": [
+          {
+            "equals": [
+              "@triggerOutputs()?['body/TicketType/Value']",
+              "Request"
+            ]
+          }
+        ]
+      },
+      "type": "If"
+    }
+  },
+  "description": "CLEAN-2: removed vestigial ProposeAction OR-clause from trigger condition; Request tickets now require TicketTypeValidated=true (ProposeAction producer is retired). 2026-06-01: Create_RITM Variables now prefers structured RequestPayloadJson (portal dropdown payload) over free-text Description, so the validator gets structured data when the SPFx form supplies it; falls back to Description for legacy free-text intake. #flowstudio-mcp"
 }

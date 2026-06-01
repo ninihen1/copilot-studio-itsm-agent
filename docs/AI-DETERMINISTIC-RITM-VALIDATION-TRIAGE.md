@@ -51,8 +51,8 @@ For `groups.addMember`, validation writes JSON like:
   "groupId": "<actual-graph-group-id>",
   "groupName": "Lobster Team",
   "userId": "<actual-graph-user-id>",
-  "userPrincipalName": "john.liu@flowstudio.app",
-  "userDisplayName": "John Liu",
+  "userPrincipalName": "john.doe@contoso.com",
+  "userDisplayName": "John Doe",
   "justification": "Requested in the original RITM text.",
   "validationConfidence": 0.93,
   "validatedAt": "2026-05-14T00:00:00Z",
@@ -78,7 +78,7 @@ On hold, the flow preserves the original text, writes a structured diagnostic JS
 ## Testing Strategy
 
 1. Happy path
-   - Create a Request that generates a RITM with text like `Add John Liu to Lobster Team because he joined the project`.
+   - Create a Request that generates a RITM with text like `Add John Doe to Lobster Team because he joined the project`.
    - Verify validation writes `groupId`, `groupName`, `userId`, and `userPrincipalName`.
    - Verify the RITM moves to `Pending Approval`, then Catherine approval creates SCTASK rows.
 
