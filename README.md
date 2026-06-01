@@ -4,7 +4,7 @@
 
 > 🎥 **See it in action:** _<add demo video link>_
 
-> ⚠️ **Project status — working proof of concept.** Built in a hackathon timebox to prove the architecture end to end — and it does: the core *ticket → triage → approve → execute* pipeline runs on a live Microsoft 365 tenant. It is **not production-hardened**. Expect rough edges off the happy path, and some paths are designed and specced rather than fully tested — the repo is explicit about which (see the *"Designed and specced, but not yet wired"* section and the per-flow *"Pilot deviations"* tables). Treat it as a reference build to learn from and adapt, not a turnkey product.
+> ⚠️ **Project status — working proof of concept.** Built in a tight timebox to prove the architecture end to end — and it does: the core *ticket → triage → approve → execute* pipeline runs on a live Microsoft 365 tenant. It is **not production-hardened**. Expect rough edges off the happy path, and some paths are designed and specced rather than fully tested — the repo is explicit about which (see the *"Designed and specced, but not yet wired"* section and the per-flow *"Pilot deviations"* tables). Treat it as a reference build to learn from and adapt, not a turnkey product.
 
 ## 🔍 The problem
 
@@ -82,7 +82,7 @@ The cool part: **this SPFx portal was built and shipped by AI agents, not a fron
 
 This is how the repo was actually built: one person directing two AI coworkers, which created the whole stack — **the SharePoint lists, all the Power Automate flows, and the SPFx portal** — with almost nothing hand-built. Two kinds of agent split the work:
 
-- **Copilot Cowork** (the track this project is entered in) — equipped with Flow Studio MCP, it authors the Power Automate flows and helper flows and reaches the GitHub repo and workflow to deploy the SPFx package to SharePoint. With the right helper flows it can also create SharePoint lists, pages, and list items.
+- **Copilot Cowork** — equipped with Flow Studio MCP, it authors the Power Automate flows and helper flows and reaches the GitHub repo and workflow to deploy the SPFx package to SharePoint. With the right helper flows it can also create SharePoint lists, pages, and list items.
 - **An IDE agent in VS Code** (in this build, Claude Code — the cloud agent) — does the one thing Cowork genuinely can't: author the Copilot Studio agent, via the Microsoft Copilot Studio extension. It also provisioned most of the SharePoint lists (PnP PowerShell, as a scoped service principal) and wrote a share of the Power Automate flows — but neither of those is exclusive to it: Cowork created some lists through helper flows, and both agents author flows through Flow Studio MCP.
 
 The human directs and reviews; both agents were used together. Each step below notes which agent does it.
@@ -180,4 +180,4 @@ Licensed under the [MIT License](LICENSE). Bundled dependencies retain their own
 
 ---
 
-*Architecture and design by Catherine Han. Built AI-assisted with **Copilot Cowork** as the primary coworker — the Power Automate flows were authored and debugged through the [Flow Studio MCP server](https://mcp.flowstudio.app). Submitted to the Microsoft Agent Academy Hackathon (Cowork Collective track).*
+*Architecture and design by Catherine Han. Built AI-assisted with **Copilot Cowork** as the primary coworker — the Power Automate flows were authored and debugged through the [Flow Studio MCP server](https://mcp.flowstudio.app).*
