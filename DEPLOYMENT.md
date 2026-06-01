@@ -89,7 +89,7 @@ Seven app registrations target. All admin-consented. **Each executor SP also nee
 
 | App | Permissions | Directory role | Pilot status | AppId |
 |---|---|---|---|---|
-| `SP-IT-Provisioning` | `Sites.FullControl.All` (Application) | n/a | ✅ done | `59781cb2-...` (cert-auth, used by all PnP scripts) |
+| `SP-IT-Provisioning` | `Sites.FullControl.All` (Application) | n/a | ✅ done | `<app-id>` (cert-auth, used by all PnP scripts) |
 | `SP-IT-Identity` | `User.ReadWrite.All`, `UserAuthenticationMethod.ReadWrite.All` (Application) | **Password Administrator** | ✅ done 2026-05-01 | `00000000-0000-4000-8000-000000000014` |
 | `SP-IT-Groups` | `Group.ReadWrite.All`, `GroupMember.ReadWrite.All` (Application) | **Groups Administrator** | ❌ pending Week 5 | — |
 | `SP-IT-Licensing` | `User.ReadWrite.All`, `Organization.Read.All` (Application) | **License Administrator** | ❌ pending Week 5 | — |
