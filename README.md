@@ -78,9 +78,9 @@ The portal isn't a SharePoint list form. It's the **ITSM Service Portal**, a ful
 
 The cool part: **this SPFx portal was built and shipped by AI agents, not a front-end team.** The IDE agent (Claude Code) wrote the React/TypeScript front end and first deployed it to SharePoint directly. Copilot Cowork later took over patching it — changing the portal's code and shipping each change to the app catalog through the certificate-authenticated CI/CD pipeline the IDE agent had already built. A real production SharePoint app — built and maintained by AI agents under one person's supervision.
 
-## 🛠️ Build it yourself — the co-worked walkthrough
+## 🤖 How we built it — co-worked by two AI agents
 
-This is the path a single human follows, pairing with AI coworkers — and it's how this repo was actually built. **The agents created the whole stack: the SharePoint lists, all the Power Automate flows, and the SPFx portal** — almost nothing here was hand-built. Two kinds of agent split the work:
+This is how the repo was actually built: one person directing two AI coworkers, which created the whole stack — **the SharePoint lists, all the Power Automate flows, and the SPFx portal** — with almost nothing hand-built. Two kinds of agent split the work:
 
 - **Copilot Cowork** (the track this project is entered in) — equipped with Flow Studio MCP, it authors the Power Automate flows and helper flows and reaches the GitHub repo and workflow to deploy the SPFx package to SharePoint. With the right helper flows it can also create SharePoint lists, pages, and list items.
 - **An IDE agent in VS Code** (in this build, Claude Code — the cloud agent) — does the one thing Cowork genuinely can't: author the Copilot Studio agent, via the Microsoft Copilot Studio extension. It also provisioned most of the SharePoint lists (PnP PowerShell, as a scoped service principal) and wrote a share of the Power Automate flows — but neither of those is exclusive to it: Cowork created some lists through helper flows, and both agents author flows through Flow Studio MCP.
@@ -164,9 +164,9 @@ docs + *.md  Design memo, deployment runbook, admin & user guides, troubleshooti
 
 ## 🚀 Try it, or let us help
 
-This is a real, open-source build — clone it, point it at your own Microsoft 365 tenant, and adapt it. The [Implementation Playbook](IMPLEMENTATION-PLAYBOOK.md) and [Deployment runbook](DEPLOYMENT.md) walk through every step, and the whole thing is designed to be stood up by **one person directing an AI coworker** — the flows are built and debugged through [Flow Studio MCP](https://mcp.flowstudio.app) (works with Copilot, Claude, and any MCP-compatible agent).
+It's open source and genuinely agent-buildable: point your AI coworker at this repo and tell it to build the system in your tenant — it reads everything here and stands it up, building and debugging the flows through [Flow Studio MCP](https://mcp.flowstudio.app) (works with Copilot, Claude, and any MCP-compatible agent), and comes back to you only for the tenant, admin consent, and approvals. You don't grind through the docs; your agent reads them.
 
-If it still feels like a lot, that's fine — **[Flow Studio](https://flowstudio.app) also does this as a service.** We build and run Power Automate and Copilot Studio automations like this one for teams who'd rather have it set up for them.
+If that still feels like a lot, **[Flow Studio](https://flowstudio.app) also does it as a service** — we build and run Power Automate and Copilot Studio automations like this one for teams who'd rather have it set up for them.
 
 ## 📝 A note on the code
 
