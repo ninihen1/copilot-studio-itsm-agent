@@ -11,7 +11,7 @@ Step-by-step manual setup for the M365 ITSM build, in dependency order. Some ste
 | Phase | Status | Notes |
 |---|---|---|
 | 0 Prerequisites | ✅ done | contoso tenant, `/sites/ITSM` provisioned, PnP/Az/Graph modules installed |
-| 1 Entra apps | ⏳ partial | **SP-IT-Identity** (`3b188240-...`) registered + admin-consented + **Password Administrator** directory role assigned. Other 5 SPs deferred to Week 5+ when their executors are built. SP-IT-Provisioning (cert auth, used by PnP scripts) `59781cb2-...` already in place. |
+| 1 Entra apps | ⏳ partial | **SP-IT-Identity** (`<app-id>`) registered + admin-consented + **Password Administrator** directory role assigned. Other 5 SPs deferred to Week 5+ when their executors are built. SP-IT-Provisioning (cert auth, used by PnP scripts) `<app-id>` already in place. |
 | 2 Azure infra | ⏳ minimal | **Key Vault `kv-itsm-demo`** (RG `rg-itsm-pilot`, MPN sub `a45a0c43-...`, australiaeast). Storage Account / Service Bus / App Insights / jwt-sign Function NOT deployed — see "Pilot deviations" below. |
 | 3 SharePoint provisioning | ✅ done | All 18 solution lists provisioned (17 via provision-lists.ps1 + License Costs) + seed scripts run (Priority Matrix, Approval Policies, JobTypes, Config-KillSwitch) |
 | 4 SharePoint groups | ❌ pending | Catherine is sole admin today; pilot uses single approver. Groups still need to be created + populated |

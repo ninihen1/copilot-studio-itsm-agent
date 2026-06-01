@@ -12,34 +12,24 @@
     }
   },
   "triggers": {
-    "When_a_Ticket_is_Created": {
-      "recurrence": {
-        "frequency": "Minute",
-        "interval": 1
-      },
-      "evaluatedRecurrence": {
-        "frequency": "Minute",
-        "interval": 1
-      },
-      "splitOn": "@triggerOutputs()?['body/value']",
-      "type": "OpenApiConnection",
+    "manual": {
+      "metadata": {},
+      "type": "Request",
+      "kind": "Http",
       "inputs": {
-        "host": {
-          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
-          "connectionName": "shared_sharepointonline",
-          "operationId": "GetOnUpdatedItems"
+        "schema": {
+          "type": "object",
+          "required": [
+            "ticketId"
+          ],
+          "properties": {
+            "ticketId": {
+              "type": "integer"
+            }
+          }
         },
-        "parameters": {
-          "dataset": "https://contoso.sharepoint.com/sites/ITSM",
-          "table": "Tickets"
-        },
-        "authentication": "@parameters('$authentication')"
-      },
-      "conditions": [
-        {
-          "expression": "@and(equals(triggerOutputs()?['body/TicketType/Value'], 'Request'), equals(coalesce(triggerOutputs()?['body/TicketTypeValidated'], false), true), not(equals(coalesce(triggerOutputs()?['body/TicketTypeValidationStatus/Value'], ''), 'NeedsConfirmation')), or(equals(coalesce(triggerOutputs()?['body/TicketState/Value'], ''), 'New'), equals(coalesce(triggerOutputs()?['body/TicketState/Value'], ''), 'In Progress')))"
-        }
-      ]
+        "triggerAuthenticationType": "All"
+      }
     }
   },
   "actions": {
@@ -57,14 +47,14 @@
             "parameters": {
               "dataset": "https://contoso.sharepoint.com/sites/ITSM",
               "table": "Request Items",
-              "$filter": "@{concat('ParentTicketId eq ', string(triggerOutputs()?['body/ID']))}",
+              "$filter": "@{concat('ParentTicketId eq ', string(outputs('Get_Ticket_Fresh')?['body/ID']))}",
               "$top": 1
             },
             "authentication": "@parameters('$authentication')"
           },
           "description": "Idempotency guard: do not create another RITM for an already-generated request."
         },
-        "Find_Catalog_Item_By_Subcategory": {
+        "Get_Existing_PJs": {
           "runAfter": {
             "Get_Existing_RITMs_For_Ticket": [
               "Succeeded"
@@ -79,8 +69,31 @@
             },
             "parameters": {
               "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+              "table": "Provisioning Jobs",
+              "$filter": "@{concat('ParentTicketId eq ', string(outputs('Get_Ticket_Fresh')?['body/ID']))}",
+              "$top": 1
+            },
+            "authentication": "@parameters('$authentication')"
+          },
+          "description": "Dedup guard: skip RITM creation if the agent/Triage-Orchestrator path already provisioned this ticket (a Provisioning Job already exists). Prevents the double-pipeline case where an Incident is agent-provisioned then reclassified to Request."
+        },
+        "Find_Catalog_Item_By_Subcategory": {
+          "runAfter": {
+            "Get_Existing_PJs": [
+              "Succeeded"
+            ]
+          },
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+              "connectionName": "shared_sharepointonline",
+              "operationId": "GetItems"
+            },
+            "parameters": {
+              "dataset": "https://contoso.sharepoint.com/sites/ITSM",
               "table": "Service Catalog",
-              "$filter": "@{if(equals(coalesce(triggerOutputs()?['body/SelectedCatalogItem/Id'], 0), 0), concat('SubcategoryHint/Id eq ', coalesce(string(triggerOutputs()?['body/Subcategory/Id']), '0'), ' and ItemStatus eq ''active'''), concat('ID eq ', string(triggerOutputs()?['body/SelectedCatalogItem/Id']), ' and ItemStatus eq ''active'''))}",
+              "$filter": "@{if(equals(coalesce(outputs('Get_Ticket_Fresh')?['body/SelectedCatalogItem/Id'], 0), 0), concat('SubcategoryHint/Id eq ', coalesce(string(outputs('Get_Ticket_Fresh')?['body/Subcategory/Id']), '0'), ' and ItemStatus eq ''active'''), concat('ID eq ', string(outputs('Get_Ticket_Fresh')?['body/SelectedCatalogItem/Id']), ' and ItemStatus eq ''active'''))}",
               "$top": 5
             },
             "authentication": "@parameters('$authentication')"
@@ -120,13 +133,13 @@
                   "table": "Request Items",
                   "item/Title": "@outputs('Compose_Ritm_Number')",
                   "item/RitmNumber": "@outputs('Compose_Ritm_Number')",
-                  "item/ParentTicket/Id": "@triggerOutputs()?['body/ID']",
+                  "item/ParentTicket/Id": "@outputs('Get_Ticket_Fresh')?['body/ID']",
                   "item/CatalogItem/Id": "@outputs('Compose_Catalog_Item')?['ID']",
-                  "item/RequestedFor/Claims": "@coalesce(triggerOutputs()?['body/RequestedForUser/Claims'], triggerOutputs()?['body/Caller/Claims'])",
+                  "item/RequestedFor/Claims": "@coalesce(outputs('Get_Ticket_Fresh')?['body/RequestedForUser/Claims'], outputs('Get_Ticket_Fresh')?['body/Caller/Claims'])",
                   "item/RitmState/Value": "Pending Validation",
-                  "item/Variables": "@coalesce(triggerOutputs()?['body/RequestPayloadJson'], triggerOutputs()?['body/Description'])",
+                  "item/Variables": "@coalesce(outputs('Get_Ticket_Fresh')?['body/RequestPayloadJson'], outputs('Get_Ticket_Fresh')?['body/Description'])",
                   "item/OpenedDate": "@utcNow()",
-                  "item/ConfidentialityLevel/Value": "@coalesce(triggerOutputs()?['body/ConfidentialityLevel/Value'], 'Public')",
+                  "item/ConfidentialityLevel/Value": "@coalesce(outputs('Get_Ticket_Fresh')?['body/ConfidentialityLevel/Value'], 'Public')",
                   "item/Cost": "@outputs('Compose_Catalog_Item')?['Cost']"
                 },
                 "authentication": "@parameters('$authentication')"
@@ -148,19 +161,37 @@
                 "parameters": {
                   "dataset": "https://contoso.sharepoint.com/sites/ITSM",
                   "table": "Tickets",
-                  "id": "@triggerOutputs()?['body/ID']",
-                  "item/Title": "@triggerOutputs()?['body/Title']",
-                  "item/TicketType/Value": "@triggerOutputs()?['body/TicketType/Value']",
-                  "item/CategoryRef/Id": "@triggerOutputs()?['body/CategoryRef/Id']",
-                  "item/Caller/Claims": "@triggerOutputs()?['body/Caller/Claims']",
+                  "id": "@outputs('Get_Ticket_Fresh')?['body/ID']",
+                  "item/Title": "@outputs('Get_Ticket_Fresh')?['body/Title']",
+                  "item/TicketType/Value": "@outputs('Get_Ticket_Fresh')?['body/TicketType/Value']",
+                  "item/CategoryRef/Id": "@outputs('Get_Ticket_Fresh')?['body/CategoryRef/Id']",
+                  "item/Caller/Claims": "@outputs('Get_Ticket_Fresh')?['body/Caller/Claims']",
                   "item/TicketState/Value": "In Progress",
-                  "item/Impact/Value": "@triggerOutputs()?['body/Impact/Value']",
-                  "item/Urgency/Value": "@triggerOutputs()?['body/Urgency/Value']",
-                  "item/ShortDescription": "@triggerOutputs()?['body/ShortDescription']",
-                  "item/ConfidentialityLevel/Value": "@triggerOutputs()?['body/ConfidentialityLevel/Value']",
+                  "item/Impact/Value": "@outputs('Get_Ticket_Fresh')?['body/Impact/Value']",
+                  "item/Urgency/Value": "@outputs('Get_Ticket_Fresh')?['body/Urgency/Value']",
+                  "item/ShortDescription": "@outputs('Get_Ticket_Fresh')?['body/ShortDescription']",
+                  "item/ConfidentialityLevel/Value": "@outputs('Get_Ticket_Fresh')?['body/ConfidentialityLevel/Value']",
                   "item/WorkNotes": "@{concat('RITM ', outputs('Compose_Ritm_Number'), ' generated from catalog item ', outputs('Compose_Catalog_Item')?['Title'], '. Awaiting AI + deterministic validation before approval and task creation.')}"
                 },
                 "authentication": "@parameters('$authentication')"
+              }
+            },
+            "Call_Validation": {
+              "runAfter": {
+                "Create_RITM": [
+                  "Succeeded"
+                ]
+              },
+              "type": "Http",
+              "inputs": {
+                "method": "POST",
+                "uri": "https://REDACTED-FLOW-TRIGGER-URL",
+                "headers": {
+                  "Content-Type": "application/json"
+                },
+                "body": {
+                  "ritmId": "@outputs('Create_RITM')?['body/ID']"
+                }
               }
             }
           },
@@ -183,17 +214,17 @@
                   "parameters": {
                     "dataset": "https://contoso.sharepoint.com/sites/ITSM",
                     "table": "Tickets",
-                    "id": "@triggerOutputs()?['body/ID']",
-                    "item/Title": "@triggerOutputs()?['body/Title']",
-                    "item/TicketType/Value": "@triggerOutputs()?['body/TicketType/Value']",
-                    "item/CategoryRef/Id": "@triggerOutputs()?['body/CategoryRef/Id']",
-                    "item/Caller/Claims": "@triggerOutputs()?['body/Caller/Claims']",
-                    "item/TicketState/Value": "@triggerOutputs()?['body/TicketState/Value']",
-                    "item/Impact/Value": "@triggerOutputs()?['body/Impact/Value']",
-                    "item/Urgency/Value": "@triggerOutputs()?['body/Urgency/Value']",
-                    "item/ShortDescription": "@triggerOutputs()?['body/ShortDescription']",
-                    "item/ConfidentialityLevel/Value": "@triggerOutputs()?['body/ConfidentialityLevel/Value']",
-                    "item/WorkNotes": "RITM Generator: no Service Catalog item matches this Subcategory. Falling through to manual triage / Triage Orchestrator."
+                    "id": "@outputs('Get_Ticket_Fresh')?['body/ID']",
+                    "item/Title": "@outputs('Get_Ticket_Fresh')?['body/Title']",
+                    "item/TicketType/Value": "@outputs('Get_Ticket_Fresh')?['body/TicketType/Value']",
+                    "item/CategoryRef/Id": "@outputs('Get_Ticket_Fresh')?['body/CategoryRef/Id']",
+                    "item/Caller/Claims": "@outputs('Get_Ticket_Fresh')?['body/Caller/Claims']",
+                    "item/TicketState/Value": "@outputs('Get_Ticket_Fresh')?['body/TicketState/Value']",
+                    "item/Impact/Value": "@outputs('Get_Ticket_Fresh')?['body/Impact/Value']",
+                    "item/Urgency/Value": "@outputs('Get_Ticket_Fresh')?['body/Urgency/Value']",
+                    "item/ShortDescription": "@outputs('Get_Ticket_Fresh')?['body/ShortDescription']",
+                    "item/ConfidentialityLevel/Value": "@outputs('Get_Ticket_Fresh')?['body/ConfidentialityLevel/Value']",
+                    "item/WorkNotes": "RITM Generator skipped: no matching Service Catalog item, or this ticket was already provisioned by the agent path (existing Provisioning Job). No RITM created."
                   },
                   "authentication": "@parameters('$authentication')"
                 }
@@ -213,13 +244,23 @@
                   "@length(coalesce(body('Get_Existing_RITMs_For_Ticket')?['value'], createArray()))",
                   0
                 ]
+              },
+              {
+                "equals": [
+                  "@length(coalesce(body('Get_Existing_PJs')?['value'], createArray()))",
+                  0
+                ]
               }
             ]
           },
           "type": "If"
         }
       },
-      "runAfter": {},
+      "runAfter": {
+        "Get_Ticket_Fresh": [
+          "Succeeded"
+        ]
+      },
       "else": {
         "actions": {}
       },
@@ -227,14 +268,31 @@
         "and": [
           {
             "equals": [
-              "@triggerOutputs()?['body/TicketType/Value']",
+              "@outputs('Get_Ticket_Fresh')?['body/TicketType/Value']",
               "Request"
             ]
           }
         ]
       },
       "type": "If"
+    },
+    "Get_Ticket_Fresh": {
+      "runAfter": {},
+      "type": "OpenApiConnection",
+      "inputs": {
+        "host": {
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+          "connectionName": "shared_sharepointonline",
+          "operationId": "GetItem"
+        },
+        "parameters": {
+          "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+          "table": "Tickets",
+          "id": "@triggerBody()?['ticketId']"
+        },
+        "authentication": "@parameters('$authentication')"
+      }
     }
   },
-  "description": "CLEAN-2: removed vestigial ProposeAction OR-clause from trigger condition; Request tickets now require TicketTypeValidated=true (ProposeAction producer is retired). 2026-06-01: Create_RITM Variables now prefers structured RequestPayloadJson (portal dropdown payload) over free-text Description, so the validator gets structured data when the SPFx form supplies it; falls back to Description for legacy free-text intake. #flowstudio-mcp"
+  "description": "2.2 RITM-Generator. 2026-06-02: after Create_RITM, HTTP-calls 3.2 RITM-Validation {ritmId}. #flowstudio-mcp"
 }

@@ -12,34 +12,24 @@
     }
   },
   "triggers": {
-    "When_a_RITM_is_Created": {
-      "recurrence": {
-        "frequency": "Minute",
-        "interval": 1
-      },
-      "evaluatedRecurrence": {
-        "frequency": "Minute",
-        "interval": 1
-      },
-      "splitOn": "@triggerOutputs()?['body/value']",
-      "type": "OpenApiConnection",
+    "manual": {
+      "metadata": {},
+      "type": "Request",
+      "kind": "Http",
       "inputs": {
-        "host": {
-          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
-          "connectionName": "shared_sharepointonline",
-          "operationId": "GetOnUpdatedItems"
+        "schema": {
+          "type": "object",
+          "required": [
+            "ritmId"
+          ],
+          "properties": {
+            "ritmId": {
+              "type": "integer"
+            }
+          }
         },
-        "parameters": {
-          "dataset": "https://contoso.sharepoint.com/sites/ITSM",
-          "table": "Request Items"
-        },
-        "authentication": "@parameters('$authentication')"
-      },
-      "conditions": [
-        {
-          "expression": "@equals(coalesce(triggerOutputs()?['body/RitmState/Value'], ''), 'Pending Validation')"
-        }
-      ]
+        "triggerAuthenticationType": "All"
+      }
     }
   },
   "actions": {
@@ -57,7 +47,7 @@
             "parameters": {
               "dataset": "https://contoso.sharepoint.com/sites/ITSM",
               "table": "Tickets",
-              "id": "@triggerOutputs()?['body/ParentTicket/Id']"
+              "id": "@outputs('Get_RITM_Fresh')?['body/ParentTicket/Id']"
             },
             "authentication": "@parameters('$authentication')"
           }
@@ -78,7 +68,7 @@
             "parameters": {
               "dataset": "https://contoso.sharepoint.com/sites/ITSM",
               "table": "Service Catalog",
-              "id": "@triggerOutputs()?['body/CatalogItem/Id']"
+              "id": "@outputs('Get_RITM_Fresh')?['body/CatalogItem/Id']"
             },
             "authentication": "@parameters('$authentication')"
           }
@@ -89,7 +79,7 @@
               "runAfter": {},
               "type": "ParseJson",
               "inputs": {
-                "content": "@triggerOutputs()?['body/Variables']",
+                "content": "@outputs('Get_RITM_Fresh')?['body/Variables']",
                 "schema": {
                   "type": "object",
                   "properties": {
@@ -119,7 +109,7 @@
                 "skuId": "@coalesce(body('Parse_Structured_Payload')?['skuId'], '')",
                 "groupId": "@coalesce(body('Parse_Structured_Payload')?['groupId'], '')",
                 "groupName": "@coalesce(body('Parse_Structured_Payload')?['groupName'], '')",
-                "requestedFor": "@coalesce(body('Parse_Structured_Payload')?['requestedFor'], triggerOutputs()?['body/RequestedFor/Claims'], '')",
+                "requestedFor": "@coalesce(body('Parse_Structured_Payload')?['requestedFor'], outputs('Get_RITM_Fresh')?['body/RequestedFor/Claims'], '')",
                 "justification": "@coalesce(body('Parse_Structured_Payload')?['justification'], '')",
                 "validatedAt": "@utcNow()",
                 "validationSource": "Structured portal payload (no AI, no fuzzy match)"
@@ -141,19 +131,37 @@
                 "parameters": {
                   "dataset": "https://contoso.sharepoint.com/sites/ITSM",
                   "table": "Request Items",
-                  "id": "@triggerOutputs()?['body/ID']",
-                  "item/Title": "@triggerOutputs()?['body/Title']",
-                  "item/RitmNumber": "@triggerOutputs()?['body/RitmNumber']",
-                  "item/ParentTicket/Id": "@triggerOutputs()?['body/ParentTicket/Id']",
-                  "item/CatalogItem/Id": "@triggerOutputs()?['body/CatalogItem/Id']",
-                  "item/RequestedFor/Claims": "@triggerOutputs()?['body/RequestedFor/Claims']",
+                  "id": "@outputs('Get_RITM_Fresh')?['body/ID']",
+                  "item/Title": "@outputs('Get_RITM_Fresh')?['body/Title']",
+                  "item/RitmNumber": "@outputs('Get_RITM_Fresh')?['body/RitmNumber']",
+                  "item/ParentTicket/Id": "@outputs('Get_RITM_Fresh')?['body/ParentTicket/Id']",
+                  "item/CatalogItem/Id": "@outputs('Get_RITM_Fresh')?['body/CatalogItem/Id']",
+                  "item/RequestedFor/Claims": "@outputs('Get_RITM_Fresh')?['body/RequestedFor/Claims']",
                   "item/RitmState/Value": "Pending Approval",
                   "item/Variables": "@string(outputs('Compose_Structured_Validated'))",
-                  "item/OpenedDate": "@triggerOutputs()?['body/OpenedDate']",
-                  "item/ConfidentialityLevel/Value": "@triggerOutputs()?['body/ConfidentialityLevel/Value']",
+                  "item/OpenedDate": "@outputs('Get_RITM_Fresh')?['body/OpenedDate']",
+                  "item/ConfidentialityLevel/Value": "@outputs('Get_RITM_Fresh')?['body/ConfidentialityLevel/Value']",
                   "item/WorkNotes": "@{concat('RITM validation passed via structured portal payload (JobType ', coalesce(body('Get_Catalog_Item')?['JobType'], 'n/a'), '). No AI extraction or fuzzy matching needed. Released to approval; approver reviews seats and cost.')}"
                 },
                 "authentication": "@parameters('$authentication')"
+              }
+            },
+            "Call_Approval_Structured": {
+              "runAfter": {
+                "Patch_RITM_Pending_Approval_Structured": [
+                  "Succeeded"
+                ]
+              },
+              "type": "Http",
+              "inputs": {
+                "method": "POST",
+                "uri": "https://REDACTED-FLOW-TRIGGER-URL",
+                "headers": {
+                  "Content-Type": "application/json"
+                },
+                "body": {
+                  "ritmId": "@triggerBody()?['ritmId']"
+                }
               }
             }
           },
@@ -189,8 +197,8 @@
                     "item/requestv2/JobType": "@{coalesce(body('Get_Catalog_Item')?['JobType'], '')}",
                     "item/requestv2/CatalogItem": "@{concat(coalesce(body('Get_Catalog_Item')?['ItemName'], ''), ' - ', coalesce(body('Get_Catalog_Item')?['Description'], ''))}",
                     "item/requestv2/InputSchema": "@{coalesce(body('Get_Catalog_Item')?['InputSchema'], '')}",
-                    "item/requestv2/RequestedFor": "@{last(split(coalesce(triggerOutputs()?['body/RequestedFor/Claims'], ''), '|'))}",
-                    "item/requestv2/RequestText": "@{coalesce(triggerOutputs()?['body/Variables'], body('Get_Parent_Ticket')?['Description'], body('Get_Parent_Ticket')?['ShortDescription'], '')}"
+                    "item/requestv2/RequestedFor": "@{last(split(coalesce(outputs('Get_RITM_Fresh')?['body/RequestedFor/Claims'], ''), '|'))}",
+                    "item/requestv2/RequestText": "@{coalesce(outputs('Get_RITM_Fresh')?['body/Variables'], body('Get_Parent_Ticket')?['Description'], body('Get_Parent_Ticket')?['ShortDescription'], '')}"
                   },
                   "authentication": "@parameters('$authentication')"
                 },
@@ -220,17 +228,17 @@
                   "parameters": {
                     "dataset": "https://contoso.sharepoint.com/sites/ITSM",
                     "table": "Request Items",
-                    "id": "@triggerOutputs()?['body/ID']",
-                    "item/Title": "@triggerOutputs()?['body/Title']",
-                    "item/RitmNumber": "@triggerOutputs()?['body/RitmNumber']",
-                    "item/ParentTicket/Id": "@triggerOutputs()?['body/ParentTicket/Id']",
-                    "item/CatalogItem/Id": "@triggerOutputs()?['body/CatalogItem/Id']",
-                    "item/RequestedFor/Claims": "@triggerOutputs()?['body/RequestedFor/Claims']",
+                    "id": "@outputs('Get_RITM_Fresh')?['body/ID']",
+                    "item/Title": "@outputs('Get_RITM_Fresh')?['body/Title']",
+                    "item/RitmNumber": "@outputs('Get_RITM_Fresh')?['body/RitmNumber']",
+                    "item/ParentTicket/Id": "@outputs('Get_RITM_Fresh')?['body/ParentTicket/Id']",
+                    "item/CatalogItem/Id": "@outputs('Get_RITM_Fresh')?['body/CatalogItem/Id']",
+                    "item/RequestedFor/Claims": "@outputs('Get_RITM_Fresh')?['body/RequestedFor/Claims']",
                     "item/RitmState/Value": "On Hold",
-                    "item/Variables": "@coalesce(triggerOutputs()?['body/Variables'], '')",
-                    "item/OpenedDate": "@triggerOutputs()?['body/OpenedDate']",
-                    "item/ConfidentialityLevel/Value": "@triggerOutputs()?['body/ConfidentialityLevel/Value']",
-                    "item/WorkNotes": "@{concat('Validation triage could not run: AI Builder text extraction failed (model unavailable). Auto-placed On Hold for manual validation. RITM ', triggerOutputs()?['body/RitmNumber'], ' at ', utcNow(), '.')}"
+                    "item/Variables": "@coalesce(outputs('Get_RITM_Fresh')?['body/Variables'], '')",
+                    "item/OpenedDate": "@outputs('Get_RITM_Fresh')?['body/OpenedDate']",
+                    "item/ConfidentialityLevel/Value": "@outputs('Get_RITM_Fresh')?['body/ConfidentialityLevel/Value']",
+                    "item/WorkNotes": "@{concat('Validation triage could not run: AI Builder text extraction failed (model unavailable). Auto-placed On Hold for manual validation. RITM ', outputs('Get_RITM_Fresh')?['body/RitmNumber'], ' at ', utcNow(), '.')}"
                   },
                   "authentication": "@parameters('$authentication')"
                 }
@@ -252,7 +260,7 @@
                     "poster": "Flow bot",
                     "location": "Chat with Flow bot",
                     "body/recipient": "catherine.han@flowstudio.app",
-                    "body/messageBody": "@{concat('<h2>RITM validation could not run</h2><p>The AI extraction step failed (model unavailable), so <b>', triggerOutputs()?['body/RitmNumber'], '</b> (item ID ', string(triggerOutputs()?['body/ID']), ') was placed <b>On Hold</b> for manual validation.</p><p><a href=\"https://contoso.sharepoint.com/sites/ITSM/Lists/Request%20Items/DispForm.aspx?ID=', string(triggerOutputs()?['body/ID']), '\">Open request item</a></p>')}"
+                    "body/messageBody": "@{concat('<h2>RITM validation could not run</h2><p>The AI extraction step failed (model unavailable), so <b>', outputs('Get_RITM_Fresh')?['body/RitmNumber'], '</b> (item ID ', string(outputs('Get_RITM_Fresh')?['body/ID']), ') was placed <b>On Hold</b> for manual validation.</p><p><a href=\"https://contoso.sharepoint.com/sites/ITSM/Lists/Request%20Items/DispForm.aspx?ID=', string(outputs('Get_RITM_Fresh')?['body/ID']), '\">Open request item</a></p>')}"
                   },
                   "authentication": "@parameters('$authentication')"
                 }
@@ -456,7 +464,7 @@
                       "summary": "@coalesce(body('Parse_AI_Intent')?['summary'], '')",
                       "validatedAt": "@utcNow()",
                       "validationSource": "AI extraction (JobType-aware) plus Microsoft Graph resolution",
-                      "originalText": "@coalesce(triggerOutputs()?['body/Variables'], '')"
+                      "originalText": "@coalesce(outputs('Get_RITM_Fresh')?['body/Variables'], '')"
                     }
                   },
                   "Patch_RITM_Pending_Approval": {
@@ -475,19 +483,37 @@
                       "parameters": {
                         "dataset": "https://contoso.sharepoint.com/sites/ITSM",
                         "table": "Request Items",
-                        "id": "@triggerOutputs()?['body/ID']",
-                        "item/Title": "@triggerOutputs()?['body/Title']",
-                        "item/RitmNumber": "@triggerOutputs()?['body/RitmNumber']",
-                        "item/ParentTicket/Id": "@triggerOutputs()?['body/ParentTicket/Id']",
-                        "item/CatalogItem/Id": "@triggerOutputs()?['body/CatalogItem/Id']",
-                        "item/RequestedFor/Claims": "@triggerOutputs()?['body/RequestedFor/Claims']",
+                        "id": "@outputs('Get_RITM_Fresh')?['body/ID']",
+                        "item/Title": "@outputs('Get_RITM_Fresh')?['body/Title']",
+                        "item/RitmNumber": "@outputs('Get_RITM_Fresh')?['body/RitmNumber']",
+                        "item/ParentTicket/Id": "@outputs('Get_RITM_Fresh')?['body/ParentTicket/Id']",
+                        "item/CatalogItem/Id": "@outputs('Get_RITM_Fresh')?['body/CatalogItem/Id']",
+                        "item/RequestedFor/Claims": "@outputs('Get_RITM_Fresh')?['body/RequestedFor/Claims']",
                         "item/RitmState/Value": "Pending Approval",
                         "item/Variables": "@string(outputs('Compose_Validated_Variables'))",
-                        "item/OpenedDate": "@triggerOutputs()?['body/OpenedDate']",
-                        "item/ConfidentialityLevel/Value": "@triggerOutputs()?['body/ConfidentialityLevel/Value']",
+                        "item/OpenedDate": "@outputs('Get_RITM_Fresh')?['body/OpenedDate']",
+                        "item/ConfidentialityLevel/Value": "@outputs('Get_RITM_Fresh')?['body/ConfidentialityLevel/Value']",
                         "item/WorkNotes": "@{concat('RITM validation passed (JobType ', coalesce(body('Parse_AI_Intent')?['jobType'], 'n/a'), '): ', coalesce(body('Parse_AI_Intent')?['summary'], ''), ' Released to approval.')}"
                       },
                       "authentication": "@parameters('$authentication')"
+                    }
+                  },
+                  "Call_Approval_AI": {
+                    "runAfter": {
+                      "Patch_RITM_Pending_Approval": [
+                        "Succeeded"
+                      ]
+                    },
+                    "type": "Http",
+                    "inputs": {
+                      "method": "POST",
+                      "uri": "https://REDACTED-FLOW-TRIGGER-URL",
+                      "headers": {
+                        "Content-Type": "application/json"
+                      },
+                      "body": {
+                        "ritmId": "@triggerBody()?['ritmId']"
+                      }
                     }
                   }
                 },
@@ -513,7 +539,7 @@
                         "summary": "@coalesce(body('Parse_AI_Intent')?['summary'], '')",
                         "userMatchCount": "@length(coalesce(body('Graph_Find_Users')?['value'], createArray()))",
                         "groupMatchCount": "@length(coalesce(body('Graph_Find_Groups')?['value'], createArray()))",
-                        "originalText": "@coalesce(triggerOutputs()?['body/Variables'], '')"
+                        "originalText": "@coalesce(outputs('Get_RITM_Fresh')?['body/Variables'], '')"
                       }
                     },
                     "Patch_RITM_On_Hold": {
@@ -532,16 +558,16 @@
                         "parameters": {
                           "dataset": "https://contoso.sharepoint.com/sites/ITSM",
                           "table": "Request Items",
-                          "id": "@triggerOutputs()?['body/ID']",
-                          "item/Title": "@triggerOutputs()?['body/Title']",
-                          "item/RitmNumber": "@triggerOutputs()?['body/RitmNumber']",
-                          "item/ParentTicket/Id": "@triggerOutputs()?['body/ParentTicket/Id']",
-                          "item/CatalogItem/Id": "@triggerOutputs()?['body/CatalogItem/Id']",
-                          "item/RequestedFor/Claims": "@triggerOutputs()?['body/RequestedFor/Claims']",
+                          "id": "@outputs('Get_RITM_Fresh')?['body/ID']",
+                          "item/Title": "@outputs('Get_RITM_Fresh')?['body/Title']",
+                          "item/RitmNumber": "@outputs('Get_RITM_Fresh')?['body/RitmNumber']",
+                          "item/ParentTicket/Id": "@outputs('Get_RITM_Fresh')?['body/ParentTicket/Id']",
+                          "item/CatalogItem/Id": "@outputs('Get_RITM_Fresh')?['body/CatalogItem/Id']",
+                          "item/RequestedFor/Claims": "@outputs('Get_RITM_Fresh')?['body/RequestedFor/Claims']",
                           "item/RitmState/Value": "On Hold",
                           "item/Variables": "@string(outputs('Compose_Hold_Variables'))",
-                          "item/OpenedDate": "@triggerOutputs()?['body/OpenedDate']",
-                          "item/ConfidentialityLevel/Value": "@triggerOutputs()?['body/ConfidentialityLevel/Value']",
+                          "item/OpenedDate": "@outputs('Get_RITM_Fresh')?['body/OpenedDate']",
+                          "item/ConfidentialityLevel/Value": "@outputs('Get_RITM_Fresh')?['body/ConfidentialityLevel/Value']",
                           "item/WorkNotes": "@{concat('RITM validation triage put this request on hold. Catherine must clarify before approval. Details: ', string(outputs('Compose_Hold_Variables')))}"
                         },
                         "authentication": "@parameters('$authentication')"
@@ -564,7 +590,7 @@
                           "poster": "Flow bot",
                           "location": "Chat with Flow bot",
                           "body/recipient": "catherine.han@flowstudio.app",
-                          "body/messageBody": "@{concat('<h2>RITM needs clarification</h2><p><b>RITM:</b> ', triggerOutputs()?['body/RitmNumber'], ' (item ID ', string(triggerOutputs()?['body/ID']), ')</p><p><b>Operation:</b> ', coalesce(body('Parse_AI_Intent')?['jobType'], 'n/a'), '</p><p><b>Target user:</b> ', coalesce(body('Parse_AI_Intent')?['targetUserUpn'], '(none)'), '</p><p><b>Resource:</b> ', coalesce(body('Parse_AI_Intent')?['resourceName'], '(none)'), '</p><p><b>Confidence:</b> ', coalesce(body('Parse_AI_Intent')?['confidence'], ''), ' &middot; <b>Missing:</b> ', join(coalesce(body('Parse_AI_Intent')?['missing'], createArray()), ', '), '</p><p>', coalesce(body('Parse_AI_Intent')?['summary'], ''), '</p><p><a href=\"https://contoso.sharepoint.com/sites/ITSM/Lists/Request%20Items/DispForm.aspx?ID=', string(triggerOutputs()?['body/ID']), '\">Open request item</a></p>')}"
+                          "body/messageBody": "@{concat('<h2>RITM needs clarification</h2><p><b>RITM:</b> ', outputs('Get_RITM_Fresh')?['body/RitmNumber'], ' (item ID ', string(outputs('Get_RITM_Fresh')?['body/ID']), ')</p><p><b>Operation:</b> ', coalesce(body('Parse_AI_Intent')?['jobType'], 'n/a'), '</p><p><b>Target user:</b> ', coalesce(body('Parse_AI_Intent')?['targetUserUpn'], '(none)'), '</p><p><b>Resource:</b> ', coalesce(body('Parse_AI_Intent')?['resourceName'], '(none)'), '</p><p><b>Confidence:</b> ', coalesce(body('Parse_AI_Intent')?['confidence'], ''), ' &middot; <b>Missing:</b> ', join(coalesce(body('Parse_AI_Intent')?['missing'], createArray()), ', '), '</p><p>', coalesce(body('Parse_AI_Intent')?['summary'], ''), '</p><p><a href=\"https://contoso.sharepoint.com/sites/ITSM/Lists/Request%20Items/DispForm.aspx?ID=', string(outputs('Get_RITM_Fresh')?['body/ID']), '\">Open request item</a></p>')}"
                         },
                         "authentication": "@parameters('$authentication')"
                       }
@@ -589,7 +615,7 @@
             "and": [
               {
                 "equals": [
-                  "@startsWith(trim(coalesce(triggerOutputs()?['body/Variables'], '')), '{')",
+                  "@startsWith(trim(coalesce(outputs('Get_RITM_Fresh')?['body/Variables'], '')), '{')",
                   true
                 ]
               }
@@ -598,7 +624,11 @@
           "type": "If"
         }
       },
-      "runAfter": {},
+      "runAfter": {
+        "Get_RITM_Fresh": [
+          "Succeeded"
+        ]
+      },
       "else": {
         "actions": {}
       },
@@ -606,14 +636,31 @@
         "and": [
           {
             "equals": [
-              "@triggerOutputs()?['body/RitmState/Value']",
+              "@outputs('Get_RITM_Fresh')?['body/RitmState/Value']",
               "Pending Validation"
             ]
           }
         ]
       },
       "type": "If"
+    },
+    "Get_RITM_Fresh": {
+      "runAfter": {},
+      "type": "OpenApiConnection",
+      "inputs": {
+        "host": {
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+          "connectionName": "shared_sharepointonline",
+          "operationId": "GetItem"
+        },
+        "parameters": {
+          "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+          "table": "Request Items",
+          "id": "@triggerBody()?['ritmId']"
+        },
+        "authentication": "@parameters('$authentication')"
+      }
     }
   },
-  "description": "JobType-AWARE AI validation (2026-06-01). Structured payloads (license dropdown) still skip the AI entirely. Free-text path now feeds the Triage Validation prompt (00000000) the catalog JobType + InputSchema + CatalogItem + RequestedFor UPN + request text, and the prompt returns {jobType,targetUserUpn,resourceType,resourceName,confidence,missing,summary}. Gate is JobType-aware: pass when confidence!=low AND no missing required fields AND (no target user OR user resolves in Graph) AND (resourceType!=group OR a group resolves) - no more mandatory group match. So identity.disableUser/enableUser, licensing, groups, teams etc. validate on their own required fields instead of being forced through group-membership add/remove. Preserves cowork APR-10 trigger (GetOnUpdatedItems + RitmState=='Pending Validation') and the AI-down On Hold stopgap."
+  "description": "3.2 RITM-Validation. 2026-06-02: on validated (structured OR AI exact-match), HTTP-calls 3.3 RITM-Approval {ritmId}. On Hold/AI-down do not call. #flowstudio-mcp"
 }

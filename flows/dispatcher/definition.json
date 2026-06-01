@@ -410,6 +410,168 @@
           "patchError": "@coalesce(string(body('Patch_PJ_To_Dispatched')), 'unknown')"
         }
       }
+    },
+    "Compute_Domain": {
+      "runAfter": {
+        "Patch_PJ_To_Dispatched": [
+          "Succeeded"
+        ]
+      },
+      "type": "Compose",
+      "inputs": "@first(split(coalesce(triggerBody()?['jobType'], outputs('Get_PJ')?['body/JobType'],''), '.'))"
+    },
+    "Route_To_Executor": {
+      "runAfter": {
+        "Compute_Domain": [
+          "Succeeded"
+        ]
+      },
+      "cases": {
+        "identity": {
+          "case": "identity",
+          "actions": {
+            "Call_Identity": {
+              "runAfter": {},
+              "type": "Http",
+              "inputs": {
+                "method": "POST",
+                "uri": "https://REDACTED-FLOW-TRIGGER-URL",
+                "headers": {
+                  "Content-Type": "application/json"
+                },
+                "body": {
+                  "pjId": "@triggerBody()?['pjId']",
+                  "jobType": "@triggerBody()?['jobType']",
+                  "idempotencyKey": "@triggerBody()?['idempotencyKey']",
+                  "correlationId": "@triggerBody()?['correlationId']",
+                  "callerUpn": "@triggerBody()?['callerUpn']"
+                }
+              }
+            }
+          }
+        },
+        "groups": {
+          "case": "groups",
+          "actions": {
+            "Call_Groups": {
+              "runAfter": {},
+              "type": "Http",
+              "inputs": {
+                "method": "POST",
+                "uri": "https://REDACTED-FLOW-TRIGGER-URL",
+                "headers": {
+                  "Content-Type": "application/json"
+                },
+                "body": {
+                  "pjId": "@triggerBody()?['pjId']",
+                  "jobType": "@triggerBody()?['jobType']",
+                  "idempotencyKey": "@triggerBody()?['idempotencyKey']",
+                  "correlationId": "@triggerBody()?['correlationId']",
+                  "callerUpn": "@triggerBody()?['callerUpn']"
+                }
+              }
+            }
+          }
+        },
+        "licensing": {
+          "case": "licensing",
+          "actions": {
+            "Call_Licensing": {
+              "runAfter": {},
+              "type": "Http",
+              "inputs": {
+                "method": "POST",
+                "uri": "https://REDACTED-FLOW-TRIGGER-URL",
+                "headers": {
+                  "Content-Type": "application/json"
+                },
+                "body": {
+                  "pjId": "@triggerBody()?['pjId']",
+                  "jobType": "@triggerBody()?['jobType']",
+                  "idempotencyKey": "@triggerBody()?['idempotencyKey']",
+                  "correlationId": "@triggerBody()?['correlationId']",
+                  "callerUpn": "@triggerBody()?['callerUpn']"
+                }
+              }
+            }
+          }
+        },
+        "exchange": {
+          "case": "exchange",
+          "actions": {
+            "Call_Exchange": {
+              "runAfter": {},
+              "type": "Http",
+              "inputs": {
+                "method": "POST",
+                "uri": "https://REDACTED-FLOW-TRIGGER-URL",
+                "headers": {
+                  "Content-Type": "application/json"
+                },
+                "body": {
+                  "pjId": "@triggerBody()?['pjId']",
+                  "jobType": "@triggerBody()?['jobType']",
+                  "idempotencyKey": "@triggerBody()?['idempotencyKey']",
+                  "correlationId": "@triggerBody()?['correlationId']",
+                  "callerUpn": "@triggerBody()?['callerUpn']"
+                }
+              }
+            }
+          }
+        },
+        "sharepoint": {
+          "case": "sharepoint",
+          "actions": {
+            "Call_SharePoint": {
+              "runAfter": {},
+              "type": "Http",
+              "inputs": {
+                "method": "POST",
+                "uri": "https://REDACTED-FLOW-TRIGGER-URL",
+                "headers": {
+                  "Content-Type": "application/json"
+                },
+                "body": {
+                  "pjId": "@triggerBody()?['pjId']",
+                  "jobType": "@triggerBody()?['jobType']",
+                  "idempotencyKey": "@triggerBody()?['idempotencyKey']",
+                  "correlationId": "@triggerBody()?['correlationId']",
+                  "callerUpn": "@triggerBody()?['callerUpn']"
+                }
+              }
+            }
+          }
+        },
+        "teams": {
+          "case": "teams",
+          "actions": {
+            "Call_Teams": {
+              "runAfter": {},
+              "type": "Http",
+              "inputs": {
+                "method": "POST",
+                "uri": "https://REDACTED-FLOW-TRIGGER-URL",
+                "headers": {
+                  "Content-Type": "application/json"
+                },
+                "body": {
+                  "pjId": "@triggerBody()?['pjId']",
+                  "jobType": "@triggerBody()?['jobType']",
+                  "idempotencyKey": "@triggerBody()?['idempotencyKey']",
+                  "correlationId": "@triggerBody()?['correlationId']",
+                  "callerUpn": "@triggerBody()?['callerUpn']"
+                }
+              }
+            }
+          }
+        }
+      },
+      "default": {
+        "actions": {}
+      },
+      "expression": "@outputs('Compute_Domain')",
+      "type": "Switch"
     }
-  }
+  },
+  "description": "Dispatcher. 2026-06-02 poll->push: after Patch_PJ_To_Dispatched, routes by JobType domain to EXACTLY ONE executor via HTTP (kills the 6-way executor poll cascade). #flowstudio-mcp"
 }

@@ -12,28 +12,41 @@
     }
   },
   "triggers": {
-    "When_a_PJ_is_Modified": {
-      "recurrence": {
-        "frequency": "Minute",
-        "interval": 3
-      },
-      "evaluatedRecurrence": {
-        "frequency": "Minute",
-        "interval": 3
-      },
-      "splitOn": "@triggerOutputs()?['body/value']",
-      "type": "OpenApiConnection",
+    "manual": {
+      "metadata": {},
+      "type": "Request",
+      "kind": "Http",
       "inputs": {
-        "host": {
-          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
-          "connectionName": "shared_sharepointonline",
-          "operationId": "GetOnUpdatedItems"
+        "schema": {
+          "type": "object",
+          "required": [
+            "pjId"
+          ],
+          "properties": {
+            "pjId": {
+              "type": "integer"
+            },
+            "jobId": {
+              "type": "string"
+            },
+            "jobType": {
+              "type": "string"
+            },
+            "ticketId": {
+              "type": "integer"
+            },
+            "callerUpn": {
+              "type": "string"
+            },
+            "idempotencyKey": {
+              "type": "string"
+            },
+            "correlationId": {
+              "type": "string"
+            }
+          }
         },
-        "parameters": {
-          "dataset": "https://contoso.sharepoint.com/sites/ITSM",
-          "table": "Provisioning Jobs"
-        },
-        "authentication": "@parameters('$authentication')"
+        "triggerAuthenticationType": "All"
       }
     }
   },
@@ -52,15 +65,15 @@
             "parameters": {
               "dataset": "https://contoso.sharepoint.com/sites/ITSM",
               "table": "Provisioning Jobs",
-              "id": "@triggerOutputs()?['body/ID']",
-              "item/Title": "@coalesce(triggerOutputs()?['body/Title'], 'PJ-fallback')",
-              "item/JobType": "@triggerOutputs()?['body/JobType']",
-              "item/ParentTicket/Id": "@triggerOutputs()?['body/ParentTicket/Id']",
+              "id": "@outputs('Get_PJ_Fresh')?['body/ID']",
+              "item/Title": "@coalesce(outputs('Get_PJ_Fresh')?['body/Title'], 'PJ-fallback')",
+              "item/JobType": "@outputs('Get_PJ_Fresh')?['body/JobType']",
+              "item/ParentTicket/Id": "@outputs('Get_PJ_Fresh')?['body/ParentTicket/Id']",
               "item/JobStatus/Value": "InProgress",
-              "item/CallerUpn": "@triggerOutputs()?['body/CallerUpn']",
-              "item/TargetJson": "@triggerOutputs()?['body/TargetJson']",
-              "item/IdempotencyKey": "@triggerOutputs()?['body/IdempotencyKey']",
-              "item/CorrelationId": "@triggerOutputs()?['body/CorrelationId']",
+              "item/CallerUpn": "@outputs('Get_PJ_Fresh')?['body/CallerUpn']",
+              "item/TargetJson": "@outputs('Get_PJ_Fresh')?['body/TargetJson']",
+              "item/IdempotencyKey": "@outputs('Get_PJ_Fresh')?['body/IdempotencyKey']",
+              "item/CorrelationId": "@outputs('Get_PJ_Fresh')?['body/CorrelationId']",
               "item/ServicePrincipal": "SP-IT-Groups",
               "item/StartedAt": "@utcNow()"
             },
@@ -107,7 +120,7 @@
             "headers": {
               "Content-Type": "application/x-www-form-urlencoded"
             },
-            "body": "@{concat('grant_type=client_credentials&client_id=00000000-0000-0000-0000-000000000003&scope=https%3A%2F%2Fgraph.microsoft.com%2F.default&client_secret=', encodeUriComponent(body('Get_KV_Secret')?['value']))}"
+            "body": "@{concat('grant_type=client_credentials&client_id=00000000-0000-0000-0000-000000000002&scope=https%3A%2F%2Fgraph.microsoft.com%2F.default&client_secret=', encodeUriComponent(body('Get_KV_Secret')?['value']))}"
           },
           "runtimeConfiguration": {
             "secureData": {
@@ -158,7 +171,7 @@
           },
           "type": "ParseJson",
           "inputs": {
-            "content": "@triggerOutputs()?['body/TargetJson']",
+            "content": "@outputs('Get_PJ_Fresh')?['body/TargetJson']",
             "schema": {
               "type": "object",
               "properties": {
@@ -225,15 +238,15 @@
                     "parameters": {
                       "dataset": "https://contoso.sharepoint.com/sites/ITSM",
                       "table": "Provisioning Jobs",
-                      "id": "@triggerOutputs()?['body/ID']",
-                      "item/Title": "@coalesce(triggerOutputs()?['body/Title'], 'PJ-fallback')",
-                      "item/JobType": "@triggerOutputs()?['body/JobType']",
-                      "item/ParentTicket/Id": "@triggerOutputs()?['body/ParentTicket/Id']",
+                      "id": "@outputs('Get_PJ_Fresh')?['body/ID']",
+                      "item/Title": "@coalesce(outputs('Get_PJ_Fresh')?['body/Title'], 'PJ-fallback')",
+                      "item/JobType": "@outputs('Get_PJ_Fresh')?['body/JobType']",
+                      "item/ParentTicket/Id": "@outputs('Get_PJ_Fresh')?['body/ParentTicket/Id']",
                       "item/JobStatus/Value": "Succeeded",
-                      "item/CallerUpn": "@triggerOutputs()?['body/CallerUpn']",
-                      "item/TargetJson": "@triggerOutputs()?['body/TargetJson']",
-                      "item/IdempotencyKey": "@triggerOutputs()?['body/IdempotencyKey']",
-                      "item/CorrelationId": "@triggerOutputs()?['body/CorrelationId']",
+                      "item/CallerUpn": "@outputs('Get_PJ_Fresh')?['body/CallerUpn']",
+                      "item/TargetJson": "@outputs('Get_PJ_Fresh')?['body/TargetJson']",
+                      "item/IdempotencyKey": "@outputs('Get_PJ_Fresh')?['body/IdempotencyKey']",
+                      "item/CorrelationId": "@outputs('Get_PJ_Fresh')?['body/CorrelationId']",
                       "item/ServicePrincipal": "SP-IT-Groups",
                       "item/CompletedAt": "@utcNow()",
                       "item/DurationMs": "@div(sub(ticks(utcNow()), ticks(body('Update_Status_InProgress')?['StartedAt'])), 10000)",
@@ -260,15 +273,15 @@
                     "parameters": {
                       "dataset": "https://contoso.sharepoint.com/sites/ITSM",
                       "table": "Provisioning Jobs",
-                      "id": "@triggerOutputs()?['body/ID']",
-                      "item/Title": "@coalesce(triggerOutputs()?['body/Title'], 'PJ-fallback')",
-                      "item/JobType": "@triggerOutputs()?['body/JobType']",
-                      "item/ParentTicket/Id": "@triggerOutputs()?['body/ParentTicket/Id']",
+                      "id": "@outputs('Get_PJ_Fresh')?['body/ID']",
+                      "item/Title": "@coalesce(outputs('Get_PJ_Fresh')?['body/Title'], 'PJ-fallback')",
+                      "item/JobType": "@outputs('Get_PJ_Fresh')?['body/JobType']",
+                      "item/ParentTicket/Id": "@outputs('Get_PJ_Fresh')?['body/ParentTicket/Id']",
                       "item/JobStatus/Value": "Failed",
-                      "item/CallerUpn": "@triggerOutputs()?['body/CallerUpn']",
-                      "item/TargetJson": "@triggerOutputs()?['body/TargetJson']",
-                      "item/IdempotencyKey": "@triggerOutputs()?['body/IdempotencyKey']",
-                      "item/CorrelationId": "@triggerOutputs()?['body/CorrelationId']",
+                      "item/CallerUpn": "@outputs('Get_PJ_Fresh')?['body/CallerUpn']",
+                      "item/TargetJson": "@outputs('Get_PJ_Fresh')?['body/TargetJson']",
+                      "item/IdempotencyKey": "@outputs('Get_PJ_Fresh')?['body/IdempotencyKey']",
+                      "item/CorrelationId": "@outputs('Get_PJ_Fresh')?['body/CorrelationId']",
                       "item/ServicePrincipal": "SP-IT-Groups",
                       "item/CompletedAt": "@utcNow()",
                       "item/DurationMs": "@div(sub(ticks(utcNow()), ticks(body('Update_Status_InProgress')?['StartedAt'])), 10000)",
@@ -315,15 +328,15 @@
                     "parameters": {
                       "dataset": "https://contoso.sharepoint.com/sites/ITSM",
                       "table": "Provisioning Jobs",
-                      "id": "@triggerOutputs()?['body/ID']",
-                      "item/Title": "@coalesce(triggerOutputs()?['body/Title'], 'PJ-fallback')",
-                      "item/JobType": "@triggerOutputs()?['body/JobType']",
-                      "item/ParentTicket/Id": "@triggerOutputs()?['body/ParentTicket/Id']",
+                      "id": "@outputs('Get_PJ_Fresh')?['body/ID']",
+                      "item/Title": "@coalesce(outputs('Get_PJ_Fresh')?['body/Title'], 'PJ-fallback')",
+                      "item/JobType": "@outputs('Get_PJ_Fresh')?['body/JobType']",
+                      "item/ParentTicket/Id": "@outputs('Get_PJ_Fresh')?['body/ParentTicket/Id']",
                       "item/JobStatus/Value": "Succeeded",
-                      "item/CallerUpn": "@triggerOutputs()?['body/CallerUpn']",
-                      "item/TargetJson": "@triggerOutputs()?['body/TargetJson']",
-                      "item/IdempotencyKey": "@triggerOutputs()?['body/IdempotencyKey']",
-                      "item/CorrelationId": "@triggerOutputs()?['body/CorrelationId']",
+                      "item/CallerUpn": "@outputs('Get_PJ_Fresh')?['body/CallerUpn']",
+                      "item/TargetJson": "@outputs('Get_PJ_Fresh')?['body/TargetJson']",
+                      "item/IdempotencyKey": "@outputs('Get_PJ_Fresh')?['body/IdempotencyKey']",
+                      "item/CorrelationId": "@outputs('Get_PJ_Fresh')?['body/CorrelationId']",
                       "item/ServicePrincipal": "SP-IT-Groups",
                       "item/CompletedAt": "@utcNow()",
                       "item/DurationMs": "@div(sub(ticks(utcNow()), ticks(body('Update_Status_InProgress')?['StartedAt'])), 10000)",
@@ -337,11 +350,8 @@
                   "runAfter": {
                     "Http_Graph_RemoveMember": [
                       "Failed",
-                      "TimedOut"
-                    ],
-                    "Resolve_User_Id": [
-                      "Failed",
-                      "TimedOut"
+                      "TimedOut",
+                      "Skipped"
                     ]
                   },
                   "type": "OpenApiConnection",
@@ -354,15 +364,15 @@
                     "parameters": {
                       "dataset": "https://contoso.sharepoint.com/sites/ITSM",
                       "table": "Provisioning Jobs",
-                      "id": "@triggerOutputs()?['body/ID']",
-                      "item/Title": "@coalesce(triggerOutputs()?['body/Title'], 'PJ-fallback')",
-                      "item/JobType": "@triggerOutputs()?['body/JobType']",
-                      "item/ParentTicket/Id": "@triggerOutputs()?['body/ParentTicket/Id']",
+                      "id": "@outputs('Get_PJ_Fresh')?['body/ID']",
+                      "item/Title": "@coalesce(outputs('Get_PJ_Fresh')?['body/Title'], 'PJ-fallback')",
+                      "item/JobType": "@outputs('Get_PJ_Fresh')?['body/JobType']",
+                      "item/ParentTicket/Id": "@outputs('Get_PJ_Fresh')?['body/ParentTicket/Id']",
                       "item/JobStatus/Value": "Failed",
-                      "item/CallerUpn": "@triggerOutputs()?['body/CallerUpn']",
-                      "item/TargetJson": "@triggerOutputs()?['body/TargetJson']",
-                      "item/IdempotencyKey": "@triggerOutputs()?['body/IdempotencyKey']",
-                      "item/CorrelationId": "@triggerOutputs()?['body/CorrelationId']",
+                      "item/CallerUpn": "@outputs('Get_PJ_Fresh')?['body/CallerUpn']",
+                      "item/TargetJson": "@outputs('Get_PJ_Fresh')?['body/TargetJson']",
+                      "item/IdempotencyKey": "@outputs('Get_PJ_Fresh')?['body/IdempotencyKey']",
+                      "item/CorrelationId": "@outputs('Get_PJ_Fresh')?['body/CorrelationId']",
                       "item/ServicePrincipal": "SP-IT-Groups",
                       "item/CompletedAt": "@utcNow()",
                       "item/DurationMs": "@div(sub(ticks(utcNow()), ticks(body('Update_Status_InProgress')?['StartedAt'])), 10000)",
@@ -392,7 +402,7 @@
                   "runAfter": {},
                   "type": "ParseJson",
                   "inputs": {
-                    "content": "@coalesce(triggerOutputs()?['body/ArgsJson'], '{}')",
+                    "content": "@coalesce(outputs('Get_PJ_Fresh')?['body/ArgsJson'], '{}')",
                     "schema": {
                       "type": "object",
                       "properties": {
@@ -457,15 +467,15 @@
                     "parameters": {
                       "dataset": "https://contoso.sharepoint.com/sites/ITSM",
                       "table": "Provisioning Jobs",
-                      "id": "@triggerOutputs()?['body/ID']",
-                      "item/Title": "@coalesce(triggerOutputs()?['body/Title'], 'PJ-fallback')",
-                      "item/JobType": "@triggerOutputs()?['body/JobType']",
-                      "item/ParentTicket/Id": "@triggerOutputs()?['body/ParentTicket/Id']",
+                      "id": "@outputs('Get_PJ_Fresh')?['body/ID']",
+                      "item/Title": "@coalesce(outputs('Get_PJ_Fresh')?['body/Title'], 'PJ-fallback')",
+                      "item/JobType": "@outputs('Get_PJ_Fresh')?['body/JobType']",
+                      "item/ParentTicket/Id": "@outputs('Get_PJ_Fresh')?['body/ParentTicket/Id']",
                       "item/JobStatus/Value": "Succeeded",
-                      "item/CallerUpn": "@triggerOutputs()?['body/CallerUpn']",
-                      "item/TargetJson": "@triggerOutputs()?['body/TargetJson']",
-                      "item/IdempotencyKey": "@triggerOutputs()?['body/IdempotencyKey']",
-                      "item/CorrelationId": "@triggerOutputs()?['body/CorrelationId']",
+                      "item/CallerUpn": "@outputs('Get_PJ_Fresh')?['body/CallerUpn']",
+                      "item/TargetJson": "@outputs('Get_PJ_Fresh')?['body/TargetJson']",
+                      "item/IdempotencyKey": "@outputs('Get_PJ_Fresh')?['body/IdempotencyKey']",
+                      "item/CorrelationId": "@outputs('Get_PJ_Fresh')?['body/CorrelationId']",
                       "item/ServicePrincipal": "SP-IT-Groups",
                       "item/CompletedAt": "@utcNow()",
                       "item/DurationMs": "@div(sub(ticks(utcNow()), ticks(body('Update_Status_InProgress')?['StartedAt'])), 10000)",
@@ -492,15 +502,15 @@
                     "parameters": {
                       "dataset": "https://contoso.sharepoint.com/sites/ITSM",
                       "table": "Provisioning Jobs",
-                      "id": "@triggerOutputs()?['body/ID']",
-                      "item/Title": "@coalesce(triggerOutputs()?['body/Title'], 'PJ-fallback')",
-                      "item/JobType": "@triggerOutputs()?['body/JobType']",
-                      "item/ParentTicket/Id": "@triggerOutputs()?['body/ParentTicket/Id']",
+                      "id": "@outputs('Get_PJ_Fresh')?['body/ID']",
+                      "item/Title": "@coalesce(outputs('Get_PJ_Fresh')?['body/Title'], 'PJ-fallback')",
+                      "item/JobType": "@outputs('Get_PJ_Fresh')?['body/JobType']",
+                      "item/ParentTicket/Id": "@outputs('Get_PJ_Fresh')?['body/ParentTicket/Id']",
                       "item/JobStatus/Value": "Failed",
-                      "item/CallerUpn": "@triggerOutputs()?['body/CallerUpn']",
-                      "item/TargetJson": "@triggerOutputs()?['body/TargetJson']",
-                      "item/IdempotencyKey": "@triggerOutputs()?['body/IdempotencyKey']",
-                      "item/CorrelationId": "@triggerOutputs()?['body/CorrelationId']",
+                      "item/CallerUpn": "@outputs('Get_PJ_Fresh')?['body/CallerUpn']",
+                      "item/TargetJson": "@outputs('Get_PJ_Fresh')?['body/TargetJson']",
+                      "item/IdempotencyKey": "@outputs('Get_PJ_Fresh')?['body/IdempotencyKey']",
+                      "item/CorrelationId": "@outputs('Get_PJ_Fresh')?['body/CorrelationId']",
                       "item/ServicePrincipal": "SP-IT-Groups",
                       "item/CompletedAt": "@utcNow()",
                       "item/DurationMs": "@div(sub(ticks(utcNow()), ticks(body('Update_Status_InProgress')?['StartedAt'])), 10000)",
@@ -527,25 +537,25 @@
                   "parameters": {
                     "dataset": "https://contoso.sharepoint.com/sites/ITSM",
                     "table": "Provisioning Jobs",
-                    "id": "@triggerOutputs()?['body/ID']",
-                    "item/Title": "@coalesce(triggerOutputs()?['body/Title'], 'PJ-fallback')",
-                    "item/JobType": "@triggerOutputs()?['body/JobType']",
-                    "item/ParentTicket/Id": "@triggerOutputs()?['body/ParentTicket/Id']",
+                    "id": "@outputs('Get_PJ_Fresh')?['body/ID']",
+                    "item/Title": "@coalesce(outputs('Get_PJ_Fresh')?['body/Title'], 'PJ-fallback')",
+                    "item/JobType": "@outputs('Get_PJ_Fresh')?['body/JobType']",
+                    "item/ParentTicket/Id": "@outputs('Get_PJ_Fresh')?['body/ParentTicket/Id']",
                     "item/JobStatus/Value": "Failed",
-                    "item/CallerUpn": "@triggerOutputs()?['body/CallerUpn']",
-                    "item/TargetJson": "@triggerOutputs()?['body/TargetJson']",
-                    "item/IdempotencyKey": "@triggerOutputs()?['body/IdempotencyKey']",
-                    "item/CorrelationId": "@triggerOutputs()?['body/CorrelationId']",
+                    "item/CallerUpn": "@outputs('Get_PJ_Fresh')?['body/CallerUpn']",
+                    "item/TargetJson": "@outputs('Get_PJ_Fresh')?['body/TargetJson']",
+                    "item/IdempotencyKey": "@outputs('Get_PJ_Fresh')?['body/IdempotencyKey']",
+                    "item/CorrelationId": "@outputs('Get_PJ_Fresh')?['body/CorrelationId']",
                     "item/ServicePrincipal": "SP-IT-Groups",
                     "item/CompletedAt": "@utcNow()",
-                    "item/ErrorJson": "@{concat('{\"reason\":\"unsupported_jobtype\",\"jobType\":\"', triggerOutputs()?['body/JobType'], '\",\"executor\":\"SP-IT-Groups\"}')}"
+                    "item/ErrorJson": "@{concat('{\"reason\":\"unsupported_jobtype\",\"jobType\":\"', outputs('Get_PJ_Fresh')?['body/JobType'], '\",\"executor\":\"SP-IT-Groups\"}')}"
                   },
                   "authentication": "@parameters('$authentication')"
                 }
               }
             }
           },
-          "expression": "@triggerOutputs()?['body/JobType']",
+          "expression": "@outputs('Get_PJ_Fresh')?['body/JobType']",
           "type": "Switch"
         },
         "If_AddMember_Missing_GroupId": {
@@ -562,18 +572,18 @@
                 "parameters": {
                   "dataset": "https://contoso.sharepoint.com/sites/ITSM",
                   "table": "Provisioning Jobs",
-                  "id": "@triggerOutputs()?['body/ID']",
-                  "item/Title": "@coalesce(triggerOutputs()?['body/Title'], 'PJ-fallback')",
-                  "item/JobType": "@triggerOutputs()?['body/JobType']",
-                  "item/ParentTicket/Id": "@triggerOutputs()?['body/ParentTicket/Id']",
+                  "id": "@outputs('Get_PJ_Fresh')?['body/ID']",
+                  "item/Title": "@coalesce(outputs('Get_PJ_Fresh')?['body/Title'], 'PJ-fallback')",
+                  "item/JobType": "@outputs('Get_PJ_Fresh')?['body/JobType']",
+                  "item/ParentTicket/Id": "@outputs('Get_PJ_Fresh')?['body/ParentTicket/Id']",
                   "item/JobStatus/Value": "Failed",
-                  "item/CallerUpn": "@triggerOutputs()?['body/CallerUpn']",
-                  "item/TargetJson": "@triggerOutputs()?['body/TargetJson']",
-                  "item/IdempotencyKey": "@triggerOutputs()?['body/IdempotencyKey']",
-                  "item/CorrelationId": "@triggerOutputs()?['body/CorrelationId']",
+                  "item/CallerUpn": "@outputs('Get_PJ_Fresh')?['body/CallerUpn']",
+                  "item/TargetJson": "@outputs('Get_PJ_Fresh')?['body/TargetJson']",
+                  "item/IdempotencyKey": "@outputs('Get_PJ_Fresh')?['body/IdempotencyKey']",
+                  "item/CorrelationId": "@outputs('Get_PJ_Fresh')?['body/CorrelationId']",
                   "item/ServicePrincipal": "SP-IT-Groups",
                   "item/CompletedAt": "@utcNow()",
-                  "item/ErrorJson": "@{concat('{\"reason\":\"missing_groupId\",\"jobType\":\"groups.addMember\",\"message\":\"groups.addMember requires TargetJson.id from validated RITM.Variables.groupId\"}')}"
+                  "item/ErrorJson": "@{concat('{\\\"reason\\\":\\\"missing_groupId\\\",\\\"jobType\\\":\\\"', outputs('Get_PJ_Fresh')?['body/JobType'], '\\\",\\\"message\\\":\\\"group id not resolvable from TargetJson.id, ArgsJson.groupId, or site URL\\\"}')}"
                 },
                 "authentication": "@parameters('$authentication')"
               }
@@ -601,9 +611,19 @@
           "expression": {
             "and": [
               {
-                "equals": [
-                  "@triggerOutputs()?['body/JobType']",
-                  "groups.addMember"
+                "or": [
+                  {
+                    "equals": [
+                      "@outputs('Get_PJ_Fresh')?['body/JobType']",
+                      "groups.addMember"
+                    ]
+                  },
+                  {
+                    "equals": [
+                      "@outputs('Get_PJ_Fresh')?['body/JobType']",
+                      "groups.removeMember"
+                    ]
+                  }
                 ]
               },
               {
@@ -624,7 +644,7 @@
           },
           "type": "ParseJson",
           "inputs": {
-            "content": "@coalesce(triggerOutputs()?['body/ArgsJson'], '{}')",
+            "content": "@coalesce(outputs('Get_PJ_Fresh')?['body/ArgsJson'], '{}')",
             "schema": {
               "type": "object",
               "properties": {
@@ -638,6 +658,9 @@
                   "type": "string"
                 },
                 "groupSiteUrl": {
+                  "type": "string"
+                },
+                "siteUrl": {
                   "type": "string"
                 }
               }
@@ -656,7 +679,7 @@
                   "operationId": "HttpRequest"
                 },
                 "parameters": {
-                  "dataset": "@body('Parse_Args')?['groupSiteUrl']",
+                  "dataset": "@coalesce(body('Parse_Args')?['groupSiteUrl'], body('Parse_Args')?['siteUrl'])",
                   "parameters/method": "GET",
                   "parameters/uri": "_api/site/groupId",
                   "parameters/headers": {
@@ -692,7 +715,7 @@
               {
                 "not": {
                   "equals": [
-                    "@trim(coalesce(body('Parse_Args')?['groupSiteUrl'],''))",
+                    "@trim(coalesce(body('Parse_Args')?['groupSiteUrl'], body('Parse_Args')?['siteUrl'], ''))",
                     ""
                   ]
                 }
@@ -709,6 +732,26 @@
           },
           "type": "Compose",
           "inputs": "@coalesce(if(equals(trim(coalesce(body('Parse_Target')?['id'],'')),''),null,body('Parse_Target')?['id']), if(equals(trim(coalesce(body('Parse_Args')?['groupId'],'')),''),null,body('Parse_Args')?['groupId']), body('Resolve_Group_From_Site')?['value'], '')"
+        },
+        "Call_Resolver_On_Done": {
+          "runAfter": {
+            "Switch_JobType": [
+              "Succeeded",
+              "Failed",
+              "Skipped"
+            ]
+          },
+          "type": "Http",
+          "inputs": {
+            "method": "POST",
+            "uri": "https://REDACTED-FLOW-TRIGGER-URL",
+            "headers": {
+              "Content-Type": "application/json"
+            },
+            "body": {
+              "pjId": "@outputs('Get_PJ_Fresh')?['body/ID']"
+            }
+          }
         }
       },
       "runAfter": {
@@ -749,11 +792,11 @@
         "parameters": {
           "dataset": "https://contoso.sharepoint.com/sites/ITSM",
           "table": "Provisioning Jobs",
-          "id": "@triggerOutputs()?['body/ID']"
+          "id": "@triggerBody()?['pjId']"
         },
         "authentication": "@parameters('$authentication')"
       }
     }
   },
-  "description": "Groups executor. 2026-06-01 FIX: if TargetJson.id (group id) is missing, resolve it from ArgsJson.groupSiteUrl via SharePoint _api/site/groupId. Compose_Effective_GroupId = coalesce(TargetJson.id, Args.groupId, site-resolved). Agent site-access jobs that pass a site URL (not a group id) now succeed instead of failing missing_groupId. #flowstudio-mcp"
+  "description": "Groups executor. 2026-06-02 poll->push: trigger now HTTP Request {pjId} (called by Dispatcher by JobType); all PJ fields read via Get_PJ_Fresh(live); calls PJ-Ticket-Resolver on completion (resolver self-gates non-SCTASK Succeeded). #flowstudio-mcp"
 }

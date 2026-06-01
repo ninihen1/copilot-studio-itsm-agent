@@ -12,28 +12,23 @@
     }
   },
   "triggers": {
-    "When_a_RITM_is_Created": {
-      "recurrence": {
-        "frequency": "Minute",
-        "interval": 1
-      },
-      "evaluatedRecurrence": {
-        "frequency": "Minute",
-        "interval": 1
-      },
-      "splitOn": "@triggerOutputs()?['body/value']",
-      "type": "OpenApiConnection",
+    "manual": {
+      "metadata": {},
+      "type": "Request",
+      "kind": "Http",
       "inputs": {
-        "host": {
-          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
-          "connectionName": "shared_sharepointonline",
-          "operationId": "GetOnUpdatedItems"
+        "schema": {
+          "type": "object",
+          "required": [
+            "ritmId"
+          ],
+          "properties": {
+            "ritmId": {
+              "type": "integer"
+            }
+          }
         },
-        "parameters": {
-          "dataset": "https://contoso.sharepoint.com/sites/ITSM",
-          "table": "Request Items"
-        },
-        "authentication": "@parameters('$authentication')"
+        "triggerAuthenticationType": "All"
       }
     }
   },
@@ -52,7 +47,7 @@
             "parameters": {
               "dataset": "https://contoso.sharepoint.com/sites/ITSM",
               "table": "Service Catalog",
-              "id": "@triggerOutputs()?['body/CatalogItem/Id']"
+              "id": "@outputs('Get_RITM_Fresh')?['body/CatalogItem/Id']"
             },
             "authentication": "@parameters('$authentication')"
           }
@@ -74,7 +69,7 @@
             ]
           },
           "type": "Compose",
-          "inputs": "@json(if(and(startsWith(trim(coalesce(triggerOutputs()?['body/Variables'], '')), '{'), endsWith(trim(coalesce(triggerOutputs()?['body/Variables'], '')), '}')), triggerOutputs()?['body/Variables'], '{}'))",
+          "inputs": "@json(if(and(startsWith(trim(coalesce(outputs('Get_RITM_Fresh')?['body/Variables'], '')), '{'), endsWith(trim(coalesce(outputs('Get_RITM_Fresh')?['body/Variables'], '')), '}')), outputs('Get_RITM_Fresh')?['body/Variables'], '{}'))",
           "description": "Parse RITM Variables JSON once so approval details can render friendly field labels instead of raw JSON. Plain-text or empty Variables values are treated as an empty object so approval creation is not blocked."
         },
         "Get_License_Costs": {
@@ -117,7 +112,7 @@
             ]
           },
           "type": "Compose",
-          "inputs": "@{concat('**RITM:** ', triggerOutputs()?['body/RitmNumber'], ' (item ID ', string(triggerOutputs()?['body/ID']), ')', decodeUriComponent('%0A'), '**Parent ticket item ID:** ', string(triggerOutputs()?['body/ParentTicket/Id']), decodeUriComponent('%0A'), '**Provisioning job:** created after approval by the SCTASK-PJ bridge', decodeUriComponent('%0A%0A'), '**Catalog item:** ', body('Get_Catalog_Item')?['ItemName'], decodeUriComponent('%0A%0A'), '**Requested for:** ', coalesce(triggerOutputs()?['body/RequestedFor/DisplayName'], '(unknown)'), ' (', last(split(coalesce(triggerOutputs()?['body/RequestedFor/Claims'], ''), '|')), ')', decodeUriComponent('%0A%0A'), '**Service:** ', coalesce(body('Get_Catalog_Item')?['ApproverContext'], body('Get_Catalog_Item')?['Description']), decodeUriComponent('%0A%0A'), '**Request details:**', decodeUriComponent('%0A'), if(not(equals(outputs('Compose_Variables_Object')?['mailboxUpn'], null)), concat('- **Mailbox:** ', string(outputs('Compose_Variables_Object')?['mailboxUpn']), decodeUriComponent('%0A')), ''), if(not(equals(outputs('Compose_Variables_Object')?['durationDays'], null)), concat('- **Duration (days):** ', string(outputs('Compose_Variables_Object')?['durationDays']), decodeUriComponent('%0A')), ''), if(not(equals(outputs('Compose_Variables_Object')?['skuPartNumber'], null)), concat('- **License:** ', outputs('Compose_License_Display_Name'), decodeUriComponent('%0A')), ''), if(not(equals(outputs('Compose_Variables_Object')?['skuId'], null)), concat('- **License SKU ID:** ', string(outputs('Compose_Variables_Object')?['skuId']), decodeUriComponent('%0A')), ''), if(not(equals(outputs('Compose_Variables_Object')?['groupName'], null)), concat('- **Group:** ', string(outputs('Compose_Variables_Object')?['groupName']), decodeUriComponent('%0A')), ''), if(not(equals(outputs('Compose_Variables_Object')?['groupId'], null)), concat('- **Group ID:** ', string(outputs('Compose_Variables_Object')?['groupId']), decodeUriComponent('%0A')), ''), if(not(equals(outputs('Compose_Variables_Object')?['siteUrl'], null)), concat('- **SharePoint site:** ', string(outputs('Compose_Variables_Object')?['siteUrl']), decodeUriComponent('%0A')), ''), if(not(equals(outputs('Compose_Variables_Object')?['filePath'], null)), concat('- **File path:** ', string(outputs('Compose_Variables_Object')?['filePath']), decodeUriComponent('%0A')), ''), if(not(equals(outputs('Compose_Variables_Object')?['itemId'], null)), concat('- **Recycle bin item ID:** ', string(outputs('Compose_Variables_Object')?['itemId']), decodeUriComponent('%0A')), ''), if(not(equals(outputs('Compose_Variables_Object')?['softwareName'], null)), concat('- **Software:** ', string(outputs('Compose_Variables_Object')?['softwareName']), decodeUriComponent('%0A')), ''), if(not(equals(outputs('Compose_Variables_Object')?['version'], null)), concat('- **Version:** ', string(outputs('Compose_Variables_Object')?['version']), decodeUriComponent('%0A')), ''), if(not(equals(outputs('Compose_Variables_Object')?['displayName'], null)), concat('- **New hire:** ', string(outputs('Compose_Variables_Object')?['displayName']), decodeUriComponent('%0A')), ''), if(not(equals(outputs('Compose_Variables_Object')?['upn'], null)), concat('- **User principal name:** ', string(outputs('Compose_Variables_Object')?['upn']), decodeUriComponent('%0A')), ''), if(not(equals(outputs('Compose_Variables_Object')?['jobTitle'], null)), concat('- **Job title:** ', string(outputs('Compose_Variables_Object')?['jobTitle']), decodeUriComponent('%0A')), ''), if(not(equals(outputs('Compose_Variables_Object')?['department'], null)), concat('- **Department:** ', string(outputs('Compose_Variables_Object')?['department']), decodeUriComponent('%0A')), ''), if(not(equals(outputs('Compose_Variables_Object')?['managerUpn'], null)), concat('- **Manager:** ', string(outputs('Compose_Variables_Object')?['managerUpn']), decodeUriComponent('%0A')), ''), if(not(equals(outputs('Compose_Variables_Object')?['officeLocation'], null)), concat('- **Office:** ', string(outputs('Compose_Variables_Object')?['officeLocation']), decodeUriComponent('%0A')), ''), if(not(equals(outputs('Compose_Variables_Object')?['startDate'], null)), concat('- **Start date:** ', string(outputs('Compose_Variables_Object')?['startDate']), decodeUriComponent('%0A')), ''), if(not(equals(outputs('Compose_Variables_Object')?['deviceModel'], null)), concat('- **Device model:** ', string(outputs('Compose_Variables_Object')?['deviceModel']), decodeUriComponent('%0A')), ''), if(not(equals(outputs('Compose_Variables_Object')?['defaultGroups'], null)), concat('- **Default groups:** ', string(outputs('Compose_Variables_Object')?['defaultGroups']), decodeUriComponent('%0A')), ''), if(not(equals(outputs('Compose_Variables_Object')?['transferOneDriveTo'], null)), concat('- **Transfer OneDrive to:** ', string(outputs('Compose_Variables_Object')?['transferOneDriveTo']), decodeUriComponent('%0A')), ''), if(not(equals(outputs('Compose_Variables_Object')?['forwardEmailTo'], null)), concat('- **Forward email to:** ', string(outputs('Compose_Variables_Object')?['forwardEmailTo']), decodeUriComponent('%0A')), ''), if(not(equals(outputs('Compose_Variables_Object')?['lastDay'], null)), concat('- **Last day:** ', string(outputs('Compose_Variables_Object')?['lastDay']), decodeUriComponent('%0A')), ''), if(not(equals(outputs('Compose_Variables_Object')?['reason'], null)), concat('- **Reason:** ', string(outputs('Compose_Variables_Object')?['reason']), decodeUriComponent('%0A')), ''), if(not(equals(outputs('Compose_Variables_Object')?['justification'], null)), concat('- **Justification:** ', string(outputs('Compose_Variables_Object')?['justification']), decodeUriComponent('%0A')), ''), if(not(equals(outputs('Compose_Variables_Object')?['businessJustification'], null)), concat('- **Business justification:** ', string(outputs('Compose_Variables_Object')?['businessJustification']), decodeUriComponent('%0A')), ''), if(and(not(equals(trim(coalesce(triggerOutputs()?['body/Variables'], '')), '')), not(and(startsWith(trim(coalesce(triggerOutputs()?['body/Variables'], '')), '{'), endsWith(trim(coalesce(triggerOutputs()?['body/Variables'], '')), '}')))), concat('- **Details:** ', triggerOutputs()?['body/Variables'], decodeUriComponent('%0A')), ''), decodeUriComponent('%0A'), '**SLA:** ', string(body('Get_Catalog_Item')?['SlaDays']), ' day(s)', decodeUriComponent('%0A%0A'), '**Tracking:** [Open in SharePoint](https://contoso.sharepoint.com/sites/ITSM/Lists/Request%20Items/DispForm.aspx?ID=', string(triggerOutputs()?['body/ID']), ')')}",
+          "inputs": "@{concat('**RITM:** ', outputs('Get_RITM_Fresh')?['body/RitmNumber'], ' (item ID ', string(outputs('Get_RITM_Fresh')?['body/ID']), ')', decodeUriComponent('%0A'), '**Parent ticket item ID:** ', string(outputs('Get_RITM_Fresh')?['body/ParentTicket/Id']), decodeUriComponent('%0A'), '**Provisioning job:** created after approval by the SCTASK-PJ bridge', decodeUriComponent('%0A%0A'), '**Catalog item:** ', body('Get_Catalog_Item')?['ItemName'], decodeUriComponent('%0A%0A'), '**Requested for:** ', coalesce(outputs('Get_RITM_Fresh')?['body/RequestedFor/DisplayName'], '(unknown)'), ' (', last(split(coalesce(outputs('Get_RITM_Fresh')?['body/RequestedFor/Claims'], ''), '|')), ')', decodeUriComponent('%0A%0A'), '**Service:** ', coalesce(body('Get_Catalog_Item')?['ApproverContext'], body('Get_Catalog_Item')?['Description']), decodeUriComponent('%0A%0A'), '**Request details:**', decodeUriComponent('%0A'), if(not(equals(outputs('Compose_Variables_Object')?['mailboxUpn'], null)), concat('- **Mailbox:** ', string(outputs('Compose_Variables_Object')?['mailboxUpn']), decodeUriComponent('%0A')), ''), if(not(equals(outputs('Compose_Variables_Object')?['durationDays'], null)), concat('- **Duration (days):** ', string(outputs('Compose_Variables_Object')?['durationDays']), decodeUriComponent('%0A')), ''), if(not(equals(outputs('Compose_Variables_Object')?['skuPartNumber'], null)), concat('- **License:** ', outputs('Compose_License_Display_Name'), decodeUriComponent('%0A')), ''), if(not(equals(outputs('Compose_Variables_Object')?['skuId'], null)), concat('- **License SKU ID:** ', string(outputs('Compose_Variables_Object')?['skuId']), decodeUriComponent('%0A')), ''), if(not(equals(outputs('Compose_Variables_Object')?['groupName'], null)), concat('- **Group:** ', string(outputs('Compose_Variables_Object')?['groupName']), decodeUriComponent('%0A')), ''), if(not(equals(outputs('Compose_Variables_Object')?['groupId'], null)), concat('- **Group ID:** ', string(outputs('Compose_Variables_Object')?['groupId']), decodeUriComponent('%0A')), ''), if(not(equals(outputs('Compose_Variables_Object')?['siteUrl'], null)), concat('- **SharePoint site:** ', string(outputs('Compose_Variables_Object')?['siteUrl']), decodeUriComponent('%0A')), ''), if(not(equals(outputs('Compose_Variables_Object')?['filePath'], null)), concat('- **File path:** ', string(outputs('Compose_Variables_Object')?['filePath']), decodeUriComponent('%0A')), ''), if(not(equals(outputs('Compose_Variables_Object')?['itemId'], null)), concat('- **Recycle bin item ID:** ', string(outputs('Compose_Variables_Object')?['itemId']), decodeUriComponent('%0A')), ''), if(not(equals(outputs('Compose_Variables_Object')?['softwareName'], null)), concat('- **Software:** ', string(outputs('Compose_Variables_Object')?['softwareName']), decodeUriComponent('%0A')), ''), if(not(equals(outputs('Compose_Variables_Object')?['version'], null)), concat('- **Version:** ', string(outputs('Compose_Variables_Object')?['version']), decodeUriComponent('%0A')), ''), if(not(equals(outputs('Compose_Variables_Object')?['displayName'], null)), concat('- **New hire:** ', string(outputs('Compose_Variables_Object')?['displayName']), decodeUriComponent('%0A')), ''), if(not(equals(outputs('Compose_Variables_Object')?['upn'], null)), concat('- **User principal name:** ', string(outputs('Compose_Variables_Object')?['upn']), decodeUriComponent('%0A')), ''), if(not(equals(outputs('Compose_Variables_Object')?['jobTitle'], null)), concat('- **Job title:** ', string(outputs('Compose_Variables_Object')?['jobTitle']), decodeUriComponent('%0A')), ''), if(not(equals(outputs('Compose_Variables_Object')?['department'], null)), concat('- **Department:** ', string(outputs('Compose_Variables_Object')?['department']), decodeUriComponent('%0A')), ''), if(not(equals(outputs('Compose_Variables_Object')?['managerUpn'], null)), concat('- **Manager:** ', string(outputs('Compose_Variables_Object')?['managerUpn']), decodeUriComponent('%0A')), ''), if(not(equals(outputs('Compose_Variables_Object')?['officeLocation'], null)), concat('- **Office:** ', string(outputs('Compose_Variables_Object')?['officeLocation']), decodeUriComponent('%0A')), ''), if(not(equals(outputs('Compose_Variables_Object')?['startDate'], null)), concat('- **Start date:** ', string(outputs('Compose_Variables_Object')?['startDate']), decodeUriComponent('%0A')), ''), if(not(equals(outputs('Compose_Variables_Object')?['deviceModel'], null)), concat('- **Device model:** ', string(outputs('Compose_Variables_Object')?['deviceModel']), decodeUriComponent('%0A')), ''), if(not(equals(outputs('Compose_Variables_Object')?['defaultGroups'], null)), concat('- **Default groups:** ', string(outputs('Compose_Variables_Object')?['defaultGroups']), decodeUriComponent('%0A')), ''), if(not(equals(outputs('Compose_Variables_Object')?['transferOneDriveTo'], null)), concat('- **Transfer OneDrive to:** ', string(outputs('Compose_Variables_Object')?['transferOneDriveTo']), decodeUriComponent('%0A')), ''), if(not(equals(outputs('Compose_Variables_Object')?['forwardEmailTo'], null)), concat('- **Forward email to:** ', string(outputs('Compose_Variables_Object')?['forwardEmailTo']), decodeUriComponent('%0A')), ''), if(not(equals(outputs('Compose_Variables_Object')?['lastDay'], null)), concat('- **Last day:** ', string(outputs('Compose_Variables_Object')?['lastDay']), decodeUriComponent('%0A')), ''), if(not(equals(outputs('Compose_Variables_Object')?['reason'], null)), concat('- **Reason:** ', string(outputs('Compose_Variables_Object')?['reason']), decodeUriComponent('%0A')), ''), if(not(equals(outputs('Compose_Variables_Object')?['justification'], null)), concat('- **Justification:** ', string(outputs('Compose_Variables_Object')?['justification']), decodeUriComponent('%0A')), ''), if(not(equals(outputs('Compose_Variables_Object')?['businessJustification'], null)), concat('- **Business justification:** ', string(outputs('Compose_Variables_Object')?['businessJustification']), decodeUriComponent('%0A')), ''), if(and(not(equals(trim(coalesce(outputs('Get_RITM_Fresh')?['body/Variables'], '')), '')), not(and(startsWith(trim(coalesce(outputs('Get_RITM_Fresh')?['body/Variables'], '')), '{'), endsWith(trim(coalesce(outputs('Get_RITM_Fresh')?['body/Variables'], '')), '}')))), concat('- **Details:** ', outputs('Get_RITM_Fresh')?['body/Variables'], decodeUriComponent('%0A')), ''), decodeUriComponent('%0A'), '**SLA:** ', string(body('Get_Catalog_Item')?['SlaDays']), ' day(s)', decodeUriComponent('%0A%0A'), '**Tracking:** [Open in SharePoint](https://contoso.sharepoint.com/sites/ITSM/Lists/Request%20Items/DispForm.aspx?ID=', string(outputs('Get_RITM_Fresh')?['body/ID']), ')')}",
           "description": "Human-readable approval body. Keep field labels explicit so approvers do not see raw Variables JSON."
         },
         "Create_Approval": {
@@ -135,11 +130,11 @@
             },
             "parameters": {
               "approvalType": "CustomResponse",
-              "ApprovalCreationInput/title": "@{concat(triggerOutputs()?['body/RitmNumber'], ': ', body('Get_Catalog_Item')?['ItemName'])}",
+              "ApprovalCreationInput/title": "@{concat(outputs('Get_RITM_Fresh')?['body/RitmNumber'], ': ', body('Get_Catalog_Item')?['ItemName'])}",
               "ApprovalCreationInput/assignedTo": "@outputs('Compose_Approver_Upn')",
               "ApprovalCreationInput/details": "@outputs('Compose_Approval_Details')",
-              "ApprovalCreationInput/itemLink": "@{concat('https://contoso.sharepoint.com/sites/ITSM/Lists/Request%20Items/DispForm.aspx?ID=', string(triggerOutputs()?['body/ID']))}",
-              "ApprovalCreationInput/itemLinkDescription": "@{concat('RITM ', triggerOutputs()?['body/RitmNumber'])}",
+              "ApprovalCreationInput/itemLink": "@{concat('https://contoso.sharepoint.com/sites/ITSM/Lists/Request%20Items/DispForm.aspx?ID=', string(outputs('Get_RITM_Fresh')?['body/ID']))}",
+              "ApprovalCreationInput/itemLinkDescription": "@{concat('RITM ', outputs('Get_RITM_Fresh')?['body/RitmNumber'])}",
               "ApprovalCreationInput/responseOptions": [
                 "Approve",
                 "Reject"
@@ -155,6 +150,9 @@
             "Create_Approval": [
               "Succeeded"
             ]
+          },
+          "limit": {
+            "timeout": "PT24H"
           },
           "type": "OpenApiConnectionWebhook",
           "inputs": {
@@ -187,16 +185,16 @@
                 "parameters": {
                   "dataset": "https://contoso.sharepoint.com/sites/ITSM",
                   "table": "Request Items",
-                  "id": "@triggerOutputs()?['body/ID']",
-                  "item/Title": "@triggerOutputs()?['body/Title']",
-                  "item/RitmNumber": "@triggerOutputs()?['body/RitmNumber']",
-                  "item/ParentTicket/Id": "@triggerOutputs()?['body/ParentTicket/Id']",
-                  "item/CatalogItem/Id": "@triggerOutputs()?['body/CatalogItem/Id']",
-                  "item/RequestedFor/Claims": "@triggerOutputs()?['body/RequestedFor/Claims']",
+                  "id": "@outputs('Get_RITM_Fresh')?['body/ID']",
+                  "item/Title": "@outputs('Get_RITM_Fresh')?['body/Title']",
+                  "item/RitmNumber": "@outputs('Get_RITM_Fresh')?['body/RitmNumber']",
+                  "item/ParentTicket/Id": "@outputs('Get_RITM_Fresh')?['body/ParentTicket/Id']",
+                  "item/CatalogItem/Id": "@outputs('Get_RITM_Fresh')?['body/CatalogItem/Id']",
+                  "item/RequestedFor/Claims": "@outputs('Get_RITM_Fresh')?['body/RequestedFor/Claims']",
                   "item/RitmState/Value": "Approved",
-                  "item/OpenedDate": "@triggerOutputs()?['body/OpenedDate']",
-                  "item/ConfidentialityLevel/Value": "@triggerOutputs()?['body/ConfidentialityLevel/Value']",
-                  "item/AssignedTo/Claims": "@triggerOutputs()?['body/RequestedFor/Claims']",
+                  "item/OpenedDate": "@outputs('Get_RITM_Fresh')?['body/OpenedDate']",
+                  "item/ConfidentialityLevel/Value": "@outputs('Get_RITM_Fresh')?['body/ConfidentialityLevel/Value']",
+                  "item/AssignedTo/Claims": "@outputs('Get_RITM_Fresh')?['body/RequestedFor/Claims']",
                   "item/WorkNotes": "@{concat('Approved by ', outputs('Compose_Approver_Upn'), ' at ', utcNow(), '. Comments: ', coalesce(first(body('Wait_For_Approval')?['responses'])?['comments'], '(none)'), '. Spawning ', string(length(if(empty(coalesce(body('Get_Catalog_Item')?['TaskTemplates'], '')), createArray(1), json(body('Get_Catalog_Item')?['TaskTemplates'])))), ' SCTASK(s).')}"
                 },
                 "authentication": "@parameters('$authentication')"
@@ -233,7 +231,7 @@
                       "table": "Tasks",
                       "item/Title": "@outputs('Compose_Sctask_Number_Approved')",
                       "item/TaskNumber": "@outputs('Compose_Sctask_Number_Approved')",
-                      "item/ParentRitm/Id": "@triggerOutputs()?['body/ID']",
+                      "item/ParentRitm/Id": "@outputs('Get_RITM_Fresh')?['body/ID']",
                       "item/TaskState/Value": "Open",
                       "item/ShortDescription": "@items('ForEach_Spawn_SCTASK')?['shortDescription']",
                       "item/Description": "@{concat('Auto-generated from catalog item ', body('Get_Catalog_Item')?['Title'], '. Approved by ', outputs('Compose_Approver_Upn'), '. JobType: ', coalesce(items('ForEach_Spawn_SCTASK')?['jobType'], ''))}",
@@ -242,6 +240,24 @@
                       "item/JobType": "@items('ForEach_Spawn_SCTASK')?['jobType']"
                     },
                     "authentication": "@parameters('$authentication')"
+                  }
+                },
+                "Call_Bridge": {
+                  "runAfter": {
+                    "Create_SCTASK_Approved": [
+                      "Succeeded"
+                    ]
+                  },
+                  "type": "Http",
+                  "inputs": {
+                    "method": "POST",
+                    "uri": "https://REDACTED-FLOW-TRIGGER-URL",
+                    "headers": {
+                      "Content-Type": "application/json"
+                    },
+                    "body": {
+                      "taskId": "@outputs('Create_SCTASK_Approved')?['body/ID']"
+                    }
                   }
                 }
               },
@@ -268,8 +284,8 @@
                 "parameters": {
                   "poster": "Flow bot",
                   "location": "Chat with Flow bot",
-                  "body/recipient": "@{coalesce(last(split(coalesce(triggerOutputs()?['body/RequestedFor/Claims'], ''), '|')), 'catherine.han@flowstudio.app')}",
-                  "body/messageBody": "@{concat('<h2>Request approved</h2><p><b>RITM:</b> ', triggerOutputs()?['body/RitmNumber'], ' (item ID ', string(triggerOutputs()?['body/ID']), ')</p><p><b>Parent ticket item ID:</b> ', string(triggerOutputs()?['body/ParentTicket/Id']), '</p><p><b>Catalog item:</b> ', body('Get_Catalog_Item')?['ItemName'], '</p><p><b>Approved by:</b> ', outputs('Compose_Approver_Upn'), '</p><p><b>Approved at:</b> ', utcNow(), '</p><p><b>Next step:</b> SCTASK records were created and automation will continue from the task bridge.</p><p><a href=\"https://contoso.sharepoint.com/sites/ITSM/Lists/Request%20Items/DispForm.aspx?ID=', string(triggerOutputs()?['body/ID']), '\">Open request item</a></p>')}"
+                  "body/recipient": "@{coalesce(last(split(coalesce(outputs('Get_RITM_Fresh')?['body/RequestedFor/Claims'], ''), '|')), 'catherine.han@flowstudio.app')}",
+                  "body/messageBody": "@{concat('<h2>Request approved</h2><p><b>RITM:</b> ', outputs('Get_RITM_Fresh')?['body/RitmNumber'], ' (item ID ', string(outputs('Get_RITM_Fresh')?['body/ID']), ')</p><p><b>Parent ticket item ID:</b> ', string(outputs('Get_RITM_Fresh')?['body/ParentTicket/Id']), '</p><p><b>Catalog item:</b> ', body('Get_Catalog_Item')?['ItemName'], '</p><p><b>Approved by:</b> ', outputs('Compose_Approver_Upn'), '</p><p><b>Approved at:</b> ', utcNow(), '</p><p><b>Next step:</b> SCTASK records were created and automation will continue from the task bridge.</p><p><a href=\"https://contoso.sharepoint.com/sites/ITSM/Lists/Request%20Items/DispForm.aspx?ID=', string(outputs('Get_RITM_Fresh')?['body/ID']), '\">Open request item</a></p>')}"
                 },
                 "authentication": "@parameters('$authentication')"
               },
@@ -277,7 +293,7 @@
             }
           },
           "runAfter": {
-            "Wait_For_Approval": [
+            "Compose_Effective_Approval": [
               "Succeeded"
             ]
           },
@@ -295,15 +311,15 @@
                   "parameters": {
                     "dataset": "https://contoso.sharepoint.com/sites/ITSM",
                     "table": "Request Items",
-                    "id": "@triggerOutputs()?['body/ID']",
-                    "item/Title": "@triggerOutputs()?['body/Title']",
-                    "item/RitmNumber": "@triggerOutputs()?['body/RitmNumber']",
-                    "item/ParentTicket/Id": "@triggerOutputs()?['body/ParentTicket/Id']",
-                    "item/CatalogItem/Id": "@triggerOutputs()?['body/CatalogItem/Id']",
-                    "item/RequestedFor/Claims": "@triggerOutputs()?['body/RequestedFor/Claims']",
+                    "id": "@outputs('Get_RITM_Fresh')?['body/ID']",
+                    "item/Title": "@outputs('Get_RITM_Fresh')?['body/Title']",
+                    "item/RitmNumber": "@outputs('Get_RITM_Fresh')?['body/RitmNumber']",
+                    "item/ParentTicket/Id": "@outputs('Get_RITM_Fresh')?['body/ParentTicket/Id']",
+                    "item/CatalogItem/Id": "@outputs('Get_RITM_Fresh')?['body/CatalogItem/Id']",
+                    "item/RequestedFor/Claims": "@outputs('Get_RITM_Fresh')?['body/RequestedFor/Claims']",
                     "item/RitmState/Value": "Closed Incomplete",
-                    "item/OpenedDate": "@triggerOutputs()?['body/OpenedDate']",
-                    "item/ConfidentialityLevel/Value": "@triggerOutputs()?['body/ConfidentialityLevel/Value']",
+                    "item/OpenedDate": "@outputs('Get_RITM_Fresh')?['body/OpenedDate']",
+                    "item/ConfidentialityLevel/Value": "@outputs('Get_RITM_Fresh')?['body/ConfidentialityLevel/Value']",
                     "item/CloseCode/Value": "Rejected",
                     "item/ClosedDate": "@utcNow()",
                     "item/CloseNotes": "@{concat('Approval result: ', body('Wait_For_Approval')?['outcome'], '. Approver: ', coalesce(first(body('Wait_For_Approval')?['responses'])?['responder']?['displayName'], outputs('Compose_Approver_Upn')), ' (', coalesce(first(body('Wait_For_Approval')?['responses'])?['responder']?['email'], outputs('Compose_Approver_Upn')), '). Responded at: ', coalesce(first(body('Wait_For_Approval')?['responses'])?['responseDate'], utcNow()), '. Reason/comments: ', coalesce(first(body('Wait_For_Approval')?['responses'])?['comments'], '(none provided)'))}"
@@ -327,7 +343,7 @@
                   "parameters": {
                     "dataset": "https://contoso.sharepoint.com/sites/ITSM",
                     "table": "Tickets",
-                    "id": "@triggerOutputs()?['body/ParentTicket/Id']"
+                    "id": "@outputs('Get_RITM_Fresh')?['body/ParentTicket/Id']"
                   },
                   "authentication": "@parameters('$authentication')"
                 }
@@ -348,7 +364,7 @@
                   "parameters": {
                     "dataset": "https://contoso.sharepoint.com/sites/ITSM",
                     "table": "Tickets",
-                    "id": "@triggerOutputs()?['body/ParentTicket/Id']",
+                    "id": "@outputs('Get_RITM_Fresh')?['body/ParentTicket/Id']",
                     "item/Title": "@body('Get_Parent_Ticket_Rejected')?['Title']",
                     "item/TicketType/Value": "@body('Get_Parent_Ticket_Rejected')?['TicketType']?['Value']",
                     "item/TicketTypeValidationStatus/Value": "@coalesce(body('Get_Parent_Ticket_Rejected')?['TicketTypeValidationStatus']?['Value'], 'Validated')",
@@ -384,7 +400,7 @@
                     "poster": "Flow bot",
                     "location": "Chat with Flow bot",
                     "body/recipient": "@coalesce(body('Get_Parent_Ticket_Rejected')?['RequestedForUser']?['Email'], last(split(coalesce(body('Get_Parent_Ticket_Rejected')?['RequestedForUser']?['Claims'], body('Get_Parent_Ticket_Rejected')?['Caller']?['Claims'], ''), '|')), 'catherine.han@flowstudio.app')",
-                    "body/messageBody": "@{concat('<h2>Request denied</h2><p><b>RITM:</b> ', triggerOutputs()?['body/RitmNumber'], ' (item ID ', string(triggerOutputs()?['body/ID']), ')</p><p><b>Parent ticket:</b> ', body('Get_Parent_Ticket_Rejected')?['Title'], ' (item ID ', string(triggerOutputs()?['body/ParentTicket/Id']), ')</p><p><b>Catalog item:</b> ', body('Get_Catalog_Item')?['ItemName'], '</p><p><b>Denied by:</b> ', outputs('Compose_Approver_Upn'), '</p><p><b>Denied at:</b> ', utcNow(), '</p><p><b>Reason:</b> ', coalesce(first(body('Wait_For_Approval')?['responses'])?['comments'], '(none provided)'), '</p><p>The parent ticket was cancelled and the reason was added to ticket work notes.</p><p><a href=\\\"https://contoso.sharepoint.com/sites/ITSM/Lists/Tickets/DispForm.aspx?ID=', string(triggerOutputs()?['body/ParentTicket/Id']), '\\\">Open ticket</a></p>')}"
+                    "body/messageBody": "@{concat('<h2>Request denied</h2><p><b>RITM:</b> ', outputs('Get_RITM_Fresh')?['body/RitmNumber'], ' (item ID ', string(outputs('Get_RITM_Fresh')?['body/ID']), ')</p><p><b>Parent ticket:</b> ', body('Get_Parent_Ticket_Rejected')?['Title'], ' (item ID ', string(outputs('Get_RITM_Fresh')?['body/ParentTicket/Id']), ')</p><p><b>Catalog item:</b> ', body('Get_Catalog_Item')?['ItemName'], '</p><p><b>Denied by:</b> ', outputs('Compose_Approver_Upn'), '</p><p><b>Denied at:</b> ', utcNow(), '</p><p><b>Reason:</b> ', coalesce(first(body('Wait_For_Approval')?['responses'])?['comments'], '(none provided)'), '</p><p>The parent ticket was cancelled and the reason was added to ticket work notes.</p><p><a href=\\\"https://contoso.sharepoint.com/sites/ITSM/Lists/Tickets/DispForm.aspx?ID=', string(outputs('Get_RITM_Fresh')?['body/ParentTicket/Id']), '\\\">Open ticket</a></p>')}"
                   },
                   "authentication": "@parameters('$authentication')"
                 },
@@ -406,7 +422,7 @@
                         "poster": "Flow bot",
                         "location": "Chat with Flow bot",
                         "body/recipient": "@coalesce(items('ForEach_TicketFollower_Denial')?['Email'], items('ForEach_TicketFollower_Denial')?['EMail'], last(split(coalesce(items('ForEach_TicketFollower_Denial')?['Claims'], ''), '|')))",
-                        "body/messageBody": "@{concat('<h2>Request denied</h2><p><b>RITM:</b> ', triggerOutputs()?['body/RitmNumber'], ' (item ID ', string(triggerOutputs()?['body/ID']), ')</p><p><b>Parent ticket:</b> ', body('Get_Parent_Ticket_Rejected')?['Title'], ' (item ID ', string(triggerOutputs()?['body/ParentTicket/Id']), ')</p><p><b>Catalog item:</b> ', body('Get_Catalog_Item')?['ItemName'], '</p><p><b>Denied by:</b> ', outputs('Compose_Approver_Upn'), '</p><p><b>Denied at:</b> ', utcNow(), '</p><p><b>Reason:</b> ', coalesce(first(body('Wait_For_Approval')?['responses'])?['comments'], '(none provided)'), '</p><p>The parent ticket was cancelled and the reason was added to ticket work notes.</p><p><a href=\\\"https://contoso.sharepoint.com/sites/ITSM/Lists/Tickets/DispForm.aspx?ID=', string(triggerOutputs()?['body/ParentTicket/Id']), '\\\">Open ticket</a></p>')}"
+                        "body/messageBody": "@{concat('<h2>Request denied</h2><p><b>RITM:</b> ', outputs('Get_RITM_Fresh')?['body/RitmNumber'], ' (item ID ', string(outputs('Get_RITM_Fresh')?['body/ID']), ')</p><p><b>Parent ticket:</b> ', body('Get_Parent_Ticket_Rejected')?['Title'], ' (item ID ', string(outputs('Get_RITM_Fresh')?['body/ParentTicket/Id']), ')</p><p><b>Catalog item:</b> ', body('Get_Catalog_Item')?['ItemName'], '</p><p><b>Denied by:</b> ', outputs('Compose_Approver_Upn'), '</p><p><b>Denied at:</b> ', utcNow(), '</p><p><b>Reason:</b> ', coalesce(first(body('Wait_For_Approval')?['responses'])?['comments'], '(none provided)'), '</p><p>The parent ticket was cancelled and the reason was added to ticket work notes.</p><p><a href=\\\"https://contoso.sharepoint.com/sites/ITSM/Lists/Tickets/DispForm.aspx?ID=', string(outputs('Get_RITM_Fresh')?['body/ParentTicket/Id']), '\\\">Open ticket</a></p>')}"
                       },
                       "authentication": "@parameters('$authentication')"
                     }
@@ -425,16 +441,96 @@
             "and": [
               {
                 "equals": [
-                  "@body('Wait_For_Approval')?['responses']?[0]?['approverResponse']",
+                  "@outputs('Compose_Effective_Approval')",
                   "Approve"
                 ]
               }
             ]
           },
           "type": "If"
+        },
+        "Compose_Fallback_Approver": {
+          "runAfter": {
+            "Wait_For_Approval": [
+              "TimedOut"
+            ]
+          },
+          "type": "Compose",
+          "inputs": "Baker@flowstudio.app"
+        },
+        "Create_Escalation_Approval": {
+          "runAfter": {
+            "Compose_Fallback_Approver": [
+              "Succeeded"
+            ]
+          },
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_approvals",
+              "connectionName": "shared_approvals",
+              "operationId": "CreateAnApproval"
+            },
+            "parameters": {
+              "approvalType": "CustomResponse",
+              "ApprovalCreationInput/title": "@{concat('[ESCALATED] ', outputs('Get_RITM_Fresh')?['body/RitmNumber'], ': ', body('Get_Catalog_Item')?['ItemName'])}",
+              "ApprovalCreationInput/assignedTo": "@outputs('Compose_Fallback_Approver')",
+              "ApprovalCreationInput/details": "@outputs('Compose_Approval_Details')",
+              "ApprovalCreationInput/itemLink": "@{concat('https://contoso.sharepoint.com/sites/ITSM/Lists/Request%20Items/DispForm.aspx?ID=', string(outputs('Get_RITM_Fresh')?['body/ID']))}",
+              "ApprovalCreationInput/itemLinkDescription": "@{concat('RITM ', outputs('Get_RITM_Fresh')?['body/RitmNumber'])}",
+              "ApprovalCreationInput/responseOptions": [
+                "Approve",
+                "Reject"
+              ],
+              "ApprovalCreationInput/enableNotifications": true,
+              "ApprovalCreationInput/enableReassignment": false
+            },
+            "authentication": "@parameters('$authentication')"
+          }
+        },
+        "Wait_For_Escalation_Approval": {
+          "runAfter": {
+            "Create_Escalation_Approval": [
+              "Succeeded"
+            ]
+          },
+          "limit": {
+            "timeout": "PT24H"
+          },
+          "type": "OpenApiConnectionWebhook",
+          "inputs": {
+            "host": {
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_approvals",
+              "connectionName": "shared_approvals",
+              "operationId": "WaitForAnApproval"
+            },
+            "parameters": {
+              "approvalName": "@body('Create_Escalation_Approval')?['name']"
+            },
+            "authentication": "@parameters('$authentication')"
+          }
+        },
+        "Compose_Effective_Approval": {
+          "runAfter": {
+            "Wait_For_Approval": [
+              "Succeeded",
+              "TimedOut"
+            ],
+            "Wait_For_Escalation_Approval": [
+              "Succeeded",
+              "TimedOut",
+              "Skipped"
+            ]
+          },
+          "type": "Compose",
+          "inputs": "@if(equals(coalesce(body('Wait_For_Approval')?['responses']?[0]?['approverResponse'],''),'Approve'),'Approve',coalesce(body('Wait_For_Escalation_Approval')?['responses']?[0]?['approverResponse'],'Reject'))"
         }
       },
-      "runAfter": {},
+      "runAfter": {
+        "Get_RITM_Fresh": [
+          "Succeeded"
+        ]
+      },
       "else": {
         "actions": {}
       },
@@ -442,14 +538,31 @@
         "and": [
           {
             "equals": [
-              "@triggerOutputs()?['body/RitmState/Value']",
+              "@outputs('Get_RITM_Fresh')?['body/RitmState/Value']",
               "Pending Approval"
             ]
           }
         ]
       },
       "type": "If"
+    },
+    "Get_RITM_Fresh": {
+      "runAfter": {},
+      "type": "OpenApiConnection",
+      "inputs": {
+        "host": {
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+          "connectionName": "shared_sharepointonline",
+          "operationId": "GetItem"
+        },
+        "parameters": {
+          "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+          "table": "Request Items",
+          "id": "@triggerBody()?['ritmId']"
+        },
+        "authentication": "@parameters('$authentication')"
+      }
     }
   },
-  "description": "ACTION 3: RITM approval now starts when validation updates a RITM to Pending Approval. #flowstudio-mcp"
+  "description": "3.3 RITM-Approval. 2026-06-02: per spawned SCTASK, HTTP-calls 3.4 bridge {taskId}. #flowstudio-mcp"
 }

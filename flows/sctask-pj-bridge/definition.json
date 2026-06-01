@@ -12,28 +12,23 @@
     }
   },
   "triggers": {
-    "When_a_Task_is_Created": {
-      "recurrence": {
-        "frequency": "Minute",
-        "interval": 1
-      },
-      "evaluatedRecurrence": {
-        "frequency": "Minute",
-        "interval": 1
-      },
-      "splitOn": "@triggerOutputs()?['body/value']",
-      "type": "OpenApiConnection",
+    "manual": {
+      "metadata": {},
+      "type": "Request",
+      "kind": "Http",
       "inputs": {
-        "host": {
-          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
-          "connectionName": "shared_sharepointonline",
-          "operationId": "GetOnNewItems"
+        "schema": {
+          "type": "object",
+          "required": [
+            "taskId"
+          ],
+          "properties": {
+            "taskId": {
+              "type": "integer"
+            }
+          }
         },
-        "parameters": {
-          "dataset": "https://contoso.sharepoint.com/sites/ITSM",
-          "table": "Tasks"
-        },
-        "authentication": "@parameters('$authentication')"
+        "triggerAuthenticationType": "All"
       }
     }
   },
@@ -52,7 +47,7 @@
             "parameters": {
               "dataset": "https://contoso.sharepoint.com/sites/ITSM",
               "table": "Request Items",
-              "id": "@triggerOutputs()?['body/ParentRitm/Id']"
+              "id": "@outputs('Get_Task_Fresh')?['body/ParentRitm/Id']"
             },
             "authentication": "@parameters('$authentication')"
           }
@@ -101,13 +96,13 @@
                 "parameters": {
                   "dataset": "https://contoso.sharepoint.com/sites/ITSM",
                   "table": "Tasks",
-                  "id": "@triggerOutputs()?['body/ID']",
-                  "item/Title": "@triggerOutputs()?['body/Title']",
-                  "item/TaskNumber": "@triggerOutputs()?['body/TaskNumber']",
-                  "item/ParentRitm/Id": "@triggerOutputs()?['body/ParentRitm/Id']",
+                  "id": "@outputs('Get_Task_Fresh')?['body/ID']",
+                  "item/Title": "@outputs('Get_Task_Fresh')?['body/Title']",
+                  "item/TaskNumber": "@outputs('Get_Task_Fresh')?['body/TaskNumber']",
+                  "item/ParentRitm/Id": "@outputs('Get_Task_Fresh')?['body/ParentRitm/Id']",
                   "item/TaskState/Value": "Closed Incomplete",
-                  "item/ShortDescription": "@triggerOutputs()?['body/ShortDescription']",
-                  "item/OpenedDate": "@triggerOutputs()?['body/OpenedDate']",
+                  "item/ShortDescription": "@outputs('Get_Task_Fresh')?['body/ShortDescription']",
+                  "item/OpenedDate": "@outputs('Get_Task_Fresh')?['body/OpenedDate']",
                   "item/ClosedDate": "@utcNow()",
                   "item/WorkNotes": "@{concat('SCTASK-PJ bridge failed fast: groups.addMember requires a validated non-empty RITM.Variables.groupId. RITM Variables: ', coalesce(body('Get_Parent_RITM')?['Variables'], '(empty)'))}"
                 },
@@ -138,7 +133,7 @@
             "and": [
               {
                 "equals": [
-                  "@triggerOutputs()?['body/JobType']",
+                  "@outputs('Get_Task_Fresh')?['body/JobType']",
                   "groups.addMember"
                 ]
               },
@@ -159,7 +154,7 @@
             ]
           },
           "type": "Compose",
-          "inputs": "@{concat('PJ-', formatDateTime(utcNow(),'yyMMddHHmmss'), '-', triggerOutputs()?['body/ID'])}"
+          "inputs": "@{concat('PJ-', formatDateTime(utcNow(),'yyMMddHHmmss'), '-', outputs('Get_Task_Fresh')?['body/ID'])}"
         },
         "Compose_TargetJson": {
           "runAfter": {
@@ -181,7 +176,7 @@
             ]
           },
           "type": "Compose",
-          "inputs": "@{concat('SCTASK-', triggerOutputs()?['body/TaskNumber'], '-', triggerOutputs()?['body/JobType'])}"
+          "inputs": "@{concat('SCTASK-', outputs('Get_Task_Fresh')?['body/TaskNumber'], '-', outputs('Get_Task_Fresh')?['body/JobType'])}"
         },
         "Compose_CorrelationId": {
           "runAfter": {
@@ -209,7 +204,7 @@
               "dataset": "https://contoso.sharepoint.com/sites/ITSM",
               "table": "Provisioning Jobs",
               "item/Title": "@outputs('Compose_PJ_Number')",
-              "item/JobType": "@triggerOutputs()?['body/JobType']",
+              "item/JobType": "@outputs('Get_Task_Fresh')?['body/JobType']",
               "item/ParentTicket/Id": "@body('Get_Parent_Ticket')?['ID']",
               "item/JobStatus/Value": "AwaitingApproval",
               "item/CallerUpn": "@last(split(coalesce(body('Get_Parent_Ticket')?['Caller']?['Email'], body('Get_Parent_Ticket')?['Caller']?['Claims'], ''), '|'))",
@@ -217,7 +212,7 @@
               "item/ArgsJson": "@string(outputs('Parse_RITM_Variables'))",
               "item/IdempotencyKey": "@outputs('Compose_IdempotencyKey')",
               "item/CorrelationId": "@outputs('Compose_CorrelationId')",
-              "item/Rationale": "@{concat('Auto-created by SCTASK-PJ bridge from SCTASK ', triggerOutputs()?['body/TaskNumber'], ' under RITM ', body('Get_Parent_RITM')?['RitmNumber'], '. Approval inherited from parent RITM.')}"
+              "item/Rationale": "@{concat('Auto-created by SCTASK-PJ bridge from SCTASK ', outputs('Get_Task_Fresh')?['body/TaskNumber'], ' under RITM ', body('Get_Parent_RITM')?['RitmNumber'], '. Approval inherited from parent RITM.')}"
             },
             "authentication": "@parameters('$authentication')"
           }
@@ -231,7 +226,7 @@
           "type": "Http",
           "inputs": {
             "method": "POST",
-            "uri": "https://contoso-flow-trigger-url-REDACTED",
+            "uri": "https://REDACTED-FLOW-TRIGGER-URL",
             "headers": {
               "Content-Type": "application/json"
             },
@@ -241,7 +236,7 @@
               "callerUpn": "@last(split(coalesce(body('Get_Parent_Ticket')?['Caller']?['Email'], body('Get_Parent_Ticket')?['Caller']?['Claims'], ''), '|'))",
               "approverUpn": "catherine.han@flowstudio.app",
               "approvalSessionId": "@{concat('RITM-', body('Get_Parent_RITM')?['RitmNumber'])}",
-              "jobType": "@triggerOutputs()?['body/JobType']",
+              "jobType": "@outputs('Get_Task_Fresh')?['body/JobType']",
               "correlationId": "@outputs('Compose_CorrelationId')"
             }
           }
@@ -262,15 +257,15 @@
             "parameters": {
               "dataset": "https://contoso.sharepoint.com/sites/ITSM",
               "table": "Tasks",
-              "id": "@triggerOutputs()?['body/ID']",
-              "item/Title": "@triggerOutputs()?['body/Title']",
-              "item/TaskNumber": "@triggerOutputs()?['body/TaskNumber']",
-              "item/ParentRitm/Id": "@triggerOutputs()?['body/ParentRitm/Id']",
+              "id": "@outputs('Get_Task_Fresh')?['body/ID']",
+              "item/Title": "@outputs('Get_Task_Fresh')?['body/Title']",
+              "item/TaskNumber": "@outputs('Get_Task_Fresh')?['body/TaskNumber']",
+              "item/ParentRitm/Id": "@outputs('Get_Task_Fresh')?['body/ParentRitm/Id']",
               "item/TaskState/Value": "In Progress",
-              "item/ShortDescription": "@triggerOutputs()?['body/ShortDescription']",
-              "item/OpenedDate": "@triggerOutputs()?['body/OpenedDate']",
+              "item/ShortDescription": "@outputs('Get_Task_Fresh')?['body/ShortDescription']",
+              "item/OpenedDate": "@outputs('Get_Task_Fresh')?['body/OpenedDate']",
               "item/LinkedJobId": "@body('Create_PJ')?['Title']",
-              "item/WorkNotes": "@{concat('Auto-bridged to PJ ', body('Create_PJ')?['Title'], ' (jobType=', triggerOutputs()?['body/JobType'], '). Dispatcher response: ', string(body('Call_Dispatcher')), '. Awaiting executor pickup.')}"
+              "item/WorkNotes": "@{concat('Auto-bridged to PJ ', body('Create_PJ')?['Title'], ' (jobType=', outputs('Get_Task_Fresh')?['body/JobType'], '). Dispatcher response: ', string(body('Call_Dispatcher')), '. Awaiting executor pickup.')}"
             },
             "authentication": "@parameters('$authentication')"
           }
@@ -337,21 +332,43 @@
             "parameters": {
               "dataset": "https://contoso.sharepoint.com/sites/ITSM",
               "table": "Tasks",
-              "id": "@triggerOutputs()?['body/ID']",
-              "item/Title": "@triggerOutputs()?['body/Title']",
-              "item/TaskNumber": "@triggerOutputs()?['body/TaskNumber']",
-              "item/ParentRitm/Id": "@triggerOutputs()?['body/ParentRitm/Id']",
+              "id": "@outputs('Get_Task_Fresh')?['body/ID']",
+              "item/Title": "@outputs('Get_Task_Fresh')?['body/Title']",
+              "item/TaskNumber": "@outputs('Get_Task_Fresh')?['body/TaskNumber']",
+              "item/ParentRitm/Id": "@outputs('Get_Task_Fresh')?['body/ParentRitm/Id']",
               "item/TaskState/Value": "@if(equals(body('Get_PJ_Status')?['JobStatus']?['Value'], 'Succeeded'), 'Closed Complete', 'Closed Incomplete')",
-              "item/ShortDescription": "@triggerOutputs()?['body/ShortDescription']",
-              "item/OpenedDate": "@triggerOutputs()?['body/OpenedDate']",
+              "item/ShortDescription": "@outputs('Get_Task_Fresh')?['body/ShortDescription']",
+              "item/OpenedDate": "@outputs('Get_Task_Fresh')?['body/OpenedDate']",
               "item/ClosedDate": "@utcNow()",
               "item/WorkNotes": "@{concat('PJ ', body('Create_PJ')?['Title'], ' reached terminal state: ', body('Get_PJ_Status')?['JobStatus']?['Value'], '. Closing SCTASK accordingly.')}"
             },
             "authentication": "@parameters('$authentication')"
           }
+        },
+        "Call_Orchestrator_On_Task_Done": {
+          "runAfter": {
+            "Patch_SCTASK_Final_State": [
+              "Succeeded"
+            ]
+          },
+          "type": "Http",
+          "inputs": {
+            "method": "POST",
+            "uri": "https://REDACTED-FLOW-TRIGGER-URL",
+            "headers": {
+              "Content-Type": "application/json"
+            },
+            "body": {
+              "taskId": "@outputs('Get_Task_Fresh')?['body/ID']"
+            }
+          }
         }
       },
-      "runAfter": {},
+      "runAfter": {
+        "Get_Task_Fresh": [
+          "Succeeded"
+        ]
+      },
       "else": {
         "actions": {}
       },
@@ -360,27 +377,44 @@
           {
             "not": {
               "equals": [
-                "@coalesce(triggerOutputs()?['body/JobType'], '')",
+                "@coalesce(outputs('Get_Task_Fresh')?['body/JobType'], '')",
                 ""
               ]
             }
           },
           {
             "contains": [
-              "@coalesce(triggerOutputs()?['body/JobType'], '')",
+              "@coalesce(outputs('Get_Task_Fresh')?['body/JobType'], '')",
               "."
             ]
           },
           {
             "equals": [
-              "@coalesce(triggerOutputs()?['body/LinkedJobId'], '')",
+              "@coalesce(outputs('Get_Task_Fresh')?['body/LinkedJobId'], '')",
               ""
             ]
           }
         ]
       },
       "type": "If"
+    },
+    "Get_Task_Fresh": {
+      "runAfter": {},
+      "type": "OpenApiConnection",
+      "inputs": {
+        "host": {
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+          "connectionName": "shared_sharepointonline",
+          "operationId": "GetItem"
+        },
+        "parameters": {
+          "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+          "table": "Tasks",
+          "id": "@triggerBody()?['taskId']"
+        },
+        "authentication": "@parameters('$authentication')"
+      }
     }
   },
-  "description": "ACTION 3: fail fast before Provisioning Job creation when groups.addMember lacks RITM.Variables.groupId. #flowstudio-mcp"
+  "description": "3.4-bridge. 2026-06-02 poll->push: HTTP Request {taskId}; Get_Task_Fresh live read. #flowstudio-mcp"
 }

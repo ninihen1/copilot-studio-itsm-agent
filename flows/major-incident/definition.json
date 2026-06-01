@@ -20,34 +20,24 @@
     }
   },
   "triggers": {
-    "When_Ticket_is_Created": {
-      "recurrence": {
-        "frequency": "Minute",
-        "interval": 1
-      },
-      "evaluatedRecurrence": {
-        "frequency": "Minute",
-        "interval": 1
-      },
-      "splitOn": "@triggerOutputs()?['body/value']",
-      "type": "OpenApiConnection",
+    "manual": {
+      "metadata": {},
+      "type": "Request",
+      "kind": "Http",
       "inputs": {
-        "host": {
-          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
-          "connectionName": "shared_sharepointonline",
-          "operationId": "GetOnUpdatedItems"
+        "schema": {
+          "type": "object",
+          "required": [
+            "ticketId"
+          ],
+          "properties": {
+            "ticketId": {
+              "type": "integer"
+            }
+          }
         },
-        "parameters": {
-          "dataset": "https://contoso.sharepoint.com/sites/ITSM",
-          "table": "Tickets"
-        },
-        "authentication": "@parameters('$authentication')"
+        "triggerAuthenticationType": "All"
       },
-      "conditions": [
-        {
-          "expression": "@and(equals(triggerOutputs()?['body/TicketType/Value'], 'Incident'), equals(coalesce(triggerOutputs()?['body/TicketTypeValidated'], false), true), not(equals(coalesce(triggerOutputs()?['body/TicketTypeValidationStatus/Value'], ''), 'NeedsConfirmation')), equals(coalesce(triggerOutputs()?['body/TicketState/Value'], 'New'), 'New'))"
-        }
-      ],
       "runtimeConfiguration": {
         "concurrency": {
           "runs": 1,
@@ -215,16 +205,16 @@
                   "table": "Tickets",
                   "item/Title": "@outputs('Compose_Major_Number')",
                   "item/TicketType/Value": "Incident",
-                  "item/CategoryRef/Id": "@triggerOutputs()?['body/CategoryRef/Id']",
-                  "item/Subcategory/Id": "@triggerOutputs()?['body/Subcategory/Id']",
-                  "item/Caller/Claims": "@triggerOutputs()?['body/Caller/Claims']",
+                  "item/CategoryRef/Id": "@outputs('Get_Ticket_Fresh')?['body/CategoryRef/Id']",
+                  "item/Subcategory/Id": "@outputs('Get_Ticket_Fresh')?['body/Subcategory/Id']",
+                  "item/Caller/Claims": "@outputs('Get_Ticket_Fresh')?['body/Caller/Claims']",
                   "item/TicketState/Value": "In Progress",
                   "item/Impact/Value": "1 - High",
                   "item/Urgency/Value": "1 - High",
                   "item/Priority/Value": "1 - Critical",
                   "item/ShortDescription": "@{concat('Major Incident: ', coalesce(body('Parse_Cluster_Decision')?['affectedService'], 'service disruption'))}",
                   "item/Description": "@{concat('Summary: ', coalesce(body('Parse_Cluster_Decision')?['clusterSummary'], '(none)'), decodeUriComponent('%0A%0A'), 'Affected service/system: ', coalesce(body('Parse_Cluster_Decision')?['affectedService'], '(unknown)'), decodeUriComponent('%0A%0A'), 'Recommended escalation: ', coalesce(body('Parse_Cluster_Decision')?['recommendedEscalation'], '(none)'), decodeUriComponent('%0A%0A'), 'Agent raw decision: ', string(body('Parse_Cluster_Decision')))}",
-                  "item/ConfidentialityLevel/Value": "@coalesce(triggerOutputs()?['body/ConfidentialityLevel/Value'], 'Public')",
+                  "item/ConfidentialityLevel/Value": "@coalesce(outputs('Get_Ticket_Fresh')?['body/ConfidentialityLevel/Value'], 'Public')",
                   "item/WorkNotes": "@{concat('Major Incident Detector created parent from semantic Triage Agent cluster at ', utcNow(), '. Related IDs: ', string(body('Parse_Cluster_Decision')?['relatedTicketIds']))}"
                 },
                 "authentication": "@parameters('$authentication')"
@@ -390,7 +380,11 @@
           "type": "If"
         }
       },
-      "runAfter": {},
+      "runAfter": {
+        "Get_Ticket_Fresh": [
+          "Succeeded"
+        ]
+      },
       "else": {
         "actions": {}
       },
@@ -398,14 +392,14 @@
         "and": [
           {
             "equals": [
-              "@triggerOutputs()?['body/TicketType/Value']",
+              "@outputs('Get_Ticket_Fresh')?['body/TicketType/Value']",
               "Incident"
             ]
           },
           {
             "not": {
               "equals": [
-                "@coalesce(triggerOutputs()?['body/MajorIncidentFlag'], false)",
+                "@coalesce(outputs('Get_Ticket_Fresh')?['body/MajorIncidentFlag'], false)",
                 true
               ]
             }
@@ -413,6 +407,24 @@
         ]
       },
       "type": "If"
+    },
+    "Get_Ticket_Fresh": {
+      "runAfter": {},
+      "type": "OpenApiConnection",
+      "inputs": {
+        "host": {
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+          "connectionName": "shared_sharepointonline",
+          "operationId": "GetItem"
+        },
+        "parameters": {
+          "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+          "table": "Tickets",
+          "id": "@triggerBody()?['ticketId']"
+        },
+        "authentication": "@parameters('$authentication')"
+      }
     }
-  }
+  },
+  "description": "X1 Major-Incident-Detector. 2026-06-02 poll->push: HTTP Request {ticketId}; Get_Ticket_Fresh live read; called by 1.1 front gate (fan-out sibling of 2.1). #flowstudio-mcp"
 }

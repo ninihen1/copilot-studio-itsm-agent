@@ -26,7 +26,7 @@
       "inputs": {
         "parameters": {
           "dataset": "https://contoso.sharepoint.com/sites/ITSM",
-          "table": "Tickets"
+          "table": "00000000-0000-0000-0000-000000000009"
         },
         "host": {
           "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
@@ -267,7 +267,7 @@
                                 "type": "Http",
                                 "inputs": {
                                   "method": "POST",
-                                  "uri": "https://contoso-flow-trigger-url-REDACTED",
+                                  "uri": "https://REDACTED-FLOW-TRIGGER-URL",
                                   "headers": {
                                     "Content-Type": "application/json"
                                   },
@@ -372,7 +372,7 @@
                                     "type": "Http",
                                     "inputs": {
                                       "method": "POST",
-                                      "uri": "https://contoso-flow-trigger-url-REDACTED",
+                                      "uri": "https://REDACTED-FLOW-TRIGGER-URL",
                                       "headers": {
                                         "Content-Type": "application/json"
                                       },
@@ -508,7 +508,7 @@
                         "type": "Http",
                         "inputs": {
                           "method": "POST",
-                          "uri": "https://contoso-flow-trigger-url-REDACTED",
+                          "uri": "https://REDACTED-FLOW-TRIGGER-URL",
                           "headers": {
                             "Content-Type": "application/json"
                           },
@@ -532,6 +532,123 @@
               "equals": [
                 "@coalesce(triggerOutputs()?['body/TypeOverrideConfirmed'], false)",
                 true
+              ]
+            },
+            "type": "If"
+          },
+          "Get_Ticket_AfterValidation": {
+            "runAfter": {
+              "If_Caller_Confirmed_Override": [
+                "Succeeded"
+              ]
+            },
+            "type": "OpenApiConnection",
+            "inputs": {
+              "host": {
+                "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                "connectionName": "shared_sharepointonline",
+                "operationId": "GetItem"
+              },
+              "parameters": {
+                "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+                "table": "Tickets",
+                "id": "@triggerOutputs()?['body/ID']"
+              },
+              "authentication": "@parameters('$authentication')"
+            }
+          },
+          "If_Validated_Fanout": {
+            "actions": {
+              "Switch_Lane": {
+                "runAfter": {},
+                "cases": {
+                  "Req": {
+                    "case": "Request",
+                    "actions": {
+                      "Call_RITM_Generator": {
+                        "runAfter": {},
+                        "type": "Http",
+                        "inputs": {
+                          "method": "POST",
+                          "uri": "https://REDACTED-FLOW-TRIGGER-URL",
+                          "headers": {
+                            "Content-Type": "application/json"
+                          },
+                          "body": {
+                            "ticketId": "@triggerOutputs()?['body/ID']"
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "default": {
+                  "actions": {
+                    "Call_Triage": {
+                      "runAfter": {},
+                      "type": "Http",
+                      "inputs": {
+                        "method": "POST",
+                        "uri": "https://REDACTED-FLOW-TRIGGER-URL",
+                        "headers": {
+                          "Content-Type": "application/json"
+                        },
+                        "body": {
+                          "ticketId": "@triggerOutputs()?['body/ID']"
+                        }
+                      }
+                    },
+                    "Call_Major_Incident": {
+                      "runAfter": {},
+                      "type": "Http",
+                      "inputs": {
+                        "method": "POST",
+                        "uri": "https://REDACTED-FLOW-TRIGGER-URL",
+                        "headers": {
+                          "Content-Type": "application/json"
+                        },
+                        "body": {
+                          "ticketId": "@triggerOutputs()?['body/ID']"
+                        }
+                      }
+                    }
+                  }
+                },
+                "expression": "@outputs('Get_Ticket_AfterValidation')?['body/TicketType/Value']",
+                "type": "Switch"
+              }
+            },
+            "runAfter": {
+              "Get_Ticket_AfterValidation": [
+                "Succeeded"
+              ]
+            },
+            "expression": {
+              "and": [
+                {
+                  "not": {
+                    "equals": [
+                      "@coalesce(outputs('Get_Ticket_AfterValidation')?['body/TicketTypeValidationStatus/Value'],'')",
+                      "NeedsConfirmation"
+                    ]
+                  }
+                },
+                {
+                  "not": {
+                    "equals": [
+                      "@coalesce(outputs('Get_Ticket_AfterValidation')?['body/TicketTypeValidationStatus/Value'],'')",
+                      "Pending"
+                    ]
+                  }
+                },
+                {
+                  "not": {
+                    "equals": [
+                      "@coalesce(outputs('Get_Ticket_AfterValidation')?['body/TicketTypeValidationStatus/Value'],'')",
+                      ""
+                    ]
+                  }
+                }
               ]
             },
             "type": "If"
@@ -569,5 +686,5 @@
       "type": "If"
     }
   },
-  "description": "NOTIF-1: Validator now drives caller type-clarification. Each of the three NeedsConfirmation park points (Request / Incident-ambiguous / unsupported) fires the ITSM-Clarifier child (fire-and-forget HTTP POST, 202) so the caller is asked to confirm Incident vs Request. Added top-level If_Caller_Confirmed_Override loop-breaker: when TypeOverrideConfirmed=true the caller's chosen type is accepted as Validated and the Switch is skipped, preventing infinite re-park for PARK #1/#3. #flowstudio-mcp"
+  "description": "1.1 Ticket-Type-Validator (front gate). 2026-06-02: after validation, re-reads ticket and fans out by type — Request->2.2 RITM-Gen, Incident->2.1 Triage + X1 Major-Incident (skips parked/NeedsConfirmation). Trigger stays the Tickets watcher (front door). #flowstudio-mcp"
 }
