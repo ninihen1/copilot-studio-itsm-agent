@@ -67,11 +67,21 @@ Walk through it step by step:
 4. **A scoped robot does the work.** Once approved, one narrowly-scoped service principal — and only that one — performs the change through Microsoft Graph (or Exchange, via an Azure Function). The agent itself holds no power to make changes.
 5. **Everything is recorded.** The outcome is written to an audit log, the ticket is closed, and the requester is told what happened.
 
+The live pipeline in action — the manager's one-tap approval card in Teams, then the change landing in the tenant:
+
+![The manager's approval card in Teams — a proposed identity.enableUser action with the target user, risk, confidence, and the agent's rationale; one tap to Approve](docs/screenshots/teams-approval-card.png)
+
+![Microsoft Entra ID showing the target user now Enabled — the scoped executor made the real change in the tenant after approval](docs/screenshots/entra-user-enabled.png)
+
 ## 🖥️ The front end — a custom SharePoint-hosted portal
 
 The portal isn't a SharePoint list form. It's the **ITSM Service Portal**, a full-screen **SPFx (SharePoint Framework) web part** — a React single-page app, built with SPFx 1.22 / Heft / TypeScript — hosted as a SharePoint page and backed by a dozen-plus SharePoint lists behind it. It follows the open-source [vibe-sharepoint-template](https://github.com/johnnliu/vibe-sharepoint-template) pattern, which treats SharePoint Online as a Vercel-like host for internal apps (CSS injection hides the SharePoint chrome for an app-like feel). The direction to the agent was essentially *"point at this template and follow it"* — it produced the ITSM-specific app from there. One web part hosts the whole experience:
 
 ![The ITSM Service Portal home — the SPFx single-page app's dashboard: open tickets, pending approvals, KB suggestions, and service health](docs/screenshots/spfx-portal-home.png)
+
+…and the submit-a-ticket form a user fills in — on submit it becomes a SharePoint Tickets row that triggers the whole pipeline:
+
+![The Submit-a-ticket form — title, description, and classification: ticket type, category, subcategory, impact, urgency, with an attachments drop zone](docs/screenshots/portal-submit-ticket.png)
 
 - **Home** dashboard, **Service Catalog** with item detail dialogs, **Knowledge Base** with inline articles, **My Tickets** + ticket detail, **Approvals**, and an **Admin** view.
 - A typed service layer (`TicketService`, `CatalogService`, `KnowledgeService`, `ApprovalService`, …) reads and writes those SharePoint lists directly — **read-only except explicit user actions, and no privileged Graph calls ever run in the browser.**
@@ -91,6 +101,10 @@ The human directs and reviews; both agents were used together. Each step below n
 1. **Provision the SharePoint lists.** *(IDE agent, or Cowork via helper flows.)* Run the PnP PowerShell scripts in [`infra/sharepoint/`](infra/sharepoint/) to create the 18 solution lists (Tickets, Service Catalog, Approval Policies, Provisioning Jobs, License Costs, etc.) and seed the taxonomy. In this build the IDE agent ran them, authenticating as a scoped service principal (`SP-IT-Provisioning`, `Sites.FullControl.All`, certificate in Key Vault) — no standing admin account. **Copilot Cowork can stand up the exact same lists a different way** — a helper flow that creates each list and its columns through the SharePoint connector — so this step is not IDE-agent-only. Only the mechanism differs (a flow's connection vs. PnP PowerShell as a service principal); either agent produces the same schema.
 2. **Author the help-desk agent in Copilot Studio.** *(IDE agent — not Cowork.)* This step needs an IDE agent with the **Microsoft Copilot Studio extension**; Copilot Cowork can't author Copilot Studio agents. Use the topic and knowledge definitions in [`agents/triage/`](agents/triage/) as the blueprint.
 3. **Build the flows with Flow Studio.** *(Copilot Cowork and Claude Code — both wrote flows.)* Through the Flow Studio MCP server, the agents create the flows in [`flows/`](flows/) — orchestrator, approval, dispatcher, and the six executors — some authored by Copilot Cowork, others by the Claude Code agent; when a run fails, the agent reads the action outputs and fixes the definition. **Every flow was agent-written; none of the flow JSON was hand-authored** — and it's fast: ~20 production flows ship in this repo, and 40-plus counting helper flows and earlier iterations retired along the way.
+
+That "when a run fails, read the action outputs and fix it" loop is exactly what Flow Studio MCP enables — the agent reads a live flow's run detail, confirms the bug, and patches the definition itself:
+
+![An AI agent self-healing a flow through Flow Studio MCP — getting the live flow, confirming the exact bug, and deploying the fix](docs/screenshots/agent-self-heals-flow.png)
 4. **Set up the scoped service principals.** One Entra app per executor (identity, groups, licensing, exchange, sharepoint, teams), each with a single Graph permission family. Secrets live in Azure Key Vault.
 5. **Build and deploy the ITSM Service Portal (SPFx).** *(IDE agent builds the app and sets up the pipeline; Cowork patches the code and ships through it.)* The IDE agent scaffolds the SPFx React app in [`src/`](src/) and stands up the **one-time** deployment pipeline — a deployment Entra app registration, a certificate, the GitHub environment secrets, the site-collection app catalog on `/sites/ITSM`, and the `spfx-build-deploy.yml` GitHub Actions workflow. After that, **Copilot Cowork patches the portal's own code** — it changes a module or a line in the React/TypeScript source and pushes, and the existing pipeline builds it; the app-catalog deploy runs as a `workflow_dispatch` that Cowork or a person triggers. So Cowork makes real code changes and ships them through the pipeline the IDE agent built — it reuses that pipeline, it just didn't set it up. Full setup and required secrets are in [`docs/SPFX-DEPLOYMENT.md`](docs/SPFX-DEPLOYMENT.md).
 6. **Wire and test.** *(Cowork and human.)* Connect the agent's action to the flow, then run one real request — *"reset a password"* — end to end. Cowork drives the test; the human approves the manager card in Teams (that approval is part of the loop), and both confirm the change actually landed in the tenant.
@@ -108,6 +122,8 @@ From there it kept going. Cowork created a **project Kanban** — a SharePoint l
 3. do it, then update the board.
 
 A lot of the build progressed on its own while no one was watching. It isn't fully hands-off — left unsupervised for about a week it drifted and needed a course-correct — but as a way to grind through a backlog with light human oversight, it's genuinely useful.
+
+![Cowork's ITSM Project Tracker — the Kanban it manages: Open, In Progress, Blocked, and 48 Done; each hour Cowork reads the board, picks a task, does it, and moves the card](docs/screenshots/cowork-project-tracker-kanban.png)
 
 Cowork also documented what it built. The system grew to **20-plus Power Automate flows**, so Cowork created a **flow inventory** — a SharePoint list with each flow's key details — and then generated a dedicated **SharePoint page for every flow**, one at a time. The whole automation estate ends up self-documented, by the same agent that built it.
 
