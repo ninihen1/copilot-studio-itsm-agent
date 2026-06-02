@@ -298,6 +298,8 @@ The dispatcher loads this list at start-of-day into a flow variable; refreshed v
 
 **Source of truth:** SharePoint list `Config`, item `KillSwitch`, column `Value` (`true`/`false`; the dispatcher compares `toLower(Value) == 'true'`).
 
+**Verified live (2026-06-02):** the `Config` row stores `false` — correct format, kill OFF by default; setting it to `true` engages (every job returns 503 before any tenant change).
+
 **Read frequency:** dispatcher checks on every request (cached in flow run; not cached across runs — this is the kill switch, must be live).
 
 **Effect when ON:** Dispatcher returns 503 immediately after JWT validation. No enqueue, no SP write, no audit beyond `dispatcher.killed` event in App Insights with the JWT `jti`.
