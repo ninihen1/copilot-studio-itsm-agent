@@ -13,6 +13,7 @@ Most ITSM platforms (ServiceNow, Jira Service Management, Zendesk) charge per se
 ## 👥 Who this is for
 
 A small-to-medium business that:
+
 - Already runs on Microsoft 365 and doesn't want another expensive SaaS subscription.
 - Wants to stay **under the Microsoft umbrella** — one vendor, one identity model, one security boundary.
 - Has **one person** — comfortable directing an AI agent, not necessarily a developer — to stand it up and look after it. You don't need an IT team, a SharePoint specialist, or a ServiceNow consultant.
@@ -37,9 +38,9 @@ The moment the ticket is saved, a Power Automate flow fires on that new item and
 
 ## 🎯 How it works — a walkthrough
 
-![ITSM pipeline — independent SharePoint pollers coordinated by row state](docs/ITSM_process_diagram.png)
+![ITSM pipeline — event-driven HTTP call-in, from intake through the six executors](docs/ITSM_process_diagram.png)
 
-*The full pipeline at a glance: the Type-Validator gate, the parallel Incident and Request lanes, their convergence at the Dispatcher, and the six executors. The flows don't call each other — each polls a shared SharePoint list and reacts to row state. [Open the interactive version](docs/ITSM_process_diagram.html).*
+*The full pipeline at a glance: the Type-Validator gate, the parallel Incident and Request lanes, their convergence at the Dispatcher, and the six executors. Each stage calls the next directly over HTTP — passing the record id and reading it live — and the Dispatcher routes each job to the one matching executor. [Open the interactive version](docs/ITSM_process_diagram.html).*
 
 ![The ITSM flows in Power Automate, numbered by stage](docs/screenshots/flows-list-numbered.png)
 
@@ -51,8 +52,8 @@ The moment the ticket is saved, a Power Automate flow fires on that new item and
 3. AI TRIAGE   A flow fires on the new ticket and calls the Copilot Studio agent to classify it
                and try a knowledge-base answer (read-only — it can't make a change here)
 4. APPROVAL    If it needs a change, a Teams Adaptive Card goes to the manager. One tap to approve
-5. DISPATCH    An approved job is validated and handed to the dispatcher (a broadcast router)
-6. EXECUTION   One of six "executor" flows picks it up and makes the actual change:
+5. DISPATCH    An approved job is validated and the dispatcher routes it to the one matching executor
+6. EXECUTION   That executor (of six) is called over HTTP and makes the actual change:
                · Microsoft Graph for identity, groups, licenses
                · an Azure Function for Exchange mailbox permissions
    AUDIT       The result is logged, the ticket is closed, and the requester is notified
@@ -135,14 +136,14 @@ The whole design assumes an AI is in the loop, so the guardrails are deliberate.
 - **An immutable audit row per privileged action.** Every change writes a Provisioning Jobs record in SharePoint — requester, approver, timestamps, the Graph request ID, and the result.
 - **Idempotency keys** stop a retried job from running the same change twice.
 - **State commits only after the work succeeds** — a failed change never leaves an orphaned "approved but never done" record.
-- **A kill switch** — one Config flag halts all dispatch instantly.
+- **A kill switch** — a single SharePoint `Config` row (`Key = KillSwitch`, `Value = true`) the Dispatcher checks on every job. Flip it and all execution freezes instantly: every job returns `503` before any tenant change, while intake, triage, and approvals keep working.
 
 **Designed and specced, but not yet wired in the pilot** (the repo is explicit about this — see the "Pilot deviations" tables in [`flows/dispatcher/contract.md`](flows/dispatcher/contract.md) and [`flows/approval/spec.md`](flows/approval/spec.md)):
 
 - **Signed approval tokens (JWT).** Today the dispatcher trusts a hard-to-guess signed trigger URL; production has the approval flow mint a Key-Vault-signed JWT the dispatcher validates.
 - **Azure Table idempotency** with ETag — the pilot's SharePoint-based check is race-vulnerable under truly concurrent callers.
 - **Application Insights** as the structured, system-wide audit/telemetry log — today only the SharePoint audit row and Power Automate run history exist; App Insights is provisioned but only lightly wired.
-- **Service Bus** between the dispatcher and executors — today the executors poll the list.
+- **Service Bus** between the dispatcher and executors for durable async hand-off — today the dispatcher calls the matching executor directly over HTTP.
 
 ## 📦 What's in the repo
 
@@ -154,13 +155,13 @@ src/         ITSM Service Portal — full-screen SPFx React SPA (home, catalog, 
 docs + *.md  Design memo, deployment runbook, admin & user guides, troubleshooting
 ```
 
-| Read next | For |
-|---|---|
-| [`WHAT_IT_DOES.md`](WHAT_IT_DOES.md) | Plain-English overview, examples, and ROI |
-| [`IMPLEMENTATION-PLAYBOOK.md`](IMPLEMENTATION-PLAYBOOK.md) | The full build — identities, order, every gotcha |
-| [`DEPLOYMENT.md`](DEPLOYMENT.md) | Deployment runbook and validation checklist |
-| [`USER_GUIDE.md`](USER_GUIDE.md) · [`ADMIN_GUIDE.md`](ADMIN_GUIDE.md) | Day-to-day use and operations |
-| [`decisions/0001-dispatcher-host.md`](decisions/0001-dispatcher-host.md) | Why the dispatcher is built the way it is |
+| Read next                                                                | For                                              |
+| ------------------------------------------------------------------------ | ------------------------------------------------ |
+| [`WHAT_IT_DOES.md`](WHAT_IT_DOES.md)                                     | Plain-English overview, examples, and ROI        |
+| [`IMPLEMENTATION-PLAYBOOK.md`](IMPLEMENTATION-PLAYBOOK.md)               | The full build — identities, order, every gotcha |
+| [`DEPLOYMENT.md`](DEPLOYMENT.md)                                         | Deployment runbook and validation checklist      |
+| [`USER_GUIDE.md`](USER_GUIDE.md) · [`ADMIN_GUIDE.md`](ADMIN_GUIDE.md)    | Day-to-day use and operations                    |
+| [`decisions/0001-dispatcher-host.md`](decisions/0001-dispatcher-host.md) | Why the dispatcher is built the way it is        |
 
 ## 🚀 Try it, or let us help
 

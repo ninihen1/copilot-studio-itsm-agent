@@ -296,7 +296,7 @@ The dispatcher loads this list at start-of-day into a flow variable; refreshed v
 
 ## 7. Kill switch
 
-**Source of truth:** SharePoint list `Config`, item `KillSwitch`, column `Value` (Yes/No).
+**Source of truth:** SharePoint list `Config`, item `KillSwitch`, column `Value` (`true`/`false`; the dispatcher compares `toLower(Value) == 'true'`).
 
 **Read frequency:** dispatcher checks on every request (cached in flow run; not cached across runs — this is the kill switch, must be live).
 
