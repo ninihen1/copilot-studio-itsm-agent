@@ -118,7 +118,7 @@
             "parameters": {
               "poster": "Flow bot",
               "location": "Chat with Flow bot",
-              "body/recipient": "@coalesce(triggerOutputs()?['body/AssignedTo/Email'], triggerOutputs()?['body/AssignedTo/EMail'], last(split(coalesce(triggerOutputs()?['body/AssignedTo/Claims'], ''), '|')), 'catherine.han@flowstudio.app')",
+              "body/recipient": "@coalesce(triggerOutputs()?['body/AssignedTo/Email'], triggerOutputs()?['body/AssignedTo/EMail'], last(split(coalesce(triggerOutputs()?['body/AssignedTo/Claims'], ''), '|')), 'itsm-admin@contoso.com')",
               "body/messageBody": "@{concat('Ticket ', triggerOutputs()?['body/Title'], ' was reopened by a caller comment and is back In Progress. Reason: ', outputs('Compose_Reopen_Reason'))}"
             },
             "authentication": "@parameters('$authentication')"

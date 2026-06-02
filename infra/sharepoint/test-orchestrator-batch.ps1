@@ -7,7 +7,7 @@
 $siteUrl = 'https://contoso.sharepoint.com/sites/ITSM'
 Connect-ItsmTenantPilot -SiteUrl $siteUrl
 
-$callerEmail = 'catherine.han@flowstudio.app'
+$callerEmail = 'caller@contoso.com'
 # Ensure user exists in the site's user info list
 $user = New-PnPUser -LoginName $callerEmail -ErrorAction SilentlyContinue
 if (-not $user) { $user = Get-PnPUser -Identity $callerEmail }
@@ -32,7 +32,7 @@ $cases = @(
     @{
         Tag = 'add-to-group'
         ShortDescription = "Add me to the Marketing security group"
-        Description = "I just transferred to Marketing. Please add catherine.han@flowstudio.app to the Marketing-AllStaff security group."
+        Description = "I just transferred to Marketing. Please add caller@contoso.com to the Marketing-AllStaff security group."
         ExpectedOutcome = 'propose'
         ExpectedJobType = 'groups.addMember'
     },

@@ -216,7 +216,7 @@
                           "parameters": {
                             "poster": "Flow bot",
                             "location": "Chat with Flow bot",
-                            "body/recipient": "catherine.han@flowstudio.app",
+                            "body/recipient": "itsm-admin@contoso.com",
                             "body/messageBody": "@{concat('<h2>SLA breach</h2><p><b>Ticket:</b> ', items('ForEach_Open_Ticket')?['Title'], ' (item ID ', string(items('ForEach_Open_Ticket')?['ID']), ')</p><p><b>Priority:</b> ', coalesce(items('ForEach_Open_Ticket')?['Priority']?['Value'], string(items('ForEach_Open_Ticket')?['Priority']), '(none)'), '</p><p><b>SLA target:</b> ', string(outputs('Compose_TargetMinutes')), ' business minutes</p><p><b>Elapsed:</b> ', string(outputs('Compose_NewBusinessMinutes')), ' business minutes</p><p><b>Paused:</b> ', string(outputs('Compose_ResumePausedMinutes')), ' minutes</p><p><b>Breached at:</b> ', utcNow(), '</p><p><a href=\"https://contoso.sharepoint.com/sites/ITSM/Lists/Tickets/DispForm.aspx?ID=', string(items('ForEach_Open_Ticket')?['ID']), '\">Open ticket</a></p>')}"
                           },
                           "authentication": "@parameters('$authentication')"

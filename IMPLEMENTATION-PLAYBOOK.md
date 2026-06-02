@@ -87,7 +87,7 @@ flowchart TD
 | Identity | Value |
 |---|---|
 | Tenant | `contoso.onmicrosoft.com` (id `00000000-0000-4000-8000-000000000009`) |
-| User | `catherine.han@flowstudio.app` (object id `00000000-0000-4000-8000-000000000002`) |
+| User | `caller@contoso.com` (object id `00000000-0000-4000-8000-000000000002`) |
 | Pilot Azure subscription | **Microsoft Partner Network** (`00000000-0000-4000-8000-000000000037`) — Catherine has Owner here. **Use this for any `az` resource creation.** |
 | Power Platform environment | **Flow Studio Demo** (`00000000-0000-4000-8000-000000000045`, region australia) |
 | SharePoint site | `https://contoso.sharepoint.com/sites/ITSM` |
@@ -315,8 +315,8 @@ $dispatcherUrl = "<trigger-url>"
 $body = @{
     pjId = <pj-id>
     idempotencyKey = "<guid>"
-    callerUpn = "catherine.han@flowstudio.app"
-    approverUpn = "catherine.han@flowstudio.app"
+    callerUpn = "caller@contoso.com"
+    approverUpn = "manager@contoso.com"
     approvalSessionId = "<guid>"
     jobType = "identity.resetPassword"
     correlationId = "<guid>"
@@ -324,6 +324,8 @@ $body = @{
 Invoke-RestMethod -Method POST -Uri $dispatcherUrl -Body $body -ContentType "application/json"
 # Expect 202 with { idempotent: false, pjId, status: "Dispatched", ... }
 ```
+
+> **Approver routing:** `manager@contoso.com` here is a placeholder. In production, resolve the requester's manager dynamically (Microsoft Graph `GET /users/{requesterUpn}/manager`) and use that UPN as the approval `assignedTo`; fall back to the `FallbackApprovers` Config row only when no manager resolves. A fixed approver address is for testing only.
 
 ### Phase 11 — Approval-Bridge flow (~20 min)
 
@@ -422,7 +424,7 @@ $body = @{
         JobType = "identity.resetPassword"
         ParentTicketLookupId = <existing-ticket-id>
         JobStatusValue = "Dispatched"
-        CallerUpn = "catherine.han@flowstudio.app"
+        CallerUpn = "caller@contoso.com"
         TargetJson = '{"type":"user","upn":"arwen@contoso.onmicrosoft.com"}'
         IdempotencyKey = [guid]::NewGuid().ToString()
         CorrelationId = [guid]::NewGuid().ToString()

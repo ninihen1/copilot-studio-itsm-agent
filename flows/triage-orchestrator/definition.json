@@ -667,7 +667,7 @@
                 },
                 "authentication": "@parameters('$authentication')"
               },
-              "description": "Reads the FallbackApprovers row from the ITSM Config list (same governance as the Dispatcher kill-switch). PRE-DEPLOY: this row must be seeded with a semicolon UPN list (Baker@flowstudio.app) before the flow is enabled, or escalation CreateAnApproval will fail (assignedTo empty)."
+              "description": "Reads the FallbackApprovers row from the ITSM Config list (same governance as the Dispatcher kill-switch). PRE-DEPLOY: this row must be seeded with a semicolon UPN list (managers@contoso.com) before the flow is enabled, or escalation CreateAnApproval will fail (assignedTo empty)."
             },
             "Compose_Approver_Upn": {
               "runAfter": {
@@ -676,7 +676,7 @@
                 ]
               },
               "type": "Compose",
-              "inputs": "catherine.han@flowstudio.app",
+              "inputs": "managers@contoso.com",
               "description": "Pilot - fixed primary approver. Phase 3.2 (APR-5) resolves dynamic manager via Office 365 Users Manager_V2; kept identical to Request lane so APR-5 is a single edit across both lanes."
             },
             "Compose_Fallback_Upn": {
@@ -687,7 +687,7 @@
               },
               "type": "Compose",
               "inputs": "@coalesce(first(body('Get_FallbackApprovers')?['value'])?['Value'], '')",
-              "description": "ITSM Approvers fallback pool (semicolon UPN list) from Config row Key=FallbackApprovers. Empty until seeded -> deploy is gated on that seed (Baker@flowstudio.app)."
+              "description": "ITSM Approvers fallback pool (semicolon UPN list) from Config row Key=FallbackApprovers. Empty until seeded -> deploy is gated on that seed (managers@contoso.com)."
             },
             "Compose_Provisioning_Approval_Details": {
               "runAfter": {

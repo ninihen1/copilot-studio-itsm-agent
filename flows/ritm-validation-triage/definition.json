@@ -259,7 +259,7 @@
                   "parameters": {
                     "poster": "Flow bot",
                     "location": "Chat with Flow bot",
-                    "body/recipient": "catherine.han@flowstudio.app",
+                    "body/recipient": "itsm-admin@contoso.com",
                     "body/messageBody": "@{concat('<h2>RITM validation could not run</h2><p>The AI extraction step failed (model unavailable), so <b>', outputs('Get_RITM_Fresh')?['body/RitmNumber'], '</b> (item ID ', string(outputs('Get_RITM_Fresh')?['body/ID']), ') was placed <b>On Hold</b> for manual validation.</p><p><a href=\"https://contoso.sharepoint.com/sites/ITSM/Lists/Request%20Items/DispForm.aspx?ID=', string(outputs('Get_RITM_Fresh')?['body/ID']), '\">Open request item</a></p>')}"
                   },
                   "authentication": "@parameters('$authentication')"
@@ -589,7 +589,7 @@
                         "parameters": {
                           "poster": "Flow bot",
                           "location": "Chat with Flow bot",
-                          "body/recipient": "catherine.han@flowstudio.app",
+                          "body/recipient": "itsm-admin@contoso.com",
                           "body/messageBody": "@{concat('<h2>RITM needs clarification</h2><p><b>RITM:</b> ', outputs('Get_RITM_Fresh')?['body/RitmNumber'], ' (item ID ', string(outputs('Get_RITM_Fresh')?['body/ID']), ')</p><p><b>Operation:</b> ', coalesce(body('Parse_AI_Intent')?['jobType'], 'n/a'), '</p><p><b>Target user:</b> ', coalesce(body('Parse_AI_Intent')?['targetUserUpn'], '(none)'), '</p><p><b>Resource:</b> ', coalesce(body('Parse_AI_Intent')?['resourceName'], '(none)'), '</p><p><b>Confidence:</b> ', coalesce(body('Parse_AI_Intent')?['confidence'], ''), ' &middot; <b>Missing:</b> ', join(coalesce(body('Parse_AI_Intent')?['missing'], createArray()), ', '), '</p><p>', coalesce(body('Parse_AI_Intent')?['summary'], ''), '</p><p><a href=\"https://contoso.sharepoint.com/sites/ITSM/Lists/Request%20Items/DispForm.aspx?ID=', string(outputs('Get_RITM_Fresh')?['body/ID']), '\">Open request item</a></p>')}"
                         },
                         "authentication": "@parameters('$authentication')"

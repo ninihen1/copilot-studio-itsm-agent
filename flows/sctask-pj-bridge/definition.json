@@ -234,7 +234,7 @@
               "pjId": "@body('Create_PJ')?['ID']",
               "idempotencyKey": "@outputs('Compose_IdempotencyKey')",
               "callerUpn": "@last(split(coalesce(body('Get_Parent_Ticket')?['Caller']?['Email'], body('Get_Parent_Ticket')?['Caller']?['Claims'], ''), '|'))",
-              "approverUpn": "catherine.han@flowstudio.app",
+              "approverUpn": "manager@contoso.com",
               "approvalSessionId": "@{concat('RITM-', body('Get_Parent_RITM')?['RitmNumber'])}",
               "jobType": "@outputs('Get_Task_Fresh')?['body/JobType']",
               "correlationId": "@outputs('Compose_CorrelationId')"

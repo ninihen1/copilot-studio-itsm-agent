@@ -78,7 +78,7 @@
             "parameters": {
               "approvalType": "CustomResponse",
               "ApprovalCreationInput/title": "@{concat('Approve ', triggerOutputs()?['body/JobType'], '? — ', triggerOutputs()?['body/CorrelationId'])}",
-              "ApprovalCreationInput/assignedTo": "catherine.han@flowstudio.app",
+              "ApprovalCreationInput/assignedTo": "manager@contoso.com",
               "ApprovalCreationInput/details": "@outputs('Compose_ApprovalDetails')",
               "ApprovalCreationInput/itemLink": "@{concat('https://contoso.sharepoint.com/sites/ITSM/Lists/Provisioning%20Jobs/DispForm.aspx?ID=', string(triggerOutputs()?['body/ID']))}",
               "ApprovalCreationInput/itemLinkDescription": "Open Provisioning Job in SharePoint",

@@ -71,7 +71,7 @@
             "Cancel ticket"
           ],
           "ApprovalCreationInput/title": "@{concat('Confirm ticket type — ', coalesce(triggerBody()?['ticketTitle'], ''))}",
-          "ApprovalCreationInput/assignedTo": "@coalesce(triggerBody()?['callerUpn'], 'catherine.han@flowstudio.app')",
+          "ApprovalCreationInput/assignedTo": "@coalesce(triggerBody()?['callerUpn'], 'requester@contoso.com')",
           "ApprovalCreationInput/details": "@outputs('Compose_QuestionDetails')",
           "ApprovalCreationInput/itemLink": "@{concat('https://contoso.sharepoint.com/sites/ITSM/Lists/Tickets/DispForm.aspx?ID=', string(triggerBody()?['ticketId']))}",
           "ApprovalCreationInput/itemLinkDescription": "Open ticket in SharePoint",

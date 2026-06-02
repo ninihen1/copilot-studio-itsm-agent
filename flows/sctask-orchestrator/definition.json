@@ -239,7 +239,7 @@
                     "parameters": {
                       "poster": "Flow bot",
                       "location": "Chat with Flow bot",
-                      "body/recipient": "@{coalesce(body('Get_Parent_Ticket')?['Caller']?['Email'], last(split(coalesce(body('Get_Parent_Ticket')?['Caller']?['Claims'], ''), '|')), 'catherine.han@flowstudio.app')}",
+                      "body/recipient": "@{coalesce(body('Get_Parent_Ticket')?['Caller']?['Email'], last(split(coalesce(body('Get_Parent_Ticket')?['Caller']?['Claims'], ''), '|')), 'itsm-admin@contoso.com')}",
                       "body/messageBody": "@{concat('<h2>Ticket resolved</h2><p><b>Ticket:</b> ', body('Get_Parent_Ticket')?['Title'], ' (item ID ', string(body('Get_Parent_Ticket')?['ID']), ')</p><p><b>Status:</b> Resolved</p><p><b>Resolved at:</b> ', utcNow(), '</p><p><b>Close code:</b> ', if(outputs('Compose_Any_RITM_Failed'), 'Not Solved (Not Reproducible)', 'Solved Permanently'), '</p><p><b>Resolution summary:</b> All ', string(length(body('Get_Sibling_RITMs')?['value'])), ' RITM(s) reached terminal state. Auto-resolved by SCTASK Orchestrator.</p><p><a href=\"https://contoso.sharepoint.com/sites/ITSM/Lists/Tickets/DispForm.aspx?ID=', string(body('Get_Parent_Ticket')?['ID']), '\">Open ticket</a></p>')}"
                     },
                     "authentication": "@parameters('$authentication')"

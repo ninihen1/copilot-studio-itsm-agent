@@ -160,7 +160,7 @@
                   {
                     "not": {
                       "equals": [
-                        "@or(equals(toLower(coalesce(triggerOutputs()?['body/Editor/Email'], triggerOutputs()?['body/Editor/EMail'], last(split(coalesce(triggerOutputs()?['body/Editor/Claims'], ''), '|')), '')), 'catherine.han@flowstudio.app'), equals(toLower(coalesce(triggerOutputs()?['body/Editor/DisplayName'], '')), 'sharepoint app'))",
+                        "@or(equals(toLower(coalesce(triggerOutputs()?['body/Editor/Email'], triggerOutputs()?['body/Editor/EMail'], last(split(coalesce(triggerOutputs()?['body/Editor/Claims'], ''), '|')), '')), 'itsm-admin@contoso.com'), equals(toLower(coalesce(triggerOutputs()?['body/Editor/DisplayName'], '')), 'sharepoint app'))",
                         true
                       ]
                     }

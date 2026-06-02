@@ -59,7 +59,7 @@
             ]
           },
           "type": "Compose",
-          "inputs": "catherine.han@flowstudio.app",
+          "inputs": "manager@contoso.com",
           "description": "Pilot - fixed approver. Phase 3.2 will resolve dynamic manager via Office 365 Users Manager_V2 once the shared_office365users connection is set up."
         },
         "Compose_Variables_Object": {
@@ -284,7 +284,7 @@
                 "parameters": {
                   "poster": "Flow bot",
                   "location": "Chat with Flow bot",
-                  "body/recipient": "@{coalesce(last(split(coalesce(outputs('Get_RITM_Fresh')?['body/RequestedFor/Claims'], ''), '|')), 'catherine.han@flowstudio.app')}",
+                  "body/recipient": "@{coalesce(last(split(coalesce(outputs('Get_RITM_Fresh')?['body/RequestedFor/Claims'], ''), '|')), 'itsm-admin@contoso.com')}",
                   "body/messageBody": "@{concat('<h2>Request approved</h2><p><b>RITM:</b> ', outputs('Get_RITM_Fresh')?['body/RitmNumber'], ' (item ID ', string(outputs('Get_RITM_Fresh')?['body/ID']), ')</p><p><b>Parent ticket item ID:</b> ', string(outputs('Get_RITM_Fresh')?['body/ParentTicket/Id']), '</p><p><b>Catalog item:</b> ', body('Get_Catalog_Item')?['ItemName'], '</p><p><b>Approved by:</b> ', outputs('Compose_Approver_Upn'), '</p><p><b>Approved at:</b> ', utcNow(), '</p><p><b>Next step:</b> SCTASK records were created and automation will continue from the task bridge.</p><p><a href=\"https://contoso.sharepoint.com/sites/ITSM/Lists/Request%20Items/DispForm.aspx?ID=', string(outputs('Get_RITM_Fresh')?['body/ID']), '\">Open request item</a></p>')}"
                 },
                 "authentication": "@parameters('$authentication')"
@@ -399,7 +399,7 @@
                   "parameters": {
                     "poster": "Flow bot",
                     "location": "Chat with Flow bot",
-                    "body/recipient": "@coalesce(body('Get_Parent_Ticket_Rejected')?['RequestedForUser']?['Email'], last(split(coalesce(body('Get_Parent_Ticket_Rejected')?['RequestedForUser']?['Claims'], body('Get_Parent_Ticket_Rejected')?['Caller']?['Claims'], ''), '|')), 'catherine.han@flowstudio.app')",
+                    "body/recipient": "@coalesce(body('Get_Parent_Ticket_Rejected')?['RequestedForUser']?['Email'], last(split(coalesce(body('Get_Parent_Ticket_Rejected')?['RequestedForUser']?['Claims'], body('Get_Parent_Ticket_Rejected')?['Caller']?['Claims'], ''), '|')), 'itsm-admin@contoso.com')",
                     "body/messageBody": "@{concat('<h2>Request denied</h2><p><b>RITM:</b> ', outputs('Get_RITM_Fresh')?['body/RitmNumber'], ' (item ID ', string(outputs('Get_RITM_Fresh')?['body/ID']), ')</p><p><b>Parent ticket:</b> ', body('Get_Parent_Ticket_Rejected')?['Title'], ' (item ID ', string(outputs('Get_RITM_Fresh')?['body/ParentTicket/Id']), ')</p><p><b>Catalog item:</b> ', body('Get_Catalog_Item')?['ItemName'], '</p><p><b>Denied by:</b> ', outputs('Compose_Approver_Upn'), '</p><p><b>Denied at:</b> ', utcNow(), '</p><p><b>Reason:</b> ', coalesce(first(body('Wait_For_Approval')?['responses'])?['comments'], '(none provided)'), '</p><p>The parent ticket was cancelled and the reason was added to ticket work notes.</p><p><a href=\\\"https://contoso.sharepoint.com/sites/ITSM/Lists/Tickets/DispForm.aspx?ID=', string(outputs('Get_RITM_Fresh')?['body/ParentTicket/Id']), '\\\">Open ticket</a></p>')}"
                   },
                   "authentication": "@parameters('$authentication')"
@@ -456,7 +456,7 @@
             ]
           },
           "type": "Compose",
-          "inputs": "Baker@flowstudio.app"
+          "inputs": "managers@contoso.com"
         },
         "Create_Escalation_Approval": {
           "runAfter": {

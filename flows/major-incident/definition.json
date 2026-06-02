@@ -345,7 +345,7 @@
                 "parameters": {
                   "poster": "Flow bot",
                   "location": "Chat with Flow bot",
-                  "body/recipient": "catherine.han@flowstudio.app",
+                  "body/recipient": "itsm-admin@contoso.com",
                   "body/messageBody": "@{concat('<h2>Major incident detected</h2><p><b>MI ticket:</b> ', body('Create_Major_Incident')?['Title'], ' (item ID ', string(body('Create_Major_Incident')?['ID']), ')</p><p><b>Affected service/system:</b> ', coalesce(body('Parse_Cluster_Decision')?['affectedService'], '(unknown)'), '</p><p><b>Cluster summary:</b> ', coalesce(body('Parse_Cluster_Decision')?['clusterSummary'], '(none)'), '</p><p><b>Related incident IDs:</b> ', string(body('Parse_Cluster_Decision')?['relatedTicketIds']), '</p><p><b>Recommended escalation:</b> ', coalesce(body('Parse_Cluster_Decision')?['recommendedEscalation'], '(none)'), '</p><p><b>Escalation flag:</b> true</p><p><a href=\"https://contoso.sharepoint.com/sites/ITSM/Lists/Tickets/DispForm.aspx?ID=', string(body('Create_Major_Incident')?['ID']), '\">Open major incident</a></p>')}"
                 },
                 "authentication": "@parameters('$authentication')"

@@ -125,6 +125,14 @@ A lot of the build progressed on its own while no one was watching. It isn't ful
 
 ![Cowork's ITSM Project Tracker — the Kanban it manages: Open, In Progress, Blocked, and 48 Done; each hour Cowork reads the board, picks a task, does it, and moves the card](docs/screenshots/cowork-project-tracker-kanban.png)
 
+The schedule that drives it, and a history of unattended runs:
+
+![The "ITSM PM Autopilot (hourly)" scheduled task — Active, running every hour, with a run history of successful unattended cycles](docs/screenshots/cowork-hourly-autopilot-schedule.png)
+
+The standing instructions each cycle follows, the per-run plan ("read tracker, advance one item"), and the tools Cowork is allowed to use unattended:
+
+![Cowork's autopilot instructions and allow-listed tools — pick one unblocked tracker item, do the real work via Flow Studio MCP, the SharePoint proxy flow, and Graph, then update the board; 22 always-allowed actions including Trigger and Update live flow and Call Graph API](docs/screenshots/cowork-autopilot-instructions-and-tools.png)
+
 Cowork also documented what it built. The system grew to **20-plus Power Automate flows**, so Cowork created a **flow inventory** — a SharePoint list with each flow's key details — and then generated a dedicated **SharePoint page for every flow**, one at a time. The whole automation estate ends up self-documented, by the same agent that built it.
 
 ![Cowork's flow inventory — every flow numbered by stage, each with a one-line summary, linking out to the flow and its generated page](docs/screenshots/flow-docs-inventory.png)
@@ -142,6 +150,8 @@ A successful proxy run reading a GitHub Actions job back out — *Build and pack
 ![A successful GitHub API proxy run reading back the SPFx CI build job](docs/screenshots/cowork-github-api-proxy-run.png)
 
 And it tested its own work — to a discipline it **wrote itself**. After a few rounds of testing together, the human and Cowork agreed on what "done" should mean, and Cowork captured that as a reusable testing **skill**: the entire business chain must complete and the real-world change be confirmed live — a flow that merely reports "Succeeded," or an approval card still sitting in the queue, does **not** count. Holding itself to the bar it had written, it then ran live end-to-end requests and verified every link — triage → approval → execution → the actual change in the tenant — before calling anything done.
+
+![The testing skill Cowork wrote for itself — the non-negotiable "done" bar: the whole business chain must complete and the change be confirmed live; a "Succeeded" run or a queued approval card does not count](docs/screenshots/cowork-e2e-test-skill-done-bar.png)
 
 ## 🔒 How it stays safe
 
