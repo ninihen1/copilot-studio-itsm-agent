@@ -2,7 +2,7 @@
 
 **A ServiceNow-style IT help desk that runs entirely on the Microsoft 365 you already pay for — no separate ticketing subscription, no per-agent SaaS fees.**
 
-> 🎥 **See it in action:** _<add demo video link>_
+> 🎥 **See it in action:** [Watch the demo](https://youtu.be/4oKlENZGW5M)
 
 > ⚠️ **Project status — working proof of concept.** Built in a tight timebox to prove the architecture end to end — and it does: the core *ticket → triage → approve → execute* pipeline runs on a live Microsoft 365 tenant. It is **not production-hardened**. Expect rough edges off the happy path, and some paths are designed and specced rather than fully tested — the repo is explicit about which (see the *"Designed and specced, but not yet wired"* section and the per-flow *"Pilot deviations"* tables). Treat it as a reference build to learn from and adapt, not a turnkey product.
 
