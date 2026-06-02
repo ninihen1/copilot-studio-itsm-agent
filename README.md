@@ -167,7 +167,7 @@ docs + *.md  Design memo, deployment runbook, admin & user guides, troubleshooti
 
 It's open source and genuinely agent-buildable: point your AI coworker at this repo and tell it to build the system in your tenant — it reads everything here and stands it up, building and debugging the flows through [Flow Studio MCP](https://mcp.flowstudio.app) (works with Copilot, Claude, and any MCP-compatible agent), and comes back to you only for the tenant, admin consent, and approvals. You don't grind through the docs; your agent reads them.
 
-If that still feels like a lot, **[Flow Studio](https://flowstudio.app) also does it as a service** — we build and run Power Automate and Copilot Studio automations like this one for teams who'd rather have it set up for them.
+If that still feels like a lot, **[Flow Studio](https://flowstudio.app/services/) also does it as a service** — we build and run Power Automate and Copilot Studio automations like this one for teams who'd rather have it set up for them.
 
 ## 📝 A note on the code
 
