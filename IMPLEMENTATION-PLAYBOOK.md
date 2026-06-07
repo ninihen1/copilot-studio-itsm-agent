@@ -1,7 +1,7 @@
 # ITSM Implementation Playbook
 
 **Audience:** A fresh AI agent (or new engineer) tasked with rebuilding, extending, or auditing the ITSM pilot from scratch.
-**Last updated:** 2026-05-08
+**Status:** pilot reference
 **Pairs with:** [`itsm-design-memo.md`](itsm-design-memo.md) (canonical design), [`README.md`](README.md), [`DEPLOYMENT.md`](DEPLOYMENT.md)
 
 This is the **single doc to read first.** It describes everything implemented, the order it must be built in, the exact tools and permissions used, and every gotcha that cost time to discover.
@@ -12,7 +12,7 @@ This is the **single doc to read first.** It describes everything implemented, t
 
 Build a ServiceNow-style IT helpdesk on Microsoft 365 — SharePoint as system of record, Power Automate for orchestration, Copilot Studio for the user-facing agents. AI proposes; humans approve; scoped service principals execute. **No agent ever holds Graph write permissions.**
 
-Pilot scope (proven 2026-05-01): a caller files a ticket → the Triage Orchestrator flow calls the Helpdesk Triage Agent to classify it → the orchestrator writes a Provisioning Job + an Approvals row → human approver approves → Dispatcher patches PJ to Dispatched → Identity-Executor calls Microsoft Graph to reset the user's password → audit row written. Closed loop. (The original agent-callable ProposeAction handoff was retired 2026-05-30; see ADR 0002.)
+Pilot scope: a caller files a ticket → the Triage Orchestrator flow calls the Helpdesk Triage Agent to classify it → the orchestrator writes a Provisioning Job + an Approvals row → human approver approves → Dispatcher patches PJ to Dispatched → Identity-Executor calls Microsoft Graph to reset the user's password → audit row written. Closed loop. (The original agent-callable ProposeAction handoff was retired; see ADR 0002.)
 
 ---
 
@@ -36,14 +36,14 @@ The type gate is implemented in two layers: frontend validation in the portal su
 
 ```mermaid
 flowchart TD
-    user[Caller / Catherine] -->|chat| triage[Helpdesk Triage Agent<br/>Copilot Studio]
-    triage -->|classifies| orch[ITSM-Triage-Orchestrator<br/>flow 8214cc66-...]
+    user[Caller] -->|chat| triage[Helpdesk Triage Agent<br/>Copilot Studio]
+    triage -->|classifies| orch[ITSM-Triage-Orchestrator]
     orch -->|writes PJ + Approvals row| pj[(Provisioning Jobs<br/>SP list)]
-    catherine[Catherine via Graph API] -->|patch row| approvals[(Approvals<br/>SP list)]
-    approvals -->|3-min poll trigger| bridge[ITSM-Approval-Bridge<br/>flow 05b00ed2-...]
-    bridge -->|HTTP POST| dispatcher[ITSM-Dispatcher<br/>flow 97a4c109-...]
+    approver[Approver via Graph API] -->|patch row| approvals[(Approvals<br/>SP list)]
+    approvals -->|3-min poll trigger| bridge[ITSM-Approval-Bridge]
+    bridge -->|HTTP POST| dispatcher[ITSM-Dispatcher]
     dispatcher -->|PATCH JobStatus=Dispatched| pj
-    pj -->|3-min poll trigger| executor[ITSM-Identity-Executor<br/>flow c06e63bf-...]
+    pj -->|3-min poll trigger| executor[ITSM-Identity-Executor]
     executor -->|GetSecret| kv[(Key Vault<br/>kv-itsm-demo)]
     executor -->|client_credentials| aad[Entra ID]
     aad -->|access_token| executor
@@ -88,7 +88,7 @@ flowchart TD
 |---|---|
 | Tenant | `contoso.onmicrosoft.com` (id `00000000-0000-4000-8000-000000000009`) |
 | User | `caller@contoso.com` (object id `00000000-0000-4000-8000-000000000002`) |
-| Pilot Azure subscription | **Microsoft Partner Network** (`00000000-0000-4000-8000-000000000037`) — Catherine has Owner here. **Use this for any `az` resource creation.** |
+| Pilot Azure subscription | **Microsoft Partner Network** (`00000000-0000-4000-8000-000000000037`) — the pilot owner has Owner here. **Use this for any `az` resource creation.** |
 | Power Platform environment | **Flow Studio Demo** (`00000000-0000-4000-8000-000000000045`, region australia) |
 | SharePoint site | `https://contoso.sharepoint.com/sites/ITSM` |
 
@@ -111,7 +111,7 @@ flowchart TD
 | Resource | Name | Notes |
 |---|---|---|
 | Resource group | `rg-itsm-pilot` | australiaeast, MPN sub |
-| Key Vault (RBAC) | `kv-itsm-demo` | Catherine = Key Vault Secrets Officer |
+| Key Vault (RBAC) | `kv-itsm-demo` | Pilot owner = Key Vault Secrets Officer |
 | Secrets stored | `SP-IT-Identity-ClientSecret` | 1-year, expires 2027-05-01 |
 
 ### 4.4 Power Automate connections (pre-existing in env)
@@ -140,7 +140,7 @@ Build in dependency order. Each phase is verifiable before moving to the next.
 Used by all PnP cert-auth scripts.
 
 ```powershell
-# Catherine ran this once. Persisted in Entra.
+# Run once; persisted in Entra.
 $app = az ad app create --display-name "SP-IT-Provisioning" --sign-in-audience AzureADMyOrg | ConvertFrom-Json
 az ad sp create --id $app.appId
 # Generate self-signed cert, upload to app, save cert locally for PnP
@@ -150,7 +150,7 @@ az ad sp create --id $app.appId
 ### Phase 3 — SharePoint list provisioning (~15 min)
 
 ```powershell
-cd "c:/Users/ninih/GitHub/Copilot Studio/infra/sharepoint"
+cd infra/sharepoint
 ./provision-lists.ps1 `
     -SiteUrl "https://contoso.sharepoint.com/sites/ITSM" `
     -AppId "00000000-0000-4000-8000-000000000020" `
@@ -177,8 +177,8 @@ Build order:
 2. Clone agent locally: `/copilot-studio:clone-agent`
 3. Edit topics, knowledge sources, instructions per `agents/triage/SPEC.md`. **Set `aiSettings.useModelKnowledge: true`** (needed for the agent to compose PJ proposals from its own reasoning — see memory `reference_mcs_useModelKnowledge_blocks_pure_instruction_generation.md`).
 4. Push: `/copilot-studio:manage-agent` push.
-5. **Publish** (not just save-draft — MCS connector requires published agent — see memory `reference_mcs_connector_requires_published_agent.md`).
-6. Build the orchestrator flow per `flows/triage-orchestrator/SPEC.md` — Until-wraps-agent-call pattern with Switch on terminal outcome AFTER Until (per memory `feedback_failure_handler_pattern_for_agent_loops.md`).
+5. **Publish** (not just save-draft — MCS connector requires published agent).
+6. Build the orchestrator flow per `flows/triage-orchestrator/SPEC.md` — Until-wraps-agent-call pattern with Switch on terminal outcome AFTER Until.
 7. Deploy via FlowStudio MCP `add_live_flow_to_solution` after creating the flow shell. If the flow is already only in Default/Active solution containers, use Dataverse `AddSolutionComponent` to add the workflow component to a named unmanaged solution before Copilot Studio binding.
 
 **Verify:** create a Tickets row via PnP. Wait 3 min. Check orchestrator flow run. Check the agent's response in `OrchestratorReply` field of the Tickets row.
@@ -207,7 +207,7 @@ $secretJson = az ad app credential reset --id $app.appId --display-name "pilot-s
 
 ### Phase 6 — Assign Password Administrator role to SP-IT-Identity
 
-The script that gets this right is documented in memory `reference_graph_password_reset_needs_directory_role.md`. Summary:
+The script that gets this right is summarized here:
 
 ```powershell
 Connect-MgGraph -Scopes "RoleManagement.ReadWrite.Directory"
@@ -245,8 +245,8 @@ $tokenResp = Invoke-RestMethod -Method POST -Uri "https://login.microsoftonline.
 az group create --name rg-itsm-pilot --location australiaeast
 az keyvault create --name kv-itsm-demo-XXXX --resource-group rg-itsm-pilot --location australiaeast --enable-rbac-authorization true --sku standard
 
-# Grant Catherine Secrets Officer
-az role assignment create --assignee-object-id <catherine-obj-id> --assignee-principal-type User \
+# Grant the pilot owner Secrets Officer
+az role assignment create --assignee-object-id <owner-obj-id> --assignee-principal-type User \
     --role "Key Vault Secrets Officer" \
     --scope "/subscriptions/<sub>/resourceGroups/rg-itsm-pilot/providers/Microsoft.KeyVault/vaults/<kv-name>"
 
@@ -254,7 +254,7 @@ az role assignment create --assignee-object-id <catherine-obj-id> --assignee-pri
 az keyvault secret set --vault-name <kv-name> --name "SP-IT-Identity-ClientSecret" --value "<the-secret-from-phase-5>"
 ```
 
-### Phase 8 — Power Automate Key Vault connection (manual, 1 min, Catherine)
+### Phase 8 — Power Automate Key Vault connection (manual, 1 min)
 
 OAuth-based PA connections require interactive consent. There is no programmatic path.
 
@@ -262,13 +262,13 @@ OAuth-based PA connections require interactive consent. There is no programmatic
 2. Search "Azure Key Vault" → click.
 3. **Auth type:** Default Microsoft Entra ID application for OAuth.
 4. **Vault name:** `kv-itsm-demo-XXXX` (the one from Phase 7).
-5. Sign in with Catherine's account → Create.
+5. Sign in with the pilot owner's account → Create.
 
 Note the connection id (e.g. `00000000000000000000000000000005`) for use in flow definitions.
 
 ### Phase 9 — Identity Executor flow (~30 min)
 
-The flow shell + definition is in `flows/executors/identity/definition.json`. Deploy via PA REST API (FlowStudio MCP rejects nested-object definitions when called from Claude Code — see memory `reference_flowstudio_mcp_definition_string_rejection.md`).
+The flow shell + definition is in `flows/executors/identity/definition.json`. Deploy via PA REST API (FlowStudio MCP rejects nested-object definitions when called from Claude Code).
 
 ```powershell
 $paToken = az account get-access-token --resource "https://service.flow.microsoft.com/" --query accessToken -o tsv
@@ -336,7 +336,7 @@ Same deploy pattern. Definition in `flows/approval/definition.json`. SP polling 
 **Verify E2E (the closing-the-loop demo):**
 
 ```powershell
-# 1. Insert a Tickets row (via Graph API, Editor=Catherine) — INC2605...
+# 1. Insert a Tickets row (via Graph API, Editor = the pilot owner) — INC2605...
 # 2. Insert a Provisioning Jobs row in AwaitingApproval state (via Graph API) — references the ticket
 # 3. Insert an Approvals row (via Graph API), SessionState=Approved, LinkedJobId=<JobId>
 # 4. Wait 3-6 min for bridge to poll
@@ -354,25 +354,25 @@ Same deploy pattern. Definition in `flows/approval/definition.json`. SP polling 
 
 ## 6. Critical gotchas (must read before testing)
 
-| # | Gotcha | Symptom | Fix | Memory ref |
+| # | Gotcha | Symptom | Fix | Notes |
 |---|---|---|---|---|
-| 1 | **PA SP triggers filter App-identity edits** | Bridge / Executor / Orchestrator never fire on PnP-cert-inserted test rows | Use Graph API with USER token to insert/update test rows, or PnP `-Interactive` | `reference_pa_sp_trigger_filters_app_identity.md` |
-| 2 | **Graph perms ≠ data-plane authorization for password reset** | 403 `Authorization_RequestDenied` from Graph despite `User.ReadWrite.All` | Assign Password Administrator directory role to the SP | `reference_graph_password_reset_needs_directory_role.md` |
-| 3 | **PA secureData allowlist per action type** | "InvalidSecureDataConfiguration" on Compose/ParseJson | Compose/ParseJson accept only `["inputs"]`; HTTP/OpenApiConnection accept both | `reference_pa_securedata_per_action_type.md` |
-| 4 | **FlowStudio MCP `update_live_flow` rejects nested-object definitions** when called from Claude Code | "definition must be a JSON object, not a string" | Bypass with PA REST API direct POST | `reference_flowstudio_mcp_definition_string_rejection.md` |
-| 5 | **PA flow create uses POST, not PUT** | 404 on PUT to `/flows/{guid}` | POST to `/flows` (no guid) | `reference_pa_rest_api_create_flow.md` |
-| 6 | **Catherine has Owner only on MPN sub** | "AuthorizationFailed" creating RG in PAYG sub | Switch to MPN sub `a45a0c43-...` | `reference_az_subscription_rights_contoso.md` |
-| 7 | **PatchItem requires ALL SP-required fields** | Validation error during flow design or runtime | Ferry every required field through from trigger output, even if not changing | `reference_patchitem_requires_all_required_fields.md` |
-| 8 | **MCS connector requires PUBLISHED agent** | "Agent is not published" | Hit Publish in Copilot Studio portal; push-to-draft is not enough | `reference_mcs_connector_requires_published_agent.md` |
-| 9 | **MCS GenerativeAIRecognizer needs natural-language trigger phrases** | Bracketed tokens like `[TRIAGE_REQUEST]` fall to Fallback | Use natural English phrases for triggers | `reference_mcs_intent_recognition_natural_language.md` |
+| 1 | **PA SP triggers filter App-identity edits** | Bridge / Executor / Orchestrator never fire on PnP-cert-inserted test rows | Use Graph API with USER token to insert/update test rows, or PnP `-Interactive` | — |
+| 2 | **Graph perms ≠ data-plane authorization for password reset** | 403 `Authorization_RequestDenied` from Graph despite `User.ReadWrite.All` | Assign Password Administrator directory role to the SP | — |
+| 3 | **PA secureData allowlist per action type** | "InvalidSecureDataConfiguration" on Compose/ParseJson | Compose/ParseJson accept only `["inputs"]`; HTTP/OpenApiConnection accept both | — |
+| 4 | **FlowStudio MCP `update_live_flow` rejects nested-object definitions** when called from Claude Code | "definition must be a JSON object, not a string" | Bypass with PA REST API direct POST | — |
+| 5 | **PA flow create uses POST, not PUT** | 404 on PUT to `/flows/{guid}` | POST to `/flows` (no guid) | — |
+| 6 | **Owner rights only on the MPN sub** | "AuthorizationFailed" creating RG in PAYG sub | Switch to the MPN subscription | — |
+| 7 | **PatchItem requires ALL SP-required fields** | Validation error during flow design or runtime | Ferry every required field through from trigger output, even if not changing | — |
+| 8 | **MCS connector requires PUBLISHED agent** | "Agent is not published" | Hit Publish in Copilot Studio portal; push-to-draft is not enough | — |
+| 9 | **MCS GenerativeAIRecognizer needs natural-language trigger phrases** | Bracketed tokens like `[TRIAGE_REQUEST]` fall to Fallback | Use natural English phrases for triggers | — |
 | 10 | **`aiSettings.useModelKnowledge=false` blocks pure-instruction generation** | Agent can't emit JSON-from-instructions; falls to Fallback | Set true if you need composition without grounding | `reference_mcs_useModelKnowledge_blocks_pure_instruction_generation.md` |
-| 11 | **Copilot Studio Power Fx braces gotcha** | `{placeholder}` in agent instructions parses as Power Fx → compile fail | Use `()` or `<>` for placeholder text | `feedback_copilot_studio_powerfx_braces.md` |
-| 12 | **clone-agent overwrites local topics** | Local topics deleted after pull | Push BEFORE pull; treat clone/pull as destructive | `reference_clone_agent_overwrites_local.md` |
-| 13 | **SP Lookup field syntax in PA** | "field not found" or wrong row updated | Use `item/<Field>/Id` with integer SP id; not `LookupId` or `Id` suffix | `reference_pa_sp_lookup_field_syntax.md` |
-| 14 | **PnP user-field syntax** | Cryptic "user not found" with integer ID | Pass email string (`'user@domain.com'`), not `LookupId` integer | `reference_pnp_addlistitem_user_field_email_string.md` |
-| 15 | **PA Until > Switch > OpenApiConnection nesting** | Validation rejects `authentication`, demands `connectionReferenceName` | Make flow solution-aware OR restructure to flatten | `reference_pa_until_switch_openapi_nesting_constraint.md` |
-| 16 | **Triage agent needs explicit tenant identity grounding** | Agent mis-classifies internal sites as cross-tenant | Hardcode `ORG CONTEXT` block in instructions; long-term: CMDB seed | `reference_agent_needs_tenant_identity_grounding.md` |
-| 17 | **JobTypes registry uses camelCase** | Mis-cased payload returns 200 with status Rejected | Use `identity.resetPassword`, not `identity.reset_password` | `reference_jobtypes_camelcase.md` |
+| 11 | **Copilot Studio Power Fx braces gotcha** | `{placeholder}` in agent instructions parses as Power Fx → compile fail | Use `()` or `<>` for placeholder text | — |
+| 12 | **clone-agent overwrites local topics** | Local topics deleted after pull | Push BEFORE pull; treat clone/pull as destructive | — |
+| 13 | **SP Lookup field syntax in PA** | "field not found" or wrong row updated | Use `item/<Field>/Id` with integer SP id; not `LookupId` or `Id` suffix | — |
+| 14 | **PnP user-field syntax** | Cryptic "user not found" with integer ID | Pass email string (`'user@domain.com'`), not `LookupId` integer | — |
+| 15 | **PA Until > Switch > OpenApiConnection nesting** | Validation rejects `authentication`, demands `connectionReferenceName` | Make flow solution-aware OR restructure to flatten | — |
+| 16 | **Triage agent needs explicit tenant identity grounding** | Agent mis-classifies internal sites as cross-tenant | Hardcode `ORG CONTEXT` block in instructions; long-term: CMDB seed | — |
+| 17 | **JobTypes registry uses camelCase** | Mis-cased payload returns 200 with status Rejected | Use `identity.resetPassword`, not `identity.reset_password` | — |
 | 18 | **Copilot Studio flow actions need named solution membership** | Agent publish fails; `InvokeFlowAction` / `InvokeFlowTaskAction` diagnostics show `CloudFlow ... not found` | Add the cloud-flow workflow component to a named unmanaged solution; Default/Active/Common solution membership is not enough | See details below |
 
 ### Gotcha 18 detail: Copilot Studio flow binding needs a named solution
@@ -523,7 +523,7 @@ What's deliberately deferred. Each is independently addable per the migration pa
 16. **Archival flow** (Week 6) — Closed > 12 months → Tickets-Archive
 17. **Major Incident detector** (Week 6) — webhook cluster detection
 18. **Power BI reporting** — SLA attainment, agent accuracy, top categories, top failures
-19. **Backup human custodian** for SP certs and KV (recommended: John Liu)
+19. **Backup human custodian** for SP certs and KV (recommended: a second admin)
 20. **Rotation reminder flow** — fires 14/7/1 days before any cert/secret expiry
 21. **Ticket type validation gate** — portal Incident/Request confirmation plus `ITSM-Ticket-Type-Validator` flow and downstream trigger guards
 
@@ -531,16 +531,16 @@ What's deliberately deferred. Each is independently addable per the migration pa
 
 ## 9b. Phase 3 backlog (functional coverage to ready-to-market)
 
-Surfaced 2026-05-02 after gap analysis against `servicenow-itsm-ticketing-report.md` §4.1. Phase 2 covers production hardening. Phase 3 covers the functional + UX surface needed to call the product marketable to a paying customer.
+Gap analysis against the ServiceNow baseline (§4.1). Phase 2 covers production hardening. Phase 3 covers the functional + UX surface needed to call the product marketable to a paying customer.
 
 | # | Item | Why it matters | Status |
 |---|---|---|---|
-| 21 | **Category + subcategory taxonomy to research parity** — 12 top-level categories with ~50 subcategories + cascade lookup | Today: 13 cats, 0 subcats, free-text Subcategory. Research baseline §4.1 has structured 12+50 taxonomy with category→subcategory cascade | ✅ Phase 3 deliverable 1 — see `infra/sharepoint/lists/01b-subcategories.ps1` + `seed-subcategories.ps1` (2026-05-02) |
-| 22 | **Service Catalog with 5-10 seeded items + RITM/SCTASK working** | Today: empty Service Catalog list, no RITM-generator flow, no SCTASK orchestration. Research §2.4 — Catalog is half of any ITSM product | ✅ Phase 3 deliverable 2 — see `agents/service-catalog/seed-catalog-items.ps1` + `flows/ritm-generator/` + `flows/sctask-orchestrator/` (2026-05-02) |
-| 23 | **5 more executors + JobTypes** (groups / licensing / exchange / sharepoint / teams) | Today: only identity executor running. Other 11 JobTypes have no executor wired. Without these, "automation" is just password reset | ✅ Phase 3 deliverable 3 — see `infra/azure/provision-5-executors.ps1` + `flows/executors/` (2026-05-02) |
+| 21 | **Category + subcategory taxonomy to research parity** — 12 top-level categories with ~50 subcategories + cascade lookup | Today: 13 cats, 0 subcats, free-text Subcategory. Research baseline §4.1 has structured 12+50 taxonomy with category→subcategory cascade | ✅ Phase 3 deliverable 1 — see `infra/sharepoint/lists/01b-subcategories.ps1` + `seed-subcategories.ps1` |
+| 22 | **Service Catalog with 5-10 seeded items + RITM/SCTASK working** | Today: empty Service Catalog list, no RITM-generator flow, no SCTASK orchestration. Research §2.4 — Catalog is half of any ITSM product | ✅ Phase 3 deliverable 2 — see `agents/service-catalog/seed-catalog-items.ps1` + `flows/ritm-generator/` + `flows/sctask-orchestrator/` |
+| 23 | **5 more executors + JobTypes** (groups / licensing / exchange / sharepoint / teams) | Today: only identity executor running. Other 11 JobTypes have no executor wired. Without these, "automation" is just password reset | ✅ Phase 3 deliverable 3 — see `infra/azure/provision-5-executors.ps1` + `flows/executors/` |
 | 24 | **Multi-tenant installer / template package** | Today: hardcoded to contoso. KV name, Entra app IDs, site URL, connection IDs all per-tenant constants. Customer onboarding requires hand-rolled SP+KV+Entra app provisioning per tenant | Backlog |
 | 25 | **End-user surface** — at minimum a Power Apps form (or Teams app or Employee Center equivalent) | Today: end users insert SP rows directly. No structured intake UX, no catalog browse, no "my open tickets" view | Backlog |
-| 26 | **Email-to-ticket ingestion** (most common intake channel in real shops) | Today: SP form is canonical intake per `feedback_tickets_must_be_structured_input.md`. Real customers also need email | Backlog |
+| 26 | **Email-to-ticket ingestion** (most common intake channel in real shops) | Today: SP form is canonical intake per the internal notes. Real customers also need email | Backlog |
 | 27 | **Power BI reporting pack** — SLA attainment, MTTR, agent accuracy, top categories, top failures, deflection rate | Today: no dashboards. "Reporting & Analytics" is also a missing category in our seed | Phase 2 #18 (consolidate) |
 | 28 | **Problem Management module + Change Management proper records** | Today: TicketType has Choice value `Problem` and `Change` but no PRB-specific fields (root cause, known errors), no CHG fields (risk, plans, CAB). Research §2.2 + §2.3 | Backlog |
 | 29 | **SLA engine** — `task_sla` per-ticket timer rows + breach detection flow | Today: hours stored on Priority Matrix, never consumed. Phase 2 #15 names a flow but no design yet | Phase 2 #15 (consolidate) |
@@ -548,7 +548,7 @@ Surfaced 2026-05-02 after gap analysis against `servicenow-itsm-ticketing-report
 
 ### Phase 3 deliverable rationale (why these 3 first)
 
-Per Catherine 2026-05-02: items 21, 22, 23 are the minimum to demo as a real ITSM product, not just a password-reset bot. Categories + Service Catalog give the customer-visible surface; 5 more executors give automation depth beyond the single demo path. Items 24-26 (multi-tenant, end-user UX, email intake) are the *next* gate — without them you cannot install at a customer.
+Items 21, 22, 23 are the minimum to demo as a real ITSM product, not just a password-reset bot. Categories + Service Catalog give the customer-visible surface; 5 more executors give automation depth beyond the single demo path. Items 24-26 (multi-tenant, end-user UX, email intake) are the *next* gate — without them you cannot install at a customer.
 
 ---
 
@@ -575,15 +575,3 @@ Per Catherine 2026-05-02: items 21, 22, 23 are the minimum to demo as a real ITS
 ### Visual artifacts
 - `sharepoint-itsm-schema.xlsx` — 16-list SharePoint schema (canonical)
 - `servicenow-itsm-ticketing-report.md` — research baseline for ServiceNow modules being mirrored
-
-### Memory (auto-loaded)
-- Memory index: `~/.claude/projects/c--Users-ninih-GitHub-Copilot-Studio/memory/MEMORY.md`
-- Every gotcha in §6 above has a corresponding memory file with full context + reproduction steps
-
----
-
-## 11. Authoring credit
-
-- Architecture and system design: Catherine Han (2026-04-29)
-- Pilot implementation Week 1-2 (overnight build + closeout): autonomous build per Catherine's directive (2026-04-29 to 2026-05-01)
-- Playbook author: Claude Code (from this session's accumulated state)
