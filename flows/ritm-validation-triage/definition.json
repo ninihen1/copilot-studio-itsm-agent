@@ -583,7 +583,8 @@
                           "item/Variables": "@string(outputs('Compose_Hold_Variables'))",
                           "item/OpenedDate": "@outputs('Get_RITM_Fresh')?['body/OpenedDate']",
                           "item/ConfidentialityLevel/Value": "@outputs('Get_RITM_Fresh')?['body/ConfidentialityLevel/Value']",
-                          "item/WorkNotes": "@{concat('RITM validation triage put this request on hold. Catherine must clarify before approval. Details: ', string(outputs('Compose_Hold_Variables')))}"
+                          "item/WorkNotes": "@{concat('Could not auto-fulfill; assigned to the IT service desk for manual review. Details: ', string(outputs('Compose_Hold_Variables')))}",
+                          "item/AssignmentGroup/Claims": "i:0#.f|membership|itsm-admin@contoso.com"
                         },
                         "authentication": "@parameters('$authentication')"
                       }
@@ -605,7 +606,7 @@
                           "poster": "Flow bot",
                           "location": "Chat with Flow bot",
                           "body/recipient": "@{coalesce(body('Get_Parent_Ticket')?['Caller/Email'], body('Get_Parent_Ticket')?['Caller/EMail'], last(split(coalesce(outputs('Get_RITM_Fresh')?['body/RequestedFor/Claims'], ''), '|')), 'itsm-admin@contoso.com')}",
-                          "body/messageBody": "@{concat('<h2>RITM needs clarification</h2><p><b>RITM:</b> ', outputs('Get_RITM_Fresh')?['body/RitmNumber'], ' (item ID ', string(outputs('Get_RITM_Fresh')?['body/ID']), ')</p><p><b>Operation:</b> ', coalesce(body('Parse_AI_Intent')?['jobType'], 'n/a'), '</p><p><b>Target user:</b> ', coalesce(body('Parse_AI_Intent')?['targetUserUpn'], '(none)'), '</p><p><b>Resource:</b> ', coalesce(body('Parse_AI_Intent')?['resourceName'], '(none)'), '</p><p><b>Confidence:</b> ', coalesce(body('Parse_AI_Intent')?['confidence'], ''), ' &middot; <b>Missing:</b> ', join(coalesce(body('Parse_AI_Intent')?['missing'], json('[]')), ', '), '</p><p>', coalesce(body('Parse_AI_Intent')?['summary'], ''), '</p><p><a href=\"https://contoso.sharepoint.com/sites/ITSM/Lists/Request%20Items/DispForm.aspx?ID=', string(outputs('Get_RITM_Fresh')?['body/ID']), '\">Open request item</a></p>')}"
+                          "body/messageBody": "@{concat('<h2>Request received - IT is reviewing</h2><p>Your request <b>', outputs('Get_RITM_Fresh')?['body/RitmNumber'], '</b> (item ID ', string(outputs('Get_RITM_Fresh')?['body/ID']), ') could not be completed automatically and has been assigned to the IT service desk for review.</p><p><b>Operation:</b> ', coalesce(body('Parse_AI_Intent')?['jobType'], 'n/a'), ' &middot; <b>Target:</b> ', coalesce(body('Parse_AI_Intent')?['targetUserUpn'], '(none)'), ' &middot; <b>Resource:</b> ', coalesce(body('Parse_AI_Intent')?['resourceName'], '(none)'), '</p><p>', coalesce(body('Parse_AI_Intent')?['summary'], ''), '</p><p>If you can add detail (for example the exact product or group name), reply and it will speed things up.</p><p><a href=\"https://contoso.sharepoint.com/sites/ITSM/Lists/Request%20Items/DispForm.aspx?ID=', string(outputs('Get_RITM_Fresh')?['body/ID']), '\">Open request item</a></p>')}"
                         },
                         "authentication": "@parameters('$authentication')"
                       }
@@ -620,5 +621,5 @@
     }
   },
   "outputs": {},
-  "description": "3.2 RITM-Validation. Clarification notice routes to the requester (Caller email, then RequestedFor UPN, then owner fallback). Agent + FindGroup resolver; agent-down notice stays with the admin (ops); structured path unchanged. On validated -> 3.3 RITM-Approval {ritmId}."
+  "description": "3.2 RITM-Validation. Validated -> 3.3 RITM-Approval. When it cannot auto-fulfill (out-of-catalog / unresolved / not confident), the RITM is assigned to the IT service desk for manual review (no dead-end) and the requester is notified it was received; clarification notice routes to the requester. Agent + FindGroup resolver; structured path unchanged."
 }
