@@ -43,7 +43,7 @@
           "operationId": "GetItem"
         },
         "parameters": {
-          "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+          "dataset": "https://johnliu365.sharepoint.com/sites/ITSM",
           "table": "Request Items",
           "id": "@triggerBody()?['ritmId']"
         },
@@ -81,7 +81,7 @@
               "operationId": "GetItem"
             },
             "parameters": {
-              "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+              "dataset": "https://johnliu365.sharepoint.com/sites/ITSM",
               "table": "Tickets",
               "id": "@outputs('Get_RITM_Fresh')?['body/ParentTicket/Id']"
             },
@@ -102,7 +102,7 @@
               "operationId": "GetItem"
             },
             "parameters": {
-              "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+              "dataset": "https://johnliu365.sharepoint.com/sites/ITSM",
               "table": "Service Catalog",
               "id": "@outputs('Get_RITM_Fresh')?['body/CatalogItem/Id']"
             },
@@ -181,7 +181,7 @@
                   "operationId": "PatchItem"
                 },
                 "parameters": {
-                  "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+                  "dataset": "https://johnliu365.sharepoint.com/sites/ITSM",
                   "table": "Request Items",
                   "id": "@outputs('Get_RITM_Fresh')?['body/ID']",
                   "item/Title": "@outputs('Get_RITM_Fresh')?['body/Title']",
@@ -207,7 +207,7 @@
               "type": "Http",
               "inputs": {
                 "method": "POST",
-                "uri": "https://REDACTED-FLOW-TRIGGER-URL",
+                "uri": "https://d0897ddefb5143f58049c16dd0bfab.b5.environment.api.powerplatform.com:443/powerautomate/automations/direct/workflows/9e28487a55aa416cac4b931a00c480cf/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=REDACTED",
                 "headers": {
                   "Content-Type": "application/json"
                 },
@@ -233,7 +233,7 @@
                 "type": "OpenApiConnectionWebhook",
                 "inputs": {
                   "parameters": {
-                    "Copilot": "itsm_triage_agent",
+                    "Copilot": "cre79_agent",
                     "body/message": "@{outputs('Compose_TriagePrompt')}"
                   },
                   "host": {
@@ -259,7 +259,7 @@
                     "operationId": "PatchItem"
                   },
                   "parameters": {
-                    "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+                    "dataset": "https://johnliu365.sharepoint.com/sites/ITSM",
                     "table": "Request Items",
                     "id": "@outputs('Get_RITM_Fresh')?['body/ID']",
                     "item/Title": "@outputs('Get_RITM_Fresh')?['body/Title']",
@@ -292,8 +292,8 @@
                   "parameters": {
                     "poster": "Flow bot",
                     "location": "Chat with Flow bot",
-                    "body/recipient": "itsm-admin@contoso.com",
-                    "body/messageBody": "@{concat('<h2>RITM validation could not run</h2><p>The triage agent call failed (agent unavailable), so <b>', outputs('Get_RITM_Fresh')?['body/RitmNumber'], '</b> (item ID ', string(outputs('Get_RITM_Fresh')?['body/ID']), ') was placed <b>On Hold</b> for manual validation.</p><p><a href=\"https://contoso.sharepoint.com/sites/ITSM/Lists/Request%20Items/DispForm.aspx?ID=', string(outputs('Get_RITM_Fresh')?['body/ID']), '\">Open request item</a></p>')}"
+                    "body/recipient": "catherine.han@flowstudio.app",
+                    "body/messageBody": "@{concat('<h2>RITM validation could not run</h2><p>The triage agent call failed (agent unavailable), so <b>', outputs('Get_RITM_Fresh')?['body/RitmNumber'], '</b> (item ID ', string(outputs('Get_RITM_Fresh')?['body/ID']), ') was placed <b>On Hold</b> for manual validation.</p><p><a href=\"https://johnliu365.sharepoint.com/sites/ITSM/Lists/Request%20Items/DispForm.aspx?ID=', string(outputs('Get_RITM_Fresh')?['body/ID']), '\">Open request item</a></p>')}"
                   },
                   "authentication": "@parameters('$authentication')"
                 }
@@ -484,7 +484,7 @@
                       "confidence": "@body('Parse_AI_Intent')?['confidence']",
                       "summary": "@coalesce(body('Parse_AI_Intent')?['summary'], '')",
                       "validatedAt": "@utcNow()",
-                      "validationSource": "Triage agent (itsm_triage_agent) + FindGroup; agent-resolved groupId, no flow-side Graph",
+                      "validationSource": "Triage agent (cre79_agent) + FindGroup; agent-resolved groupId, no flow-side Graph",
                       "originalText": "@coalesce(outputs('Get_RITM_Fresh')?['body/Variables'], '')"
                     }
                   },
@@ -502,7 +502,7 @@
                         "operationId": "PatchItem"
                       },
                       "parameters": {
-                        "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+                        "dataset": "https://johnliu365.sharepoint.com/sites/ITSM",
                         "table": "Request Items",
                         "id": "@outputs('Get_RITM_Fresh')?['body/ID']",
                         "item/Title": "@outputs('Get_RITM_Fresh')?['body/Title']",
@@ -528,7 +528,7 @@
                     "type": "Http",
                     "inputs": {
                       "method": "POST",
-                      "uri": "https://REDACTED-FLOW-TRIGGER-URL",
+                      "uri": "https://d0897ddefb5143f58049c16dd0bfab.b5.environment.api.powerplatform.com:443/powerautomate/automations/direct/workflows/9e28487a55aa416cac4b931a00c480cf/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=REDACTED",
                       "headers": {
                         "Content-Type": "application/json"
                       },
@@ -571,7 +571,7 @@
                           "operationId": "PatchItem"
                         },
                         "parameters": {
-                          "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+                          "dataset": "https://johnliu365.sharepoint.com/sites/ITSM",
                           "table": "Request Items",
                           "id": "@outputs('Get_RITM_Fresh')?['body/ID']",
                           "item/Title": "@outputs('Get_RITM_Fresh')?['body/Title']",
@@ -584,7 +584,7 @@
                           "item/OpenedDate": "@outputs('Get_RITM_Fresh')?['body/OpenedDate']",
                           "item/ConfidentialityLevel/Value": "@outputs('Get_RITM_Fresh')?['body/ConfidentialityLevel/Value']",
                           "item/WorkNotes": "@{concat('Could not auto-fulfill; assigned to the IT service desk for manual review. Details: ', string(outputs('Compose_Hold_Variables')))}",
-                          "item/AssignmentGroup/Claims": "i:0#.f|membership|itsm-admin@contoso.com"
+                          "item/AssignmentGroup/Claims": "i:0#.f|membership|catherine.han@flowstudio.app"
                         },
                         "authentication": "@parameters('$authentication')"
                       }
@@ -605,8 +605,8 @@
                         "parameters": {
                           "poster": "Flow bot",
                           "location": "Chat with Flow bot",
-                          "body/recipient": "@{coalesce(body('Get_Parent_Ticket')?['Caller/Email'], body('Get_Parent_Ticket')?['Caller/EMail'], last(split(coalesce(outputs('Get_RITM_Fresh')?['body/RequestedFor/Claims'], ''), '|')), 'itsm-admin@contoso.com')}",
-                          "body/messageBody": "@{concat('<h2>Request received - IT is reviewing</h2><p>Your request <b>', outputs('Get_RITM_Fresh')?['body/RitmNumber'], '</b> (item ID ', string(outputs('Get_RITM_Fresh')?['body/ID']), ') could not be completed automatically and has been assigned to the IT service desk for review.</p><p><b>Operation:</b> ', coalesce(body('Parse_AI_Intent')?['jobType'], 'n/a'), ' &middot; <b>Target:</b> ', coalesce(body('Parse_AI_Intent')?['targetUserUpn'], '(none)'), ' &middot; <b>Resource:</b> ', coalesce(body('Parse_AI_Intent')?['resourceName'], '(none)'), '</p><p>', coalesce(body('Parse_AI_Intent')?['summary'], ''), '</p><p>If you can add detail (for example the exact product or group name), reply and it will speed things up.</p><p><a href=\"https://contoso.sharepoint.com/sites/ITSM/Lists/Request%20Items/DispForm.aspx?ID=', string(outputs('Get_RITM_Fresh')?['body/ID']), '\">Open request item</a></p>')}"
+                          "body/recipient": "@{coalesce(body('Get_Parent_Ticket')?['Caller/Email'], body('Get_Parent_Ticket')?['Caller/EMail'], last(split(coalesce(outputs('Get_RITM_Fresh')?['body/RequestedFor/Claims'], ''), '|')), 'catherine.han@flowstudio.app')}",
+                          "body/messageBody": "@{concat('<h2>Request received - IT is reviewing</h2><p>Your request <b>', outputs('Get_RITM_Fresh')?['body/RitmNumber'], '</b> (item ID ', string(outputs('Get_RITM_Fresh')?['body/ID']), ') could not be completed automatically and has been assigned to the IT service desk for review.</p><p><b>Operation:</b> ', coalesce(body('Parse_AI_Intent')?['jobType'], 'n/a'), ' &middot; <b>Target:</b> ', coalesce(body('Parse_AI_Intent')?['targetUserUpn'], '(none)'), ' &middot; <b>Resource:</b> ', coalesce(body('Parse_AI_Intent')?['resourceName'], '(none)'), '</p><p>', coalesce(body('Parse_AI_Intent')?['summary'], ''), '</p><p>If you can add detail (for example the exact product or group name), reply and it will speed things up.</p><p><a href=\"https://johnliu365.sharepoint.com/sites/ITSM/Lists/Request%20Items/DispForm.aspx?ID=', string(outputs('Get_RITM_Fresh')?['body/ID']), '\">Open request item</a></p>')}"
                         },
                         "authentication": "@parameters('$authentication')"
                       }
