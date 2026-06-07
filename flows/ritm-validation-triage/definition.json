@@ -604,7 +604,7 @@
                         "parameters": {
                           "poster": "Flow bot",
                           "location": "Chat with Flow bot",
-                          "body/recipient": "itsm-admin@contoso.com",
+                          "body/recipient": "@{coalesce(body('Get_Parent_Ticket')?['Caller/Email'], body('Get_Parent_Ticket')?['Caller/EMail'], last(split(coalesce(outputs('Get_RITM_Fresh')?['body/RequestedFor/Claims'], ''), '|')), 'itsm-admin@contoso.com')}",
                           "body/messageBody": "@{concat('<h2>RITM needs clarification</h2><p><b>RITM:</b> ', outputs('Get_RITM_Fresh')?['body/RitmNumber'], ' (item ID ', string(outputs('Get_RITM_Fresh')?['body/ID']), ')</p><p><b>Operation:</b> ', coalesce(body('Parse_AI_Intent')?['jobType'], 'n/a'), '</p><p><b>Target user:</b> ', coalesce(body('Parse_AI_Intent')?['targetUserUpn'], '(none)'), '</p><p><b>Resource:</b> ', coalesce(body('Parse_AI_Intent')?['resourceName'], '(none)'), '</p><p><b>Confidence:</b> ', coalesce(body('Parse_AI_Intent')?['confidence'], ''), ' &middot; <b>Missing:</b> ', join(coalesce(body('Parse_AI_Intent')?['missing'], json('[]')), ', '), '</p><p>', coalesce(body('Parse_AI_Intent')?['summary'], ''), '</p><p><a href=\"https://contoso.sharepoint.com/sites/ITSM/Lists/Request%20Items/DispForm.aspx?ID=', string(outputs('Get_RITM_Fresh')?['body/ID']), '\">Open request item</a></p>')}"
                         },
                         "authentication": "@parameters('$authentication')"
@@ -620,5 +620,5 @@
     }
   },
   "outputs": {},
-  "description": "3.2 RITM-Validation. 2026-06-07: free-text branch triages via cre79_agent + FindGroup and consumes the agent-resolved groupId directly (dropped flow-side Azure Key Vault + Microsoft Graph user/group resolution; userId no longer produced - executors resolve UPN at run time). Structured portal path unchanged. On validated -> 3.3 RITM-Approval {ritmId}."
+  "description": "3.2 RITM-Validation. Clarification notice routes to the requester (Caller email, then RequestedFor UPN, then owner fallback). Agent + FindGroup resolver; agent-down notice stays with the admin (ops); structured path unchanged. On validated -> 3.3 RITM-Approval {ritmId}."
 }

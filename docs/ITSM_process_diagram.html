@@ -90,8 +90,7 @@
 <body>
 
   <h1>ITSM Pipeline — Event-Driven Push Choreography (HTTP Calls)</h1>
-  <p class="sub">Reworked 2026-06-02: the polling timers are gone. Almost every flow now <b>calls the next directly over HTTP</b>;
-     each called flow re-reads its own record live before acting.</p>
+  <p class="sub">Every flow <b>calls the next directly over HTTP</b>; each called flow re-reads its own record live before acting.</p>
   <p class="crux">One front door (a ticket arrives) → the Validator <b>fans out into two lanes</b> →
      both lanes converge on the Dispatcher → it <b>routes the job to the one matching executor</b> → the executor calls the Resolver to close the ticket.</p>
 
@@ -199,7 +198,7 @@
     </div>
     <div class="card retired-card">
       <h4>Retired</h4>
-      <b>3.1 Approval-Bridge</b> — used to poll the Approvals list and forward approved jobs. Triage now creates and waits on its own approval inline and calls the Dispatcher itself, so the bridge is vestigial (last fired 2026-05-16).
+      <b>3.1 Approval-Bridge</b> — used to poll the Approvals list and forward approved jobs. Triage now creates and waits on its own approval inline and calls the Dispatcher itself, so the bridge is retired.
     </div>
   </div>
 
