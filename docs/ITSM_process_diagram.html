@@ -100,7 +100,7 @@
     <div class="center">
       <div class="box side" style="max-width:430px">
         <span class="code">Tickets list — a ticket arrives</span>
-        <span class="desc">SharePoint event · the only remaining ticket watcher</span>
+        <span class="desc">SharePoint event · watches for new and updated tickets</span>
       </div>
       <div class="arrow evt"><span class="lbl">ticket created / updated</span><span class="line"></span><span class="head">&#9660;</span></div>
       <div class="box triage" style="max-width:480px">
@@ -191,20 +191,16 @@
   <!-- ===== SIDE INFO ===== -->
   <div class="sideinfo">
     <div class="card stays">
-      <h4>Stays event- or timer-triggered (by design)</h4>
+      <h4>Event- or timer-triggered by design</h4>
       <b>X2 Comment-Resolved-Reopen</b> &amp; <b>X3 Comment-Awaiting-Caller-Resume</b> — a caller commenting is a real external event.<br>
       <b>S1 SLA-Timer · S2 Archival · S3/S4 License syncs</b> — genuinely time-driven (Recurrence).<br>
-      Manager-approval waits inside Triage / Approval are native Approvals webhook callbacks — already push, not polls.
-    </div>
-    <div class="card retired-card">
-      <h4>Retired</h4>
-      <b>3.1 Approval-Bridge</b> — used to poll the Approvals list and forward approved jobs. Triage now creates and waits on its own approval inline and calls the Dispatcher itself, so the bridge is retired.
+      Manager-approval waits inside Triage / Approval are native Approvals webhook callbacks.
     </div>
   </div>
 
   <!-- ===== LEGEND ===== -->
   <div class="legend">
-    <h3>Legend · codes from FlowDocsInventory</h3>
+    <h3>Legend</h3>
     <div class="grid">
       <div class="li"><span class="ln solid"></span> <b>HTTP call</b> — direct push</div>
       <div class="li"><span class="ln dash"></span> event trigger / same-flow step</div>
@@ -223,13 +219,13 @@
 
   <div class="notes">
     <div class="note">
-      <b>How it works now (push):</b> a ticket arriving is the only event the <code>1.1 Validator</code> waits for. After it validates the
+      <b>How it works:</b> a ticket arriving is the only event the <code>1.1 Validator</code> waits for. After it validates the
       type it <b>calls</b> the right lane directly — the <b>Request lane</b> (RITM-Generator → Validation → Approval → SCTASK-PJ-Bridge,
       each HTTP-calling the next) or the <b>Incident lane</b> (Triage-Orchestrator + Major-Incident-Detector). Both lanes converge on the
       <code>4.1 Dispatcher</code>, which checks the kill switch + idempotency and then <b>routes the job by JobType to exactly one executor</b>
-      (the six no longer poll — they are called). When an executor finishes it <b>calls</b> the <code>6.2 PJ-Ticket-Resolver</code> (agent path)
+      (each executor is called directly). When an executor finishes it <b>calls</b> the <code>6.2 PJ-Ticket-Resolver</code> (agent path)
       or the bridge → <code>6.1 SCTASK-Orchestrator</code> (request path), which closes the ticket. Every called flow re-reads its row live first,
-      so a stale trigger snapshot can no longer revert a resolved ticket or skip a job.
+      so a stale trigger snapshot cannot revert a resolved ticket or skip a job.
     </div>
   </div>
 
