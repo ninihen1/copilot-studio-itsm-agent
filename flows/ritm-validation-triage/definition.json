@@ -399,7 +399,9 @@
                   "agentGroupId": "@coalesce(body('Parse_Agent_Triage')?['proposedAction']?['args']?['groupId'], '')",
                   "confidence": "@if(equals(coalesce(body('Parse_Agent_Triage')?['outcome'], ''), 'propose'), 'high', 'low')",
                   "missing": "@if(equals(coalesce(body('Parse_Agent_Triage')?['outcome'], ''), 'stop_and_ask'), createArray(coalesce(body('Parse_Agent_Triage')?['moreInfoNeeded'], 'clarification needed')), json('[]'))",
-                  "summary": "@coalesce(body('Parse_Agent_Triage')?['rationale'], '')"
+                  "summary": "@coalesce(body('Parse_Agent_Triage')?['rationale'], '')",
+                  "outcome": "@coalesce(body('Parse_Agent_Triage')?['outcome'], '')",
+                  "moreInfoNeeded": "@coalesce(body('Parse_Agent_Triage')?['moreInfoNeeded'], '')"
                 }
               },
               "Parse_AI_Intent": {
@@ -554,61 +556,159 @@
                         "missing": "@coalesce(body('Parse_AI_Intent')?['missing'], json('[]'))",
                         "summary": "@coalesce(body('Parse_AI_Intent')?['summary'], '')",
                         "agentGroupId": "@coalesce(outputs('Compose_Intent_Shim')?['agentGroupId'], '')",
-                        "originalText": "@coalesce(outputs('Get_RITM_Fresh')?['body/Variables'], '')"
+                        "originalText": "@coalesce(outputs('Get_RITM_Fresh')?['body/Variables'], '')",
+                        "outcome": "@coalesce(outputs('Compose_Intent_Shim')?['outcome'], '')"
                       }
                     },
-                    "Patch_RITM_On_Hold": {
+                    "If_Clarify_Else_Handoff": {
                       "runAfter": {
                         "Compose_Hold_Variables": [
                           "Succeeded"
                         ]
                       },
-                      "type": "OpenApiConnection",
-                      "inputs": {
-                        "host": {
-                          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
-                          "connectionName": "shared_sharepointonline",
-                          "operationId": "PatchItem"
-                        },
-                        "parameters": {
-                          "dataset": "https://contoso.sharepoint.com/sites/ITSM",
-                          "table": "Request Items",
-                          "id": "@outputs('Get_RITM_Fresh')?['body/ID']",
-                          "item/Title": "@outputs('Get_RITM_Fresh')?['body/Title']",
-                          "item/RitmNumber": "@outputs('Get_RITM_Fresh')?['body/RitmNumber']",
-                          "item/ParentTicket/Id": "@outputs('Get_RITM_Fresh')?['body/ParentTicket/Id']",
-                          "item/CatalogItem/Id": "@outputs('Get_RITM_Fresh')?['body/CatalogItem/Id']",
-                          "item/RequestedFor/Claims": "@outputs('Get_RITM_Fresh')?['body/RequestedFor/Claims']",
-                          "item/RitmState/Value": "On Hold",
-                          "item/Variables": "@string(outputs('Compose_Hold_Variables'))",
-                          "item/OpenedDate": "@outputs('Get_RITM_Fresh')?['body/OpenedDate']",
-                          "item/ConfidentialityLevel/Value": "@outputs('Get_RITM_Fresh')?['body/ConfidentialityLevel/Value']",
-                          "item/WorkNotes": "@{concat('Could not auto-fulfill; assigned to the IT service desk for manual review. Details: ', string(outputs('Compose_Hold_Variables')))}",
-                          "item/AssignmentGroup/Claims": "i:0#.f|membership|itsm-admin@contoso.com"
-                        },
-                        "authentication": "@parameters('$authentication')"
-                      }
-                    },
-                    "Notify_Catherine_Clarification": {
-                      "runAfter": {
-                        "Patch_RITM_On_Hold": [
-                          "Succeeded"
+                      "type": "If",
+                      "expression": {
+                        "and": [
+                          {
+                            "equals": [
+                              "@toLower(coalesce(outputs('Compose_Intent_Shim')?['outcome'], ''))",
+                              "stop_and_ask"
+                            ]
+                          }
                         ]
                       },
-                      "type": "OpenApiConnection",
-                      "inputs": {
-                        "host": {
-                          "apiId": "/providers/Microsoft.PowerApps/apis/shared_teams",
-                          "connectionName": "shared_teams",
-                          "operationId": "PostMessageToConversation"
+                      "actions": {
+                        "Patch_RITM_Clarify": {
+                          "runAfter": {},
+                          "type": "OpenApiConnection",
+                          "inputs": {
+                            "host": {
+                              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                              "connectionName": "shared_sharepointonline",
+                              "operationId": "PatchItem"
+                            },
+                            "parameters": {
+                              "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+                              "table": "Request Items",
+                              "id": "@outputs('Get_RITM_Fresh')?['body/ID']",
+                              "item/Title": "@outputs('Get_RITM_Fresh')?['body/Title']",
+                              "item/RitmNumber": "@outputs('Get_RITM_Fresh')?['body/RitmNumber']",
+                              "item/ParentTicket/Id": "@outputs('Get_RITM_Fresh')?['body/ParentTicket/Id']",
+                              "item/CatalogItem/Id": "@outputs('Get_RITM_Fresh')?['body/CatalogItem/Id']",
+                              "item/RequestedFor/Claims": "@outputs('Get_RITM_Fresh')?['body/RequestedFor/Claims']",
+                              "item/RitmState/Value": "On Hold",
+                              "item/Variables": "@string(outputs('Compose_Hold_Variables'))",
+                              "item/OpenedDate": "@outputs('Get_RITM_Fresh')?['body/OpenedDate']",
+                              "item/ConfidentialityLevel/Value": "@outputs('Get_RITM_Fresh')?['body/ConfidentialityLevel/Value']",
+                              "item/WorkNotes": "@{concat('Needs clarification from the requester before it can proceed: ', coalesce(outputs('Compose_Intent_Shim')?['moreInfoNeeded'], 'see request'), '. Awaiting reply; the requester owns the next step.')}"
+                            },
+                            "authentication": "@parameters('$authentication')"
+                          }
                         },
-                        "parameters": {
-                          "poster": "Flow bot",
-                          "location": "Chat with Flow bot",
-                          "body/recipient": "@{coalesce(body('Get_Parent_Ticket')?['Caller/Email'], body('Get_Parent_Ticket')?['Caller/EMail'], last(split(coalesce(outputs('Get_RITM_Fresh')?['body/RequestedFor/Claims'], ''), '|')), 'itsm-admin@contoso.com')}",
-                          "body/messageBody": "@{concat('<h2>Request received - IT is reviewing</h2><p>Your request <b>', outputs('Get_RITM_Fresh')?['body/RitmNumber'], '</b> (item ID ', string(outputs('Get_RITM_Fresh')?['body/ID']), ') could not be completed automatically and has been assigned to the IT service desk for review.</p><p><b>Operation:</b> ', coalesce(body('Parse_AI_Intent')?['jobType'], 'n/a'), ' &middot; <b>Target:</b> ', coalesce(body('Parse_AI_Intent')?['targetUserUpn'], '(none)'), ' &middot; <b>Resource:</b> ', coalesce(body('Parse_AI_Intent')?['resourceName'], '(none)'), '</p><p>', coalesce(body('Parse_AI_Intent')?['summary'], ''), '</p><p>If you can add detail (for example the exact product or group name), reply and it will speed things up.</p><p><a href=\"https://contoso.sharepoint.com/sites/ITSM/Lists/Request%20Items/DispForm.aspx?ID=', string(outputs('Get_RITM_Fresh')?['body/ID']), '\">Open request item</a></p>')}"
-                        },
-                        "authentication": "@parameters('$authentication')"
+                        "Notify_Requester_Clarify": {
+                          "runAfter": {
+                            "Patch_RITM_Clarify": [
+                              "Succeeded"
+                            ]
+                          },
+                          "type": "OpenApiConnection",
+                          "inputs": {
+                            "host": {
+                              "apiId": "/providers/Microsoft.PowerApps/apis/shared_teams",
+                              "connectionName": "shared_teams",
+                              "operationId": "PostMessageToConversation"
+                            },
+                            "parameters": {
+                              "poster": "Flow bot",
+                              "location": "Chat with Flow bot",
+                              "body/recipient": "@{coalesce(body('Get_Parent_Ticket')?['Caller/Email'], body('Get_Parent_Ticket')?['Caller/EMail'], last(split(coalesce(outputs('Get_RITM_Fresh')?['body/RequestedFor/Claims'], ''), '|')), 'itsm-admin@contoso.com')}",
+                              "body/messageBody": "@{concat('<h2>A bit more info needed</h2><p>To process your request <b>', outputs('Get_RITM_Fresh')?['body/RitmNumber'], '</b> we need: ', coalesce(outputs('Compose_Intent_Shim')?['moreInfoNeeded'], 'a little more detail'), '</p><p>Reply with that and it will continue automatically.</p><p><a href=\"https://contoso.sharepoint.com/sites/ITSM/Lists/Request%20Items/DispForm.aspx?ID=', string(outputs('Get_RITM_Fresh')?['body/ID']), '\">Open request item</a></p>')}"
+                            },
+                            "authentication": "@parameters('$authentication')"
+                          }
+                        }
+                      },
+                      "else": {
+                        "actions": {
+                          "Patch_RITM_Handoff": {
+                            "runAfter": {},
+                            "type": "OpenApiConnection",
+                            "inputs": {
+                              "host": {
+                                "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                                "connectionName": "shared_sharepointonline",
+                                "operationId": "PatchItem"
+                              },
+                              "parameters": {
+                                "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+                                "table": "Request Items",
+                                "id": "@outputs('Get_RITM_Fresh')?['body/ID']",
+                                "item/Title": "@outputs('Get_RITM_Fresh')?['body/Title']",
+                                "item/RitmNumber": "@outputs('Get_RITM_Fresh')?['body/RitmNumber']",
+                                "item/ParentTicket/Id": "@outputs('Get_RITM_Fresh')?['body/ParentTicket/Id']",
+                                "item/CatalogItem/Id": "@outputs('Get_RITM_Fresh')?['body/CatalogItem/Id']",
+                                "item/RequestedFor/Claims": "@outputs('Get_RITM_Fresh')?['body/RequestedFor/Claims']",
+                                "item/RitmState/Value": "On Hold",
+                                "item/Variables": "@string(outputs('Compose_Hold_Variables'))",
+                                "item/OpenedDate": "@outputs('Get_RITM_Fresh')?['body/OpenedDate']",
+                                "item/ConfidentialityLevel/Value": "@outputs('Get_RITM_Fresh')?['body/ConfidentialityLevel/Value']",
+                                "item/WorkNotes": "@{concat('Could not auto-fulfill (out of catalog / no automated action / manual item); assigned to the IT service desk for manual fulfillment. Details: ', string(outputs('Compose_Hold_Variables')))}",
+                                "item/AssignmentGroup/Claims": "c:0o.c|federateddirectoryclaimprovider|REDACTED-SERVICE-DESK-GROUP-ID"
+                              },
+                              "authentication": "@parameters('$authentication')"
+                            }
+                          },
+                          "Create_CatalogDemand": {
+                            "runAfter": {
+                              "Patch_RITM_Handoff": [
+                                "Succeeded"
+                              ]
+                            },
+                            "type": "OpenApiConnection",
+                            "inputs": {
+                              "host": {
+                                "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                                "connectionName": "shared_sharepointonline",
+                                "operationId": "PostItem"
+                              },
+                              "parameters": {
+                                "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+                                "table": "Catalog Demand",
+                                "item/Title": "@{concat(outputs('Get_RITM_Fresh')?['body/RitmNumber'], ' - ', coalesce(body('Parse_AI_Intent')?['resourceName'], body('Get_Catalog_Item')?['ItemName'], 'non-catalog request'))}",
+                                "item/RequestedItem": "@coalesce(body('Get_Catalog_Item')?['ItemName'], outputs('Get_RITM_Fresh')?['body/Title'], '')",
+                                "item/ResourceName": "@coalesce(body('Parse_AI_Intent')?['resourceName'], '')",
+                                "item/JobTypeGuess": "@coalesce(body('Parse_AI_Intent')?['jobType'], '')",
+                                "item/Requester": "@last(split(coalesce(outputs('Get_RITM_Fresh')?['body/RequestedFor/Claims'], ''), '|'))",
+                                "item/RitmRef": "@outputs('Get_RITM_Fresh')?['body/RitmNumber']",
+                                "item/DemandStatus/Value": "New",
+                                "item/DemandNotes": "@coalesce(body('Parse_AI_Intent')?['summary'], outputs('Compose_Intent_Shim')?['moreInfoNeeded'], '')"
+                              },
+                              "authentication": "@parameters('$authentication')"
+                            }
+                          },
+                          "Notify_Requester_Received": {
+                            "runAfter": {
+                              "Create_CatalogDemand": [
+                                "Succeeded"
+                              ]
+                            },
+                            "type": "OpenApiConnection",
+                            "inputs": {
+                              "host": {
+                                "apiId": "/providers/Microsoft.PowerApps/apis/shared_teams",
+                                "connectionName": "shared_teams",
+                                "operationId": "PostMessageToConversation"
+                              },
+                              "parameters": {
+                                "poster": "Flow bot",
+                                "location": "Chat with Flow bot",
+                                "body/recipient": "@{coalesce(body('Get_Parent_Ticket')?['Caller/Email'], body('Get_Parent_Ticket')?['Caller/EMail'], last(split(coalesce(outputs('Get_RITM_Fresh')?['body/RequestedFor/Claims'], ''), '|')), 'itsm-admin@contoso.com')}",
+                                "body/messageBody": "@{concat('<h2>Request received - IT is reviewing</h2><p>Your request <b>', outputs('Get_RITM_Fresh')?['body/RitmNumber'], '</b> (item ID ', string(outputs('Get_RITM_Fresh')?['body/ID']), ') could not be completed automatically and has been assigned to the IT service desk for review.</p><p><b>Operation:</b> ', coalesce(body('Parse_AI_Intent')?['jobType'], 'n/a'), ' &middot; <b>Target:</b> ', coalesce(body('Parse_AI_Intent')?['targetUserUpn'], '(none)'), ' &middot; <b>Resource:</b> ', coalesce(body('Parse_AI_Intent')?['resourceName'], '(none)'), '</p><p>', coalesce(body('Parse_AI_Intent')?['summary'], ''), '</p><p>If you can add detail (for example the exact product or group name), reply and it will speed things up.</p><p><a href=\"https://contoso.sharepoint.com/sites/ITSM/Lists/Request%20Items/DispForm.aspx?ID=', string(outputs('Get_RITM_Fresh')?['body/ID']), '\">Open request item</a></p>')}"
+                              },
+                              "authentication": "@parameters('$authentication')"
+                            }
+                          }
+                        }
                       }
                     }
                   }
@@ -621,5 +721,5 @@
     }
   },
   "outputs": {},
-  "description": "3.2 RITM-Validation. Validated -> 3.3 RITM-Approval. When it cannot auto-fulfill (out-of-catalog / unresolved / not confident), the RITM is assigned to the IT service desk for manual review (no dead-end) and the requester is notified it was received; clarification notice routes to the requester. Agent + FindGroup resolver; structured path unchanged."
+  "description": "3.2 RITM-Validation. Validated -> 3.3 RITM-Approval. Agent emits outcome: stop_and_ask -> clarify lane (notify the requester, who owns the next step); handoff / not-auto-fulfillable -> assigned to the IT service desk group for manual fulfillment + logged to Catalog Demand + requester told it was received. Structured path unchanged."
 }
