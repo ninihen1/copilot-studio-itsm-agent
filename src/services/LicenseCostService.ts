@@ -10,6 +10,7 @@ interface ILicenseCostListItem {
   Title: string;
   SkuPartNumber?: string;
   SkuId?: string;
+  Owned?: boolean;
   OfficialProductName?: string;
   ListPriceMonthly?: number;
   NegotiatedPriceMonthly?: number;
@@ -37,6 +38,13 @@ export class LicenseCostService extends SharePointServiceBase {
     return response.value.length;
   }
 
+  public async getForPicker(): Promise<LicenseCost[]> {
+    const select = '$select=Id,Title,SkuPartNumber,SkuId,Owned';
+    const filter = '$filter=Owned eq 1';
+    const response = await this.get<IListResponse<ILicenseCostListItem>>(this.listItemsUrl('License Costs', `?${select}&${filter}&$orderby=Title asc&$top=2000`));
+    return response.value.filter(item => !!item.SkuPartNumber).map(item => this.mapLicenseCost(item));
+  }
+
   public findBestMatch(costs: LicenseCost[], value?: string): LicenseCost | undefined {
     if (!value) {
       return undefined;
@@ -57,6 +65,7 @@ export class LicenseCostService extends SharePointServiceBase {
       title: item.Title,
       skuPartNumber: item.SkuPartNumber || '',
       skuId: item.SkuId,
+      owned: item.Owned,
       officialProductName: item.OfficialProductName,
       listPriceMonthly: item.ListPriceMonthly,
       negotiatedPriceMonthly: item.NegotiatedPriceMonthly,

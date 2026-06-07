@@ -1,4 +1,4 @@
-export type RitmState = 'Pending Approval' | 'Approved' | 'In Progress' | 'Closed Complete' | 'Closed Incomplete' | 'Closed Skipped' | 'Cancelled';
+export type RitmState = 'Pending Validation' | 'Pending Approval' | 'On Hold' | 'Approved' | 'In Progress' | 'Closed Complete' | 'Closed Incomplete' | 'Closed Skipped' | 'Cancelled';
 
 export interface RequestItem {
   id: number;
@@ -11,4 +11,7 @@ export interface RequestItem {
   variables?: string;
   created?: string;
   modified?: string;
+  // Populated for the Service Desk hand-off queue
+  workNotes?: string;
+  assignmentGroup?: string;
 }

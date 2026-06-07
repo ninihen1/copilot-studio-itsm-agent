@@ -2,6 +2,7 @@ import * as React from 'react';
 import { IBasePickerSuggestionsProps, IPersonaProps, NormalPeoplePicker } from '@fluentui/react';
 import { CatalogItem } from '../models/CatalogItem';
 import { Category } from '../models/Category';
+import { LicenseCost } from '../models/LicenseCost';
 import { Subcategory } from '../models/Subcategory';
 import { CreateIncidentInput, PeoplePickerUser } from '../services/TicketService';
 
@@ -9,6 +10,7 @@ interface ISubmitIncidentViewProps {
   categories: Category[];
   catalogItems: CatalogItem[];
   subcategories: Subcategory[];
+  licenses: LicenseCost[];
   isSubmitting: boolean;
   currentUserDisplayName: string;
   currentUserEmail: string;
@@ -23,6 +25,8 @@ interface ISubmitIncidentViewState {
   categoryId: string;
   subcategoryId: string;
   catalogItemId: string;
+  licenseSkuPartNumber: string;
+  licenseOtherName: string;
   requestedForPeople: IPersonaProps[];
   typeOverrideConfirmed: boolean;
   impact: string;
@@ -40,6 +44,8 @@ export class SubmitIncidentView extends React.Component<ISubmitIncidentViewProps
       categoryId: '',
       subcategoryId: '',
       catalogItemId: '',
+      licenseSkuPartNumber: '',
+      licenseOtherName: '',
       requestedForPeople: [this.currentUserPersona(props)],
       typeOverrideConfirmed: false,
       impact: '2 - Medium',
@@ -118,6 +124,22 @@ export class SubmitIncidentView extends React.Component<ISubmitIncidentViewProps
                       </select>
                     </label>
                   )}
+                  {this.isLicenseRequest && (
+                    <label className="field full">License <span className="required">*</span>
+                      <select value={this.state.licenseSkuPartNumber} onChange={event => this.setState({ licenseSkuPartNumber: event.currentTarget.value })}>
+                        <option value="">Select license</option>
+                        {this.props.licenses.map(license => <option key={license.skuPartNumber || String(license.id)} value={license.skuPartNumber}>{license.title}{license.skuPartNumber ? ` (${license.skuPartNumber})` : ''}</option>)}
+                        <option value="__other__">Other — license not listed</option>
+                      </select>
+                      <span className="help-text">Licenses your organization currently has. Choose &quot;Other&quot; to request one that is not listed.</span>
+                    </label>
+                  )}
+                  {this.isLicenseRequest && this.state.licenseSkuPartNumber === '__other__' && (
+                    <label className="field full">Requested license <span className="required">*</span>
+                      <input value={this.state.licenseOtherName} onChange={event => this.setState({ licenseOtherName: event.currentTarget.value })} placeholder="e.g. Visio Plan 2" />
+                      <span className="help-text">This license is not in the current subscription. The approver reviews whether to procure it.</span>
+                    </label>
+                  )}
                   {this.state.ticketType === 'Request' && (
                     <label className="field full request-for-field">Request for
                       <NormalPeoplePicker
@@ -191,6 +213,20 @@ export class SubmitIncidentView extends React.Component<ISubmitIncidentViewProps
     return this.props.catalogItems.filter(item => item.subcategoryHintId === selectedId);
   }
 
+  private get selectedCatalogItem(): CatalogItem | undefined {
+    const matches = this.catalogMatchesForSelectedSubcategory;
+    if (this.state.catalogItemId) {
+      return matches.find(item => String(item.id) === this.state.catalogItemId)
+        || this.props.catalogItems.find(item => String(item.id) === this.state.catalogItemId);
+    }
+    return matches.length === 1 ? matches[0] : undefined;
+  }
+
+  private get isLicenseRequest(): boolean {
+    const jobType = this.selectedCatalogItem?.jobType || '';
+    return this.state.ticketType === 'Request' && jobType.toLowerCase().indexOf('licensing.') === 0;
+  }
+
   private get validationSummary(): string {
     if (!this.state.subcategoryId) {
       return 'Choose a subcategory to check whether it maps to an orderable service request.';
@@ -246,6 +282,14 @@ export class SubmitIncidentView extends React.Component<ISubmitIncidentViewProps
         this.setState({ error: 'Select the catalog item for this Request.' });
         return;
       }
+      if (this.isLicenseRequest && !this.state.licenseSkuPartNumber) {
+        this.setState({ error: 'Select the license to assign for this request.' });
+        return;
+      }
+      if (this.isLicenseRequest && this.state.licenseSkuPartNumber === '__other__' && !this.state.licenseOtherName.trim()) {
+        this.setState({ error: 'Enter the name of the license you need.' });
+        return;
+      }
     }
     if (this.state.ticketType === 'Incident' && catalogMatches.length === 1 && !this.state.typeOverrideConfirmed) {
       this.setState({ error: 'This subcategory maps to a Request. Choose Request or confirm it should stay an Incident.' });
@@ -264,7 +308,10 @@ export class SubmitIncidentView extends React.Component<ISubmitIncidentViewProps
         requestedForUserLogin: this.requestedForLogin,
         typeOverrideConfirmed: this.state.typeOverrideConfirmed,
         impact: this.state.impact,
-        urgency: this.state.urgency
+        urgency: this.state.urgency,
+        licenseSkuPartNumber: this.isLicenseRequest && this.state.licenseSkuPartNumber !== '__other__' ? this.state.licenseSkuPartNumber : undefined,
+        licenseSkuId: this.isLicenseRequest && this.state.licenseSkuPartNumber !== '__other__' ? this.props.licenses.find(license => license.skuPartNumber === this.state.licenseSkuPartNumber)?.skuId : undefined,
+        licenseRequestedName: this.isLicenseRequest && this.state.licenseSkuPartNumber === '__other__' ? this.state.licenseOtherName.trim() : undefined
       });
     } catch (error) {
       this.setState({ error: error instanceof Error ? error.message : 'Ticket submission failed.' });

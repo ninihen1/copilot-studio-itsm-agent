@@ -1,6 +1,6 @@
 {
   "$schema": "https://developer.microsoft.com/json-schemas/spfx/client-side-web-part-manifest.schema.json",
-  "id": "00000000-0000-4000-8000-000000000027",
+  "id": "7c6eae09-8a2f-40c7-9e4e-4b9d9112d8ac",
   "alias": "ItsmHostWebPart",
   "componentType": "WebPart",
   "version": "*",
@@ -10,7 +10,7 @@
   "supportsThemeVariants": true,
   "supportsFullBleed": true,
   "preconfiguredEntries": [{
-    "groupId": "00000000-0000-4000-8000-000000000021",
+    "groupId": "5c03119e-3074-46fd-976b-c60198311f70",
     "group": { "default": "Advanced" },
     "title": { "default": "ITSM Service Portal" },
     "description": { "default": "Full-screen SharePoint-hosted ITSM SPA shell" },

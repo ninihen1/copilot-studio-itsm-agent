@@ -3,6 +3,7 @@ export interface LicenseCost {
   title: string;
   skuPartNumber: string;
   skuId?: string;
+  owned?: boolean;
   officialProductName?: string;
   listPriceMonthly?: number;
   negotiatedPriceMonthly?: number;
