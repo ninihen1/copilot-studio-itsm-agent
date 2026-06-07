@@ -24,7 +24,7 @@ The agent is **not** a user-facing chatbot and does **not** create tickets itsel
 
 ## Status
 
-**Deployed and live** in the Flow Studio Demo environment. Schema name `cre79_agent`. All tenant-specific values in this public copy are placeholders — `contoso.onmicrosoft.com`, `https://contoso.sharepoint.com`, zero-GUID tenant/environment IDs.
+**Deployed and live** in the Flow Studio Demo environment. Schema name `itsm_triage_agent`. All tenant-specific values in this public copy are placeholders — `contoso.onmicrosoft.com`, `https://contoso.sharepoint.com`, zero-GUID tenant/environment IDs.
 
 The retired pre-deploy model — an agent-callable `ProposeAction`/`LogHumanTicket` flow-action pair that let the agent write its own audit records — was removed under ADR 0002. The agent no longer holds any flow action; it only returns a decision the orchestrator acts on.
 

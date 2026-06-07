@@ -1,9 +1,9 @@
 ﻿connectionReferences:
-  - connectionReferenceLogicalName: cre79_agent.shared_a365memcp.54427e91885f480f92e9293d0473e0b4
+  - connectionReferenceLogicalName: itsm_triage_agent.shared_a365memcp.00000000000000000000000000000002
     connectorId: /providers/Microsoft.PowerApps/apis/shared_a365memcp
-  - connectionReferenceLogicalName: cre79_agent.shared_a365teamsmcp.947026f54f554de5bcf537e09eb741aa
+  - connectionReferenceLogicalName: itsm_triage_agent.shared_a365teamsmcp.00000000000000000000000000000003
     connectorId: /providers/Microsoft.PowerApps/apis/shared_a365teamsmcp
-  - connectionReferenceLogicalName: cre79_agent.shared_workiqsharepoint.08cecd6b638a43cabcc587d16f350eb3
+  - connectionReferenceLogicalName: itsm_triage_agent.shared_workiqsharepoint.00000000000000000000000000000004
     connectorId: /providers/Microsoft.PowerApps/apis/shared_workiqsharepoint
-  - connectionReferenceLogicalName: cre79_agent.shared_sharepointonline.f1550c57e913479793d6de83b61fa1b0
+  - connectionReferenceLogicalName: itsm_triage_agent.shared_sharepointonline.00000000000000000000000000000001
     connectorId: /providers/Microsoft.PowerApps/apis/shared_sharepointonline

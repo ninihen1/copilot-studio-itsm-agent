@@ -233,7 +233,7 @@
                 "type": "OpenApiConnectionWebhook",
                 "inputs": {
                   "parameters": {
-                    "Copilot": "cre79_agent",
+                    "Copilot": "itsm_triage_agent",
                     "body/message": "@{outputs('Compose_TriagePrompt')}"
                   },
                   "host": {
@@ -484,7 +484,7 @@
                       "confidence": "@body('Parse_AI_Intent')?['confidence']",
                       "summary": "@coalesce(body('Parse_AI_Intent')?['summary'], '')",
                       "validatedAt": "@utcNow()",
-                      "validationSource": "Triage agent (cre79_agent) + FindGroup; agent-resolved groupId, no flow-side Graph",
+                      "validationSource": "Triage agent (itsm_triage_agent) + FindGroup; agent-resolved groupId, no flow-side Graph",
                       "originalText": "@coalesce(outputs('Get_RITM_Fresh')?['body/Variables'], '')"
                     }
                   },

@@ -110,7 +110,7 @@
               "operationId": "ExecuteCopilotAsyncV2"
             },
             "parameters": {
-              "Copilot": "cre79_agent",
+              "Copilot": "itsm_triage_agent",
               "body/message": "@{outputs('Compose_Agent_Prompt')}"
             },
             "authentication": "@parameters('$authentication')"

@@ -70,7 +70,7 @@ beginDialog:
               actions:
                 - kind: BeginDialog
                   id: beginDialog_escalate_eoc
-                  dialog: cre79_agent.topic.Escalate
+                  dialog: itsm_triage_agent.topic.Escalate
 
           elseActions:
             - kind: SendActivity

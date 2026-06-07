@@ -118,8 +118,8 @@ flowchart TD
 
 | Connection | id | Used by |
 |---|---|---|
-| shared_sharepointonline | `f1550c57e913479793d6de83b61fa1b0` | All flows |
-| shared_keyvault | `3902492e65ec448ea29a4c6752190756` | Identity-Executor |
+| shared_sharepointonline | `00000000000000000000000000000001` | All flows |
+| shared_keyvault | `00000000000000000000000000000005` | Identity-Executor |
 | shared_microsoftcopilotstudio | `shared-microsoftcopi-00000000-0000-4000-8000-000000000041` | Triage-Orchestrator |
 
 ---
@@ -264,7 +264,7 @@ OAuth-based PA connections require interactive consent. There is no programmatic
 4. **Vault name:** `kv-itsm-demo-XXXX` (the one from Phase 7).
 5. Sign in with Catherine's account → Create.
 
-Note the connection id (e.g. `3902492e65ec448ea29a4c6752190756`) for use in flow definitions.
+Note the connection id (e.g. `00000000000000000000000000000005`) for use in flow definitions.
 
 ### Phase 9 — Identity Executor flow (~30 min)
 
@@ -282,7 +282,7 @@ $body = @{
         definition = $def
         connectionReferences = @{
             shared_sharepointonline = @{
-                connectionName = "f1550c57e913479793d6de83b61fa1b0"
+                connectionName = "00000000000000000000000000000001"
                 id = "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
             }
             shared_keyvault = @{

@@ -183,7 +183,7 @@
           "type": "OpenApiConnectionWebhook",
           "inputs": {
             "parameters": {
-              "Copilot": "cre79_agent",
+              "Copilot": "itsm_triage_agent",
               "body/message": "@{outputs('Compose_TriagePrompt')}"
             },
             "host": {

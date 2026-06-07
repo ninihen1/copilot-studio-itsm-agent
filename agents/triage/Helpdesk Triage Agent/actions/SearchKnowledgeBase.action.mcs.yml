@@ -29,7 +29,7 @@ outputs:
 
 action:
   kind: InvokeConnectorTaskAction
-  connectionReference: cre79_agent.shared_sharepointonline.f1550c57e913479793d6de83b61fa1b0
+  connectionReference: itsm_triage_agent.shared_sharepointonline.00000000000000000000000000000001
   connectionProperties:
     $kind: ConnectionProperties
     diagnostics:

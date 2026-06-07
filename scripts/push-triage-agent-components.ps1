@@ -86,35 +86,35 @@ $script:Headers = @{
 
 $updates = @()
 $updates += Upsert-Component `
-    -SchemaName 'cre79_agent.topic.ProposeWriteAction' `
+    -SchemaName 'itsm_triage_agent.topic.ProposeWriteAction' `
     -Name 'Propose Write Action' `
     -ComponentType 9 `
     -Data (Get-TextFile -Path (Join-Path $AgentRoot 'topics/ProposeWriteAction.mcs.yml') | ForEach-Object { ($_ -split "`r?`n", 4)[3] }) `
     -Description 'Self-service password reset topic. Calls secured ITSM-ProposeAction through InvokeFlowAction.'
 
 $updates += Upsert-Component `
-    -SchemaName 'cre79_agent.topic.SearchKnowledge' `
+    -SchemaName 'itsm_triage_agent.topic.SearchKnowledge' `
     -Name 'Search Knowledge' `
     -ComponentType 9 `
     -Data (Get-TextFile -Path (Join-Path $AgentRoot 'topics/SearchKnowledge.mcs.yml') | ForEach-Object { ($_ -split "`r?`n", 4)[3] }) `
     -Description 'User-facing KB lookup topic with topic-level Knowledge Base source pinning for semantic grounding tests.'
 
 $updates += Upsert-Component `
-    -SchemaName 'cre79_agent.topic.CreateTicket' `
+    -SchemaName 'itsm_triage_agent.topic.CreateTicket' `
     -Name 'Create Ticket' `
     -ComponentType 9 `
     -Data (Get-TextFile -Path (Join-Path $AgentRoot 'topics/CreateTicket.mcs.yml') | ForEach-Object { ($_ -split "`r?`n", 4)[3] }) `
     -Description 'Primary intake topic. Classifies, attempts KB deflection, then proposes an action through secured InvokeFlowAction.'
 
 $updates += Upsert-Component `
-    -SchemaName 'cre79_agent.knowledge.KnowledgeBase' `
+    -SchemaName 'itsm_triage_agent.knowledge.KnowledgeBase' `
     -Name 'Knowledge Base' `
     -ComponentType 16 `
     -Data (Get-TextFile -Path (Join-Path $AgentRoot 'knowledge/KnowledgeBase.mcs.yml') | ForEach-Object { ($_ -split "`r?`n", 4)[3] }) `
     -Description 'Published KB articles for self-help and deflection. Source of truth for how-to questions.'
 
 $updates += Upsert-Component `
-    -SchemaName 'cre79_agent.action.ProposeAction' `
+    -SchemaName 'itsm_triage_agent.action.ProposeAction' `
     -Name 'ProposeAction' `
     -ComponentType 9 `
     -Data (Get-TextFile -Path (Join-Path $AgentRoot 'actions/ProposeAction.action.mcs.yml') | ForEach-Object { ($_ -split "`r?`n", 4)[3] }) `

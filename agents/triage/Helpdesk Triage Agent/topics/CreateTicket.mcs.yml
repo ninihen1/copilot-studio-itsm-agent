@@ -96,7 +96,7 @@ beginDialog:
 
             - kind: BeginDialog
               id: beginDialog_restart
-              dialog: cre79_agent.topic.CreateTicket
+              dialog: itsm_triage_agent.topic.CreateTicket
 
       elseActions:
         # Step 4 — KB deflection check. If a high-confidence KB article was found, send it and ask "did this resolve it?"

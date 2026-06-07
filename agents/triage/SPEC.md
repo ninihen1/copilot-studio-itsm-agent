@@ -9,7 +9,7 @@ The agent runs **flow-drives-agent** (ADR [0002](../../decisions/0002-triage-app
 | Field | Value |
 |---|---|
 | Display name | `Helpdesk Triage Agent` |
-| Schema name | `cre79_agent` |
+| Schema name | `itsm_triage_agent` |
 | Auth mode | **M365 SSO (Integrated)**, `authenticationTrigger: Always` |
 | Access control | GroupMembership |
 | Recognizer | `GenerativeAIRecognizer` |

@@ -20,4 +20,4 @@ beginDialog:
       elseActions:
         - kind: BeginDialog
           id: beginDialog_escalate
-          dialog: cre79_agent.topic.Escalate
+          dialog: itsm_triage_agent.topic.Escalate

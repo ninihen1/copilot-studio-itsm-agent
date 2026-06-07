@@ -8,7 +8,7 @@
 
 ## Purpose
 
-Bridge stage 1 (intake) and stage 2 (triage) of the ITSM architecture. The flow watches the `Tickets` SharePoint list for new rows, calls the **Helpdesk Triage Agent** (`cre79_agent`) to classify them, parses a tagged JSON block from the agent's reply, and either:
+Bridge stage 1 (intake) and stage 2 (triage) of the ITSM architecture. The flow watches the `Tickets` SharePoint list for new rows, calls the **Helpdesk Triage Agent** (`itsm_triage_agent`) to classify them, parses a tagged JSON block from the agent's reply, and either:
 
 - **deflects** (KB match — closes the ticket as Resolved with the agent's rationale)
 - **stops and asks** (low confidence / ambiguous — sets ticket On Hold, Awaiting Caller)
@@ -53,7 +53,7 @@ and TicketTypeValidated = true
    shortDescription, description, openedDate; appends instructions for the agent
    to emit a tagged ==TRIAGE_RESULT== JSON block.
 3. Execute_Agent_Triage — OpenApiConnectionWebhook on shared_microsoftcopilotstudio,
-   operation ExecuteCopilotAsyncV2, Copilot=cre79_agent, body/message=prompt.
+   operation ExecuteCopilotAsyncV2, Copilot=itsm_triage_agent, body/message=prompt.
 4. Set_AgentRawReply from outputs('Execute_Agent_Triage')?['body/lastResponse']
 5. Compose_ExtractedBlock — substring between '==TRIAGE_RESULT==' and '==END=='
    markers; empty string if either marker is missing.
@@ -144,7 +144,7 @@ This insert fires the existing Approval flow trigger (`Status eq 'Proposed'` fil
 
 | Connector | connectionName | Purpose |
 |---|---|---|
-| `shared_sharepointonline` | `f1550c57e913479793d6de83b61fa1b0` | SP triggers + writes |
+| `shared_sharepointonline` | `00000000000000000000000000000001` | SP triggers + writes |
 | `shared_microsoftcopilotstudio` | `shared-microsoftcopi-00000000-0000-4000-8000-000000000041` | Agent invocation |
 
 If either connection's token is stale, the flow run will surface an `Unauthorized` error in the Set_AgentRawReply or PatchItem steps. Re-auth in the Power Automate portal.

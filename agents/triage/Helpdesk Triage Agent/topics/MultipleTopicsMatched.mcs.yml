@@ -43,4 +43,4 @@ beginDialog:
           actions:
             - kind: ReplaceDialog
               id: YZXRDb
-              dialog: cre79_agent.topic.Fallback
+              dialog: itsm_triage_agent.topic.Fallback

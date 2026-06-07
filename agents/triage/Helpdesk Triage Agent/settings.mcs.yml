@@ -1,5 +1,5 @@
 displayName: Helpdesk Triage Agent
-schemaName: cre79_agent
+schemaName: itsm_triage_agent
 accessControlPolicy: GroupMembership
 authenticationMode: Integrated
 authenticationTrigger: Always
@@ -15,7 +15,7 @@ configuration:
   isAgentConnectable: true
   publishOnImport: false
   gPTSettings:
-    defaultSchemaName: cre79_agent.gpt.default
+    defaultSchemaName: itsm_triage_agent.gpt.default
 
   isLightweightBot: false
   aISettings:

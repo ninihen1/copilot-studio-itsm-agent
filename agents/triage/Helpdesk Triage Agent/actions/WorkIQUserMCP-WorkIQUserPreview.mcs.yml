@@ -5,7 +5,7 @@ modelDisplayName: Work IQ User (Preview)
 modelDescription: "Work IQ MCP server for Microsoft 365 User operations. This feature is in preview and is part of the Work IQ tools, providing shared work intelligence and actions for agents. Availability and capabilities are subject to change. Learn more: https://aka.ms/AboutWorkIQ"
 action:
   kind: InvokeExternalAgentTaskAction
-  connectionReference: cre79_agent.shared_a365memcp.54427e91885f480f92e9293d0473e0b4
+  connectionReference: itsm_triage_agent.shared_a365memcp.00000000000000000000000000000002
   connectionProperties:
     mode: Invoker
 
