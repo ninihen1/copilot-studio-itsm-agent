@@ -69,6 +69,9 @@ export interface CreateIncidentInput {
   typeOverrideConfirmed?: boolean;
   impact: string;
   urgency: string;
+  licenseSkuPartNumber?: string;
+  licenseSkuId?: string;
+  licenseRequestedName?: string;
 }
 
 export interface PeoplePickerUser {
@@ -144,6 +147,18 @@ export class TicketService extends SharePointServiceBase {
     if (input.catalogItemId) {
       payload.SelectedCatalogItemId = input.catalogItemId;
     }
+    if (input.licenseSkuPartNumber || input.licenseRequestedName) {
+      payload.RequestPayloadJson = JSON.stringify({
+        skuPartNumber: input.licenseSkuPartNumber || '',
+        skuId: input.licenseSkuId || '',
+        action: 'assign',
+        owned: !!input.licenseSkuPartNumber,
+        requestedLicenseName: input.licenseRequestedName,
+        justification: input.licenseRequestedName
+          ? `Requested license not in current subscription: ${input.licenseRequestedName}. ${input.description}`
+          : input.description
+      });
+    }
 
     const created = await this.post<ITicketListItem>(this.listItemsUrl('Tickets'), payload);
     const ticket = await this.getTicket(created.Id);
@@ -203,6 +218,17 @@ export class TicketService extends SharePointServiceBase {
     await this.merge(this.listItemsUrl('Tickets', `(${ticket.id})`), {
       EscalationFlag: true,
       WorkNotes: `Portal escalation requested at ${new Date().toISOString()}.`
+    });
+  }
+
+  public async resolveTicket(ticketId: number, ticketState: Ticket['ticketState'], closeCode: string, closeNotes: string): Promise<void> {
+    const now = new Date().toISOString();
+    await this.merge(this.listItemsUrl('Tickets', `(${ticketId})`), {
+      TicketState: ticketState,
+      CloseCode: closeCode,
+      ClosedDate: now,
+      CloseNotes: closeNotes,
+      WorkNotes: `${ticketState} via service-desk hand-off fulfilment at ${now}.`
     });
   }
 

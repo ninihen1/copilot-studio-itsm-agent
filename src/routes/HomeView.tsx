@@ -40,7 +40,7 @@ export const HomeView: React.FC<IHomeViewProps> = ({ metrics, tickets, isLoading
             {tickets.slice(0, 5).map(ticket => (
               <li key={ticket.id}>
                 <button className="list-row-button" onClick={() => onOpenTicket(ticket)}>
-                  <strong>{ticket.title}</strong><span>{ticket.shortDescription} · {ticket.ticketState}</span>
+                  <strong>Ticket #{ticket.id}</strong><span>{ticket.shortDescription || ticket.title} · {ticket.ticketState}</span>
                 </button>
               </li>
             ))}

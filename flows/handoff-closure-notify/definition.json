@@ -1,0 +1,153 @@
+{
+  "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "$connections": {
+      "defaultValue": {},
+      "type": "Object"
+    },
+    "$authentication": {
+      "defaultValue": {},
+      "type": "SecureObject"
+    }
+  },
+  "triggers": {
+    "When_a_Request_Item_is_modified": {
+      "recurrence": {
+        "frequency": "Minute",
+        "interval": 3
+      },
+      "evaluatedRecurrence": {
+        "frequency": "Minute",
+        "interval": 3
+      },
+      "splitOn": "@triggerOutputs()?['body/value']",
+      "type": "OpenApiConnection",
+      "inputs": {
+        "host": {
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+          "connectionName": "shared_sharepointonline",
+          "operationId": "GetOnUpdatedItems"
+        },
+        "parameters": {
+          "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+          "table": "Request Items"
+        },
+        "authentication": "@parameters('$authentication')"
+      }
+    }
+  },
+  "actions": {
+    "Get_RITM_Fresh": {
+      "runAfter": {},
+      "type": "OpenApiConnection",
+      "inputs": {
+        "host": {
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+          "connectionName": "shared_sharepointonline",
+          "operationId": "GetItem"
+        },
+        "parameters": {
+          "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+          "table": "Request Items",
+          "id": "@triggerBody()?['ID']"
+        },
+        "authentication": "@parameters('$authentication')"
+      }
+    },
+    "If_Should_Notify": {
+      "actions": {
+        "Get_Parent_Ticket": {
+          "runAfter": {},
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+              "connectionName": "shared_sharepointonline",
+              "operationId": "GetItem"
+            },
+            "parameters": {
+              "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+              "table": "Tickets",
+              "id": "@outputs('Get_RITM_Fresh')?['body/ParentTicket/Id']"
+            },
+            "authentication": "@parameters('$authentication')"
+          }
+        },
+        "Notify_Requester": {
+          "runAfter": {
+            "Get_Parent_Ticket": [
+              "Succeeded"
+            ]
+          },
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_teams",
+              "connectionName": "shared_teams",
+              "operationId": "PostMessageToConversation"
+            },
+            "parameters": {
+              "poster": "Flow bot",
+              "location": "Chat with Flow bot",
+              "body/recipient": "@{coalesce(body('Get_Parent_Ticket')?['Caller/Email'], body('Get_Parent_Ticket')?['Caller/EMail'], last(split(coalesce(outputs('Get_RITM_Fresh')?['body/RequestedFor/Claims'], ''), '|')), 'itsm-admin@contoso.com')}",
+              "body/messageBody": "@{concat('<h2>', if(equals(outputs('Get_RITM_Fresh')?['body/RitmState/Value'], 'Closed Complete'), 'Your request is done', 'Your request could not be completed'), '</h2><p>', coalesce(body('Get_Parent_Ticket')?['ShortDescription'], outputs('Get_RITM_Fresh')?['body/RitmNumber'], 'Your request'), '</p><p>The IT service desk ', if(equals(outputs('Get_RITM_Fresh')?['body/RitmState/Value'], 'Closed Complete'), 'completed this and closed it.', 'reviewed this and closed it without fulfilling it.'), '</p>', if(empty(coalesce(outputs('Get_RITM_Fresh')?['body/CloseNotes'], '')), '', concat('<p><b>Service desk note:</b> ', outputs('Get_RITM_Fresh')?['body/CloseNotes'], '</p>')), '<p><b>Reference:</b> Ticket #', string(outputs('Get_RITM_Fresh')?['body/ParentTicket/Id']), ' &middot; RITM #', string(outputs('Get_RITM_Fresh')?['body/ID']), '</p><p><a href=\"https://contoso.sharepoint.com/sites/ITSM/Lists/Tickets/DispForm.aspx?ID=', string(outputs('Get_RITM_Fresh')?['body/ParentTicket/Id']), '\">View your request</a></p>')}"
+            },
+            "authentication": "@parameters('$authentication')"
+          }
+        },
+        "Patch_RITM_Notified": {
+          "runAfter": {
+            "Notify_Requester": [
+              "Succeeded"
+            ]
+          },
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+              "connectionName": "shared_sharepointonline",
+              "operationId": "PatchItem"
+            },
+            "parameters": {
+              "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+              "table": "Request Items",
+              "id": "@outputs('Get_RITM_Fresh')?['body/ID']",
+              "item/Title": "@outputs('Get_RITM_Fresh')?['body/Title']",
+              "item/RitmNumber": "@outputs('Get_RITM_Fresh')?['body/RitmNumber']",
+              "item/ParentTicket/Id": "@outputs('Get_RITM_Fresh')?['body/ParentTicket/Id']",
+              "item/CatalogItem/Id": "@outputs('Get_RITM_Fresh')?['body/CatalogItem/Id']",
+              "item/RequestedFor/Claims": "@outputs('Get_RITM_Fresh')?['body/RequestedFor/Claims']",
+              "item/OpenedDate": "@outputs('Get_RITM_Fresh')?['body/OpenedDate']",
+              "item/ConfidentialityLevel/Value": "@outputs('Get_RITM_Fresh')?['body/ConfidentialityLevel/Value']",
+              "item/RitmState/Value": "@outputs('Get_RITM_Fresh')?['body/RitmState/Value']",
+              "item/RequesterNotified": true
+            },
+            "authentication": "@parameters('$authentication')"
+          }
+        }
+      },
+      "runAfter": {
+        "Get_RITM_Fresh": [
+          "Succeeded"
+        ]
+      },
+      "else": {
+        "actions": {}
+      },
+      "expression": {
+        "and": [
+          {
+            "equals": [
+              "@and(or(equals(outputs('Get_RITM_Fresh')?['body/RitmState/Value'], 'Closed Complete'), equals(outputs('Get_RITM_Fresh')?['body/RitmState/Value'], 'Closed Incomplete')), not(empty(coalesce(outputs('Get_RITM_Fresh')?['body/AssignmentGroup/Claims'], ''))), not(equals(coalesce(outputs('Get_RITM_Fresh')?['body/RequesterNotified'], false), true)))",
+              true
+            ]
+          }
+        ]
+      },
+      "type": "If"
+    }
+  },
+  "outputs": {},
+  "description": "6.4 Hand-off Closure Notify. SharePoint trigger on Request Items modified; when a hand-off RITM (AssignmentGroup set) reaches Closed Complete/Incomplete and has not been notified, re-reads it live, notifies the requester (Teams), and sets RequesterNotified=true so it fires exactly once. Pairs with the SPFx Service Desk Queue page which closes the RITM + resolves the ticket directly (no SAS); this flow closes the requester loop. Notification reworded 2026-06-08: human outcome wording (no internal state name), shows the request short description + a Ticket #/RITM # reference, labeled close note, link to the ticket. #flowstudio-mcp"
+}

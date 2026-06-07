@@ -183,7 +183,7 @@
           "type": "OpenApiConnectionWebhook",
           "inputs": {
             "parameters": {
-              "Copilot": "itsm_triage_agent",
+              "Copilot": "cre79_agent",
               "body/message": "@{outputs('Compose_TriagePrompt')}"
             },
             "host": {
@@ -358,6 +358,114 @@
             "name": "lastUrgencyLabel",
             "value": "@{concat(string(coalesce(body('Parse_TriageJson')?['urgency'], 3)), ' - ', if(equals(coalesce(body('Parse_TriageJson')?['urgency'], 3), 1), 'High', if(equals(coalesce(body('Parse_TriageJson')?['urgency'], 3), 2), 'Medium', 'Low')))}"
           }
+        },
+        "If_Ask_Requester": {
+          "actions": {
+            "Create_Clarify_Approval": {
+              "runAfter": {},
+              "type": "OpenApiConnection",
+              "inputs": {
+                "parameters": {
+                  "approvalType": "CustomResponse",
+                  "ApprovalCreationInput/responseOptions": [
+                    "I have answered",
+                    "Cancel request"
+                  ],
+                  "ApprovalCreationInput/title": "@{concat('More info needed - ', coalesce(outputs('Get_Ticket_Fresh')?['body/Title'], 'your request'))}",
+                  "ApprovalCreationInput/assignedTo": "@{coalesce(outputs('Get_Ticket_Fresh')?['body/Caller/Email'], last(split(coalesce(outputs('Get_Ticket_Fresh')?['body/Caller/Claims'], '|'), '|')), 'itsm-admin@contoso.com')}",
+                  "ApprovalCreationInput/details": "@{concat('We need a bit more information before this request can proceed.', decodeUriComponent('%0A%0A'), 'What is needed: ', coalesce(variables('lastMoreInfoNeeded'), 'Please add more detail to your request.'), decodeUriComponent('%0A%0A'), 'Type your answers in the comments box below, then choose I have answered. If you no longer need this, choose Cancel request.')}",
+                  "ApprovalCreationInput/itemLink": "@{concat('https://contoso.sharepoint.com/sites/ITSM/Lists/Tickets/DispForm.aspx?ID=', string(outputs('Get_Ticket_Fresh')?['body/ID']))}",
+                  "ApprovalCreationInput/itemLinkDescription": "Open your ticket in SharePoint",
+                  "ApprovalCreationInput/enableNotifications": true,
+                  "ApprovalCreationInput/enableReassignment": false
+                },
+                "host": {
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_approvals",
+                  "connectionName": "shared_approvals",
+                  "operationId": "CreateAnApproval"
+                },
+                "authentication": "@parameters('$authentication')"
+              }
+            },
+            "Wait_Clarify_Reply": {
+              "runAfter": {
+                "Create_Clarify_Approval": [
+                  "Succeeded"
+                ]
+              },
+              "type": "OpenApiConnectionWebhook",
+              "inputs": {
+                "parameters": {
+                  "approvalName": "@body('Create_Clarify_Approval')?['name']"
+                },
+                "host": {
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_approvals",
+                  "connectionName": "shared_approvals",
+                  "operationId": "WaitForAnApproval"
+                },
+                "authentication": "@parameters('$authentication')"
+              }
+            },
+            "If_Clarify_Cancelled": {
+              "actions": {
+                "Set_Outcome_Cancelled": {
+                  "runAfter": {},
+                  "type": "SetVariable",
+                  "inputs": {
+                    "name": "agentOutcome",
+                    "value": "cancelled"
+                  }
+                }
+              },
+              "runAfter": {
+                "Wait_Clarify_Reply": [
+                  "Succeeded"
+                ]
+              },
+              "else": {
+                "actions": {
+                  "Append_Clarify_Answer": {
+                    "runAfter": {},
+                    "type": "AppendToStringVariable",
+                    "inputs": {
+                      "name": "accumulatedContext",
+                      "value": "@{concat(decodeUriComponent('%0A%0A'), '[Clarification round]', decodeUriComponent('%0A'), 'Asked: ', coalesce(variables('lastMoreInfoNeeded'), ''), decodeUriComponent('%0A'), 'Requester replied: ', coalesce(body('Wait_Clarify_Reply')?['responses']?[0]?['comments'], '(no comment provided)'))}"
+                    }
+                  }
+                }
+              },
+              "expression": {
+                "and": [
+                  {
+                    "equals": [
+                      "@body('Wait_Clarify_Reply')?['responses']?[0]?['approverResponse']",
+                      "Cancel request"
+                    ]
+                  }
+                ]
+              },
+              "type": "If"
+            }
+          },
+          "runAfter": {
+            "Set_LastUrgencyLabel": [
+              "Succeeded"
+            ]
+          },
+          "else": {
+            "actions": {}
+          },
+          "expression": {
+            "and": [
+              {
+                "equals": [
+                  "@variables('agentOutcome')",
+                  "stop_and_ask"
+                ]
+              }
+            ]
+          },
+          "type": "If"
         }
       },
       "runAfter": {
@@ -667,7 +775,7 @@
                 },
                 "authentication": "@parameters('$authentication')"
               },
-              "description": "Reads the FallbackApprovers row from the ITSM Config list (same governance as the Dispatcher kill-switch). PRE-DEPLOY: this row must be seeded with a semicolon UPN list (managers@contoso.com) before the flow is enabled, or escalation CreateAnApproval will fail (assignedTo empty)."
+              "description": "Reads the FallbackApprovers row from the ITSM Config list (same governance as the Dispatcher kill-switch). PRE-DEPLOY: this row must be seeded with a semicolon UPN list (user@contoso.com) before the flow is enabled, or escalation CreateAnApproval will fail (assignedTo empty)."
             },
             "Compose_Approver_Upn": {
               "runAfter": {
@@ -676,7 +784,7 @@
                 ]
               },
               "type": "Compose",
-              "inputs": "managers@contoso.com",
+              "inputs": "itsm-admin@contoso.com",
               "description": "Pilot - fixed primary approver. Phase 3.2 (APR-5) resolves dynamic manager via Office 365 Users Manager_V2; kept identical to Request lane so APR-5 is a single edit across both lanes."
             },
             "Compose_Fallback_Upn": {
@@ -687,7 +795,7 @@
               },
               "type": "Compose",
               "inputs": "@coalesce(first(body('Get_FallbackApprovers')?['value'])?['Value'], '')",
-              "description": "ITSM Approvers fallback pool (semicolon UPN list) from Config row Key=FallbackApprovers. Empty until seeded -> deploy is gated on that seed (managers@contoso.com)."
+              "description": "ITSM Approvers fallback pool (semicolon UPN list) from Config row Key=FallbackApprovers. Empty until seeded -> deploy is gated on that seed (user@contoso.com)."
             },
             "Compose_Provisioning_Approval_Details": {
               "runAfter": {
@@ -758,7 +866,7 @@
                   "type": "Http",
                   "inputs": {
                     "method": "POST",
-                    "uri": "https://REDACTED-FLOW-TRIGGER-URL",
+                    "uri": "https://00000000000000000000000000000000.b5.environment.api.powerplatform.com:443/powerautomate/automations/direct/workflows/REDACTED_WORKFLOW_ID/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=REDACTED",
                     "headers": {
                       "Content-Type": "application/json"
                     },
@@ -910,7 +1018,7 @@
                       },
                       "authentication": "@parameters('$authentication')"
                     },
-                    "description": "Notify the caller in Teams (Flow-bot DM) that the provisioning approval did not pass and the ticket is On Hold. Paired with an Outlook email (Notify_Caller_Outlook) so the caller is reached on BOTH channels per Catherine's request."
+                    "description": "Notify the caller in Teams (Flow-bot DM) that the provisioning approval did not pass and the ticket is On Hold. Paired with an Outlook email (Notify_Caller_Outlook) so the caller is reached on BOTH channels per the admin's request."
                   },
                   "Notify_Caller_Outlook": {
                     "runAfter": {
@@ -934,7 +1042,7 @@
                       },
                       "authentication": "@parameters('$authentication')"
                     },
-                    "description": "Notify the caller by Outlook email (Office 365 Outlook, catherine.han connection) that the provisioning approval did not pass and the ticket is On Hold. Runs after the Teams DM with [Succeeded, Failed] so neither channel blocks the other. Catherine asked for BOTH Teams AND Outlook; both are now wired."
+                    "description": "Notify the caller by Outlook email (Office 365 Outlook, itsm-admin connection) that the provisioning approval did not pass and the ticket is On Hold. Runs after the Teams DM with [Succeeded, Failed] so neither channel blocks the other. the admin asked for BOTH Teams AND Outlook; both are now wired."
                   }
                 }
               },
@@ -1007,7 +1115,7 @@
                       "type": "Http",
                       "inputs": {
                         "method": "POST",
-                        "uri": "https://REDACTED-FLOW-TRIGGER-URL",
+                        "uri": "https://00000000000000000000000000000000.b5.environment.api.powerplatform.com:443/powerautomate/automations/direct/workflows/REDACTED_WORKFLOW_ID/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=REDACTED",
                         "headers": {
                           "Content-Type": "application/json"
                         },
@@ -1443,5 +1551,5 @@
       }
     }
   },
-  "description": "2.1-triage. 2026-06-02 poll->push: HTTP Request {ticketId}; Get_Ticket_Fresh live read; called by 1.1 front gate. #flowstudio-mcp"
+  "description": "ITSM-Triage-Orchestrator. Ticket-level agent triage loop (Until, 4 rounds). 2026-06-08: stop_and_ask now sends the requester a clarification Approval (questions in the card, answer in the comments box; buttons 'I have answered' / 'Cancel request'); the answer is appended to accumulatedContext so the agent re-runs with it, and Cancel routes to the existing cancelled branch. Human-queue is now a true fallback only after the requester is genuinely asked."
 }

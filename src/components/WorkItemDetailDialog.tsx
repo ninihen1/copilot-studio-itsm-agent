@@ -177,12 +177,16 @@ export const WorkItemDetailDialog: React.FC<WorkItemDetailDialogProps> = props =
 
 function dialogTitle(props: WorkItemDetailDialogProps): string {
   if (props.kind === 'approval') {
-    return props.requestItem ? `Approval ${props.requestItem.ritmNumber}` : 'Approval detail';
+    const r = props.requestItem;
+    if (!r) {
+      return 'Approval detail';
+    }
+    return r.parentTicketId ? `Ticket #${r.parentTicketId} · RITM #${r.id}` : `RITM #${r.id}`;
   }
   if (props.kind === 'job') {
     return props.job ? `Provisioning job ${props.job.jobId}` : 'Provisioning job detail';
   }
-  return props.ticket ? `Ticket ${props.ticket.title}` : 'Ticket detail';
+  return props.ticket ? `Ticket #${props.ticket.id}` : 'Ticket detail';
 }
 
 function statusSubtitle(props: WorkItemDetailDialogProps): string {
@@ -269,7 +273,7 @@ function longFormInput(props: WorkItemDetailDialogProps): string | undefined {
   const parts = [
     props.ticket?.shortDescription ? `Summary\n${props.ticket.shortDescription}` : '',
     props.ticket?.description ? `Description\n${props.ticket.description}` : '',
-    props.ticket?.closeNotes ? `Approval result\n${props.ticket.closeNotes}` : '',
+    props.ticket?.closeNotes ? `Close notes\n${props.ticket.closeNotes}` : '',
     props.ticket?.workNotes ? `Work notes\n${props.ticket.workNotes}` : '',
     props.ticket?.ticketTypeValidationReason ? `Validation reason\n${props.ticket.ticketTypeValidationReason}` : ''
   ].filter(Boolean);
@@ -324,9 +328,9 @@ function renderRelatedItems(props: WorkItemDetailDialogProps): React.ReactElemen
 
   return (
     <div className="related-tree">
-      {props.ticket && <div className="related-row"><strong>{props.ticket.title}</strong><span>{props.ticket.ticketType} · {props.ticket.ticketState}</span></div>}
-      {props.requestItems.map(item => <div className="related-row child" key={`ritm-${item.id}`}><strong>{item.ritmNumber}</strong><span>{item.catalogItem || 'Catalog item'} · {item.ritmState}</span></div>)}
-      {props.requestItem && !props.requestItems.some(item => item.id === props.requestItem?.id) && <div className="related-row child"><strong>{props.requestItem.ritmNumber}</strong><span>Approval · {props.requestItem.ritmState}</span></div>}
+      {props.ticket && <div className="related-row"><strong>Ticket #{props.ticket.id}</strong><span>{props.ticket.ticketType} · {props.ticket.ticketState}</span></div>}
+      {props.requestItems.map(item => <div className="related-row child" key={`ritm-${item.id}`}><strong>RITM #{item.id}</strong><span>{item.catalogItem || 'Catalog item'} · {item.ritmState}</span></div>)}
+      {props.requestItem && !props.requestItems.some(item => item.id === props.requestItem?.id) && <div className="related-row child"><strong>RITM #{props.requestItem.id}</strong><span>Approval · {props.requestItem.ritmState}</span></div>}
       {props.tasks.map(task => <div className="related-row grandchild" key={`task-${task.id}`}><strong>{task.taskNumber}</strong><span>{task.shortDescription || 'Catalog task'} · {task.taskState}</span></div>)}
       {props.jobs.map(job => <div className="related-row grandchild" key={`job-${job.id}`}><strong>{job.jobId}</strong><span>{job.jobType} · {job.jobStatus}</span></div>)}
     </div>

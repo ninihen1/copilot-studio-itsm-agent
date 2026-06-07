@@ -51,25 +51,6 @@
       }
     },
     "If_RITM_Pending_Validation": {
-      "runAfter": {
-        "Get_RITM_Fresh": [
-          "Succeeded"
-        ]
-      },
-      "type": "If",
-      "expression": {
-        "and": [
-          {
-            "equals": [
-              "@outputs('Get_RITM_Fresh')?['body/RitmState/Value']",
-              "Pending Validation"
-            ]
-          }
-        ]
-      },
-      "else": {
-        "actions": {}
-      },
       "actions": {
         "Get_Parent_Ticket": {
           "runAfter": {},
@@ -110,22 +91,6 @@
           }
         },
         "If_Structured_Payload": {
-          "runAfter": {
-            "Get_Catalog_Item": [
-              "Succeeded"
-            ]
-          },
-          "type": "If",
-          "expression": {
-            "and": [
-              {
-                "equals": [
-                  "@startsWith(trim(coalesce(outputs('Get_RITM_Fresh')?['body/Variables'], '')), '{')",
-                  true
-                ]
-              }
-            ]
-          },
           "actions": {
             "Parse_Structured_Payload": {
               "runAfter": {},
@@ -207,7 +172,7 @@
               "type": "Http",
               "inputs": {
                 "method": "POST",
-                "uri": "https://REDACTED-FLOW-TRIGGER-URL",
+                "uri": "https://00000000000000000000000000000000.b5.environment.api.powerplatform.com:443/powerautomate/automations/direct/workflows/REDACTED_WORKFLOW_ID/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=REDACTED",
                 "headers": {
                   "Content-Type": "application/json"
                 },
@@ -216,6 +181,11 @@
                 }
               }
             }
+          },
+          "runAfter": {
+            "Get_Catalog_Item": [
+              "Succeeded"
+            ]
           },
           "else": {
             "actions": {
@@ -233,7 +203,7 @@
                 "type": "OpenApiConnectionWebhook",
                 "inputs": {
                   "parameters": {
-                    "Copilot": "itsm_triage_agent",
+                    "Copilot": "cre79_agent",
                     "body/message": "@{outputs('Compose_TriagePrompt')}"
                   },
                   "host": {
@@ -276,7 +246,7 @@
                   "authentication": "@parameters('$authentication')"
                 }
               },
-              "Notify_Catherine_AI_Down": {
+              "Notify_the admin_AI_Down": {
                 "runAfter": {
                   "Patch_RITM_AI_Down": [
                     "Succeeded"
@@ -454,22 +424,6 @@
                 }
               },
               "If_Exact_Validated_Match": {
-                "runAfter": {
-                  "Parse_AI_Intent": [
-                    "Succeeded"
-                  ]
-                },
-                "type": "If",
-                "expression": {
-                  "and": [
-                    {
-                      "equals": [
-                        "@and(not(equals(toLower(coalesce(body('Parse_AI_Intent')?['confidence'], 'low')), 'low')), equals(length(coalesce(body('Parse_AI_Intent')?['missing'], json('[]'))), 0), or(not(equals(toLower(coalesce(body('Parse_AI_Intent')?['resourceType'], '')), 'group')), not(empty(coalesce(outputs('Compose_Intent_Shim')?['agentGroupId'], '')))))",
-                        true
-                      ]
-                    }
-                  ]
-                },
                 "actions": {
                   "Compose_Validated_Variables": {
                     "runAfter": {},
@@ -486,7 +440,7 @@
                       "confidence": "@body('Parse_AI_Intent')?['confidence']",
                       "summary": "@coalesce(body('Parse_AI_Intent')?['summary'], '')",
                       "validatedAt": "@utcNow()",
-                      "validationSource": "Triage agent (itsm_triage_agent) + FindGroup; agent-resolved groupId, no flow-side Graph",
+                      "validationSource": "Triage agent (cre79_agent) + FindGroup; agent-resolved groupId, no flow-side Graph",
                       "originalText": "@coalesce(outputs('Get_RITM_Fresh')?['body/Variables'], '')"
                     }
                   },
@@ -530,7 +484,7 @@
                     "type": "Http",
                     "inputs": {
                       "method": "POST",
-                      "uri": "https://REDACTED-FLOW-TRIGGER-URL",
+                      "uri": "https://00000000000000000000000000000000.b5.environment.api.powerplatform.com:443/powerautomate/automations/direct/workflows/REDACTED_WORKFLOW_ID/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=REDACTED",
                       "headers": {
                         "Content-Type": "application/json"
                       },
@@ -539,6 +493,11 @@
                       }
                     }
                   }
+                },
+                "runAfter": {
+                  "Parse_AI_Intent": [
+                    "Succeeded"
+                  ]
                 },
                 "else": {
                   "actions": {
@@ -561,22 +520,6 @@
                       }
                     },
                     "If_Clarify_Else_Handoff": {
-                      "runAfter": {
-                        "Compose_Hold_Variables": [
-                          "Succeeded"
-                        ]
-                      },
-                      "type": "If",
-                      "expression": {
-                        "and": [
-                          {
-                            "equals": [
-                              "@toLower(coalesce(outputs('Compose_Intent_Shim')?['outcome'], ''))",
-                              "stop_and_ask"
-                            ]
-                          }
-                        ]
-                      },
                       "actions": {
                         "Patch_RITM_Clarify": {
                           "runAfter": {},
@@ -605,7 +548,7 @@
                             "authentication": "@parameters('$authentication')"
                           }
                         },
-                        "Notify_Requester_Clarify": {
+                        "Create_Clarify_Approval": {
                           "runAfter": {
                             "Patch_RITM_Clarify": [
                               "Succeeded"
@@ -613,20 +556,150 @@
                           },
                           "type": "OpenApiConnection",
                           "inputs": {
-                            "host": {
-                              "apiId": "/providers/Microsoft.PowerApps/apis/shared_teams",
-                              "connectionName": "shared_teams",
-                              "operationId": "PostMessageToConversation"
-                            },
                             "parameters": {
-                              "poster": "Flow bot",
-                              "location": "Chat with Flow bot",
-                              "body/recipient": "@{coalesce(body('Get_Parent_Ticket')?['Caller/Email'], body('Get_Parent_Ticket')?['Caller/EMail'], last(split(coalesce(outputs('Get_RITM_Fresh')?['body/RequestedFor/Claims'], ''), '|')), 'itsm-admin@contoso.com')}",
-                              "body/messageBody": "@{concat('<h2>A bit more info needed</h2><p>To process your request <b>', outputs('Get_RITM_Fresh')?['body/RitmNumber'], '</b> we need: ', coalesce(outputs('Compose_Intent_Shim')?['moreInfoNeeded'], 'a little more detail'), '</p><p>Reply with that and it will continue automatically.</p><p><a href=\"https://contoso.sharepoint.com/sites/ITSM/Lists/Request%20Items/DispForm.aspx?ID=', string(outputs('Get_RITM_Fresh')?['body/ID']), '\">Open request item</a></p>')}"
+                              "approvalType": "CustomResponse",
+                              "ApprovalCreationInput/responseOptions": [
+                                "I have answered",
+                                "Cancel request"
+                              ],
+                              "ApprovalCreationInput/title": "@{concat('More info needed - ', coalesce(body('Get_Parent_Ticket')?['Title'], outputs('Get_RITM_Fresh')?['body/RitmNumber'], 'your request'))}",
+                              "ApprovalCreationInput/assignedTo": "@{coalesce(body('Get_Parent_Ticket')?['Caller/Email'], body('Get_Parent_Ticket')?['Caller/EMail'], last(split(coalesce(outputs('Get_RITM_Fresh')?['body/RequestedFor/Claims'], '|'), '|')), 'itsm-admin@contoso.com')}",
+                              "ApprovalCreationInput/details": "@{concat('To process your request ', outputs('Get_RITM_Fresh')?['body/RitmNumber'], ' we need a bit more information.', decodeUriComponent('%0A%0A'), coalesce(outputs('Compose_Intent_Shim')?['moreInfoNeeded'], 'a little more detail'), decodeUriComponent('%0A%0A'), 'Type your answers in the comments box below, then choose I have answered. If you no longer need this, choose Cancel request.')}",
+                              "ApprovalCreationInput/itemLink": "@{concat('https://contoso.sharepoint.com/sites/ITSM/Lists/Request%20Items/DispForm.aspx?ID=', string(outputs('Get_RITM_Fresh')?['body/ID']))}",
+                              "ApprovalCreationInput/itemLinkDescription": "Open your request item",
+                              "ApprovalCreationInput/enableNotifications": true,
+                              "ApprovalCreationInput/enableReassignment": false
+                            },
+                            "host": {
+                              "apiId": "/providers/Microsoft.PowerApps/apis/shared_approvals",
+                              "connectionName": "shared_approvals",
+                              "operationId": "CreateAnApproval"
                             },
                             "authentication": "@parameters('$authentication')"
                           }
+                        },
+                        "Wait_Clarify_Reply": {
+                          "runAfter": {
+                            "Create_Clarify_Approval": [
+                              "Succeeded"
+                            ]
+                          },
+                          "type": "OpenApiConnectionWebhook",
+                          "inputs": {
+                            "parameters": {
+                              "approvalName": "@body('Create_Clarify_Approval')?['name']"
+                            },
+                            "host": {
+                              "apiId": "/providers/Microsoft.PowerApps/apis/shared_approvals",
+                              "connectionName": "shared_approvals",
+                              "operationId": "WaitForAnApproval"
+                            },
+                            "authentication": "@parameters('$authentication')"
+                          }
+                        },
+                        "If_Clarify_Cancelled": {
+                          "actions": {
+                            "Patch_RITM_Cancelled": {
+                              "runAfter": {},
+                              "type": "OpenApiConnection",
+                              "inputs": {
+                                "host": {
+                                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                                  "connectionName": "shared_sharepointonline",
+                                  "operationId": "PatchItem"
+                                },
+                                "parameters": {
+                                  "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+                                  "table": "Request Items",
+                                  "id": "@outputs('Get_RITM_Fresh')?['body/ID']",
+                                  "item/Title": "@outputs('Get_RITM_Fresh')?['body/Title']",
+                                  "item/RitmNumber": "@outputs('Get_RITM_Fresh')?['body/RitmNumber']",
+                                  "item/ParentTicket/Id": "@outputs('Get_RITM_Fresh')?['body/ParentTicket/Id']",
+                                  "item/CatalogItem/Id": "@outputs('Get_RITM_Fresh')?['body/CatalogItem/Id']",
+                                  "item/RequestedFor/Claims": "@outputs('Get_RITM_Fresh')?['body/RequestedFor/Claims']",
+                                  "item/OpenedDate": "@outputs('Get_RITM_Fresh')?['body/OpenedDate']",
+                                  "item/ConfidentialityLevel/Value": "@outputs('Get_RITM_Fresh')?['body/ConfidentialityLevel/Value']",
+                                  "item/RitmState/Value": "Closed Incomplete",
+                                  "item/CloseCode/Value": "Cancelled",
+                                  "item/CloseNotes": "@{coalesce(body('Wait_Clarify_Reply')?['responses']?[0]?['comments'], 'Requester cancelled the request at clarification.')}",
+                                  "item/ClosedDate": "@utcNow()",
+                                  "item/WorkNotes": "Requester cancelled at clarification."
+                                },
+                                "authentication": "@parameters('$authentication')"
+                              }
+                            }
+                          },
+                          "runAfter": {
+                            "Wait_Clarify_Reply": [
+                              "Succeeded"
+                            ]
+                          },
+                          "else": {
+                            "actions": {
+                              "Patch_RITM_Resume": {
+                                "runAfter": {},
+                                "type": "OpenApiConnection",
+                                "inputs": {
+                                  "host": {
+                                    "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                                    "connectionName": "shared_sharepointonline",
+                                    "operationId": "PatchItem"
+                                  },
+                                  "parameters": {
+                                    "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+                                    "table": "Request Items",
+                                    "id": "@outputs('Get_RITM_Fresh')?['body/ID']",
+                                    "item/Title": "@outputs('Get_RITM_Fresh')?['body/Title']",
+                                    "item/RitmNumber": "@outputs('Get_RITM_Fresh')?['body/RitmNumber']",
+                                    "item/ParentTicket/Id": "@outputs('Get_RITM_Fresh')?['body/ParentTicket/Id']",
+                                    "item/CatalogItem/Id": "@outputs('Get_RITM_Fresh')?['body/CatalogItem/Id']",
+                                    "item/RequestedFor/Claims": "@outputs('Get_RITM_Fresh')?['body/RequestedFor/Claims']",
+                                    "item/OpenedDate": "@outputs('Get_RITM_Fresh')?['body/OpenedDate']",
+                                    "item/ConfidentialityLevel/Value": "@outputs('Get_RITM_Fresh')?['body/ConfidentialityLevel/Value']",
+                                    "item/RitmState/Value": "Pending Validation",
+                                    "item/Variables": "@{concat(coalesce(outputs('Get_RITM_Fresh')?['body/Variables'], ''), decodeUriComponent('%0A%0A'), 'Requester clarification: ', coalesce(body('Wait_Clarify_Reply')?['responses']?[0]?['comments'], ''))}",
+                                    "item/WorkNotes": "@{concat('Requester answered the clarification; re-validating. Reply: ', coalesce(body('Wait_Clarify_Reply')?['responses']?[0]?['comments'], ''))}"
+                                  },
+                                  "authentication": "@parameters('$authentication')"
+                                }
+                              },
+                              "Call_ReValidate": {
+                                "runAfter": {
+                                  "Patch_RITM_Resume": [
+                                    "Succeeded"
+                                  ]
+                                },
+                                "type": "Http",
+                                "inputs": {
+                                  "method": "POST",
+                                  "uri": "https://00000000000000000000000000000000.b5.environment.api.powerplatform.com:443/powerautomate/automations/direct/workflows/REDACTED_WORKFLOW_ID/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=REDACTED",
+                                  "headers": {
+                                    "Content-Type": "application/json"
+                                  },
+                                  "body": {
+                                    "ritmId": "@outputs('Get_RITM_Fresh')?['body/ID']"
+                                  }
+                                }
+                              }
+                            }
+                          },
+                          "expression": {
+                            "and": [
+                              {
+                                "equals": [
+                                  "@body('Wait_Clarify_Reply')?['responses']?[0]?['approverResponse']",
+                                  "Cancel request"
+                                ]
+                              }
+                            ]
+                          },
+                          "type": "If"
                         }
+                      },
+                      "runAfter": {
+                        "Compose_Hold_Variables": [
+                          "Succeeded"
+                        ]
                       },
                       "else": {
                         "actions": {
@@ -653,7 +726,7 @@
                                 "item/OpenedDate": "@outputs('Get_RITM_Fresh')?['body/OpenedDate']",
                                 "item/ConfidentialityLevel/Value": "@outputs('Get_RITM_Fresh')?['body/ConfidentialityLevel/Value']",
                                 "item/WorkNotes": "@{concat('Could not auto-fulfill (out of catalog / no automated action / manual item); assigned to the IT service desk for manual fulfillment. Details: ', string(outputs('Compose_Hold_Variables')))}",
-                                "item/AssignmentGroup/Claims": "c:0o.c|federateddirectoryclaimprovider|REDACTED-SERVICE-DESK-GROUP-ID"
+                                "item/AssignmentGroup/Claims": "c:0o.c|federateddirectoryclaimprovider|82ad6f09-59fe-42f6-b2c1-470a6bf4625f"
                               },
                               "authentication": "@parameters('$authentication')"
                             }
@@ -709,17 +782,69 @@
                             }
                           }
                         }
-                      }
+                      },
+                      "expression": {
+                        "and": [
+                          {
+                            "equals": [
+                              "@toLower(coalesce(outputs('Compose_Intent_Shim')?['outcome'], ''))",
+                              "stop_and_ask"
+                            ]
+                          }
+                        ]
+                      },
+                      "type": "If"
                     }
                   }
-                }
+                },
+                "expression": {
+                  "and": [
+                    {
+                      "equals": [
+                        "@and(not(equals(toLower(coalesce(body('Parse_AI_Intent')?['confidence'], 'low')), 'low')), equals(length(coalesce(body('Parse_AI_Intent')?['missing'], json('[]'))), 0), or(not(equals(toLower(coalesce(body('Parse_AI_Intent')?['resourceType'], '')), 'group')), not(empty(coalesce(outputs('Compose_Intent_Shim')?['agentGroupId'], '')))))",
+                        true
+                      ]
+                    }
+                  ]
+                },
+                "type": "If"
               }
             }
-          }
+          },
+          "expression": {
+            "and": [
+              {
+                "equals": [
+                  "@startsWith(trim(coalesce(outputs('Get_RITM_Fresh')?['body/Variables'], '')), '{')",
+                  true
+                ]
+              }
+            ]
+          },
+          "type": "If"
         }
-      }
+      },
+      "runAfter": {
+        "Get_RITM_Fresh": [
+          "Succeeded"
+        ]
+      },
+      "else": {
+        "actions": {}
+      },
+      "expression": {
+        "and": [
+          {
+            "equals": [
+              "@outputs('Get_RITM_Fresh')?['body/RitmState/Value']",
+              "Pending Validation"
+            ]
+          }
+        ]
+      },
+      "type": "If"
     }
   },
   "outputs": {},
-  "description": "3.2 RITM-Validation. Validated -> 3.3 RITM-Approval. Agent emits outcome: stop_and_ask -> clarify lane (notify the requester, who owns the next step); handoff / not-auto-fulfillable -> assigned to the IT service desk group for manual fulfillment + logged to Catalog Demand + requester told it was received. Structured path unchanged."
+  "description": "3.2 RITM-Validation. stop_and_ask now sends the requester an interactive clarification Approval (questions in the card, answer in the comments box; 'I have answered' / 'Cancel request'); on answer the reply is appended to the RITM and 3.2 re-validates (self-invoke); on cancel the RITM is closed. Replaces the prior one-way notify. Structured/handoff paths unchanged."
 }

@@ -211,14 +211,15 @@
                       "item/TicketType/Value": "@body('Get_Parent_Ticket')?['TicketType']?['Value']",
                       "item/CategoryRef/Id": "@body('Get_Parent_Ticket')?['CategoryRef']?['Id']",
                       "item/Caller/Claims": "@body('Get_Parent_Ticket')?['Caller']?['Claims']",
-                      "item/TicketState/Value": "Resolved",
+                      "item/TicketState/Value": "@if(outputs('Compose_Any_RITM_Failed'), 'Closed', 'Resolved')",
                       "item/Impact/Value": "@body('Get_Parent_Ticket')?['Impact']?['Value']",
                       "item/Urgency/Value": "@body('Get_Parent_Ticket')?['Urgency']?['Value']",
                       "item/ShortDescription": "@body('Get_Parent_Ticket')?['ShortDescription']",
                       "item/ConfidentialityLevel/Value": "@body('Get_Parent_Ticket')?['ConfidentialityLevel']?['Value']",
                       "item/ResolvedDate": "@utcNow()",
                       "item/CloseCode/Value": "@if(outputs('Compose_Any_RITM_Failed'), 'Not Solved (Not Reproducible)', 'Solved Permanently')",
-                      "item/CloseNotes": "@{concat('All ', length(body('Get_Sibling_RITMs')?['value']), ' RITM(s) reached terminal state. Auto-resolved by SCTASK Orchestrator.')}"
+                      "item/CloseNotes": "@{concat(if(outputs('Compose_Any_RITM_Failed'), 'Fulfilment FAILED - one or more items could not be completed; IT has been alerted. ', 'Completed successfully. '), 'All ', string(length(body('Get_Sibling_RITMs')?['value'])), ' RITM(s) reached terminal state.')}",
+                      "item/ClosedDate": "@if(outputs('Compose_Any_RITM_Failed'), utcNow(), null)"
                     },
                     "authentication": "@parameters('$authentication')"
                   }
@@ -240,11 +241,52 @@
                       "poster": "Flow bot",
                       "location": "Chat with Flow bot",
                       "body/recipient": "@{coalesce(body('Get_Parent_Ticket')?['Caller']?['Email'], last(split(coalesce(body('Get_Parent_Ticket')?['Caller']?['Claims'], ''), '|')), 'itsm-admin@contoso.com')}",
-                      "body/messageBody": "@{concat('<h2>Ticket resolved</h2><p><b>Ticket:</b> ', body('Get_Parent_Ticket')?['Title'], ' (item ID ', string(body('Get_Parent_Ticket')?['ID']), ')</p><p><b>Status:</b> Resolved</p><p><b>Resolved at:</b> ', utcNow(), '</p><p><b>Close code:</b> ', if(outputs('Compose_Any_RITM_Failed'), 'Not Solved (Not Reproducible)', 'Solved Permanently'), '</p><p><b>Resolution summary:</b> All ', string(length(body('Get_Sibling_RITMs')?['value'])), ' RITM(s) reached terminal state. Auto-resolved by SCTASK Orchestrator.</p><p><a href=\"https://contoso.sharepoint.com/sites/ITSM/Lists/Tickets/DispForm.aspx?ID=', string(body('Get_Parent_Ticket')?['ID']), '\">Open ticket</a></p>')}"
+                      "body/messageBody": "@{if(outputs('Compose_Any_RITM_Failed'), concat('<h2>Your request could not be completed</h2><p><b>Ticket:</b> ', body('Get_Parent_Ticket')?['Title'], ' (item ID ', string(body('Get_Parent_Ticket')?['ID']), ')</p><p>The automated fulfilment did not succeed, so this request could not be completed. IT has been notified and will follow up with you.</p><p><a href=\"https://contoso.sharepoint.com/sites/ITSM/Lists/Tickets/DispForm.aspx?ID=', string(body('Get_Parent_Ticket')?['ID']), '\">Open ticket</a></p>'), concat('<h2>Ticket resolved</h2><p><b>Ticket:</b> ', body('Get_Parent_Ticket')?['Title'], ' (item ID ', string(body('Get_Parent_Ticket')?['ID']), ')</p><p>Your request has been completed.</p><p><a href=\"https://contoso.sharepoint.com/sites/ITSM/Lists/Tickets/DispForm.aspx?ID=', string(body('Get_Parent_Ticket')?['ID']), '\">Open ticket</a></p>'))}"
                     },
                     "authentication": "@parameters('$authentication')"
                   },
                   "description": "Day 4 task 11: ticket resolved notification to caller via Teams Flow bot."
+                },
+                "If_Notify_IT_On_Failure": {
+                  "actions": {
+                    "Post_IT_Alert": {
+                      "runAfter": {},
+                      "type": "OpenApiConnection",
+                      "inputs": {
+                        "host": {
+                          "apiId": "/providers/Microsoft.PowerApps/apis/shared_teams",
+                          "connectionName": "shared_teams",
+                          "operationId": "PostMessageToConversation"
+                        },
+                        "parameters": {
+                          "poster": "Flow bot",
+                          "location": "Chat with Flow bot",
+                          "body/recipient": "itsm-admin@contoso.com",
+                          "body/messageBody": "@{concat('<h2>Fulfilment failed - action needed</h2><p><b>Ticket:</b> ', body('Get_Parent_Ticket')?['Title'], ' (item ID ', string(body('Get_Parent_Ticket')?['ID']), ')</p><p>One or more provisioning jobs for this request FAILED. The requester has been told it could not be completed. Please open the request, check the failed job error, and re-run or follow up.</p><p><a href=\"https://contoso.sharepoint.com/sites/ITSM/Lists/Tickets/DispForm.aspx?ID=', string(body('Get_Parent_Ticket')?['ID']), '\">Open ticket</a></p>')}"
+                        },
+                        "authentication": "@parameters('$authentication')"
+                      }
+                    }
+                  },
+                  "runAfter": {
+                    "Post_Ticket_Resolved_Notification": [
+                      "Succeeded"
+                    ]
+                  },
+                  "else": {
+                    "actions": {}
+                  },
+                  "expression": {
+                    "and": [
+                      {
+                        "equals": [
+                          "@outputs('Compose_Any_RITM_Failed')",
+                          true
+                        ]
+                      }
+                    ]
+                  },
+                  "type": "If"
                 }
               },
               "runAfter": {
@@ -399,5 +441,5 @@
       }
     }
   },
-  "description": "6.1 SCTASK-Orchestrator. 2026-06-02 poll->push: HTTP Request {taskId}; Get_Task_Fresh live read; called by 3.4 bridge after it writes terminal TaskState. #flowstudio-mcp"
+  "description": "6.1 SCTASK-Orchestrator. 2026-06-08: on fulfilment FAILURE (any RITM Closed Incomplete) the ticket is set Closed (not Resolved), the requester is told it could not be completed, and IT is alerted. Success path unchanged. HTTP {taskId}; called by 3.4 bridge."
 }

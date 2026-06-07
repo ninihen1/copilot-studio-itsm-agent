@@ -6,6 +6,14 @@
 
 > ⚠️ **Project status — working proof of concept.** Built in a tight timebox to prove the architecture end to end — and it does: the core *ticket → triage → approve → execute* pipeline runs on a live Microsoft 365 tenant. It is **not production-hardened**. Expect rough edges off the happy path, and some paths are designed and specced rather than fully tested — the repo is explicit about which (see the *"Designed and specced, but not yet wired"* section and the per-flow *"Pilot deviations"* tables). Treat it as a reference build to learn from and adapt, not a turnkey product.
 
+## Recent improvements
+
+- When a request is missing detail, the agent asks for it with an approval card instead of dead-ending. You answer in the box and it re-checks automatically — or cancel, and it closes cleanly. Works for catalog requests and form tickets.
+- Outcome messages read in plain English ("your request is done" / "couldn't be completed"), with a service-desk note, the ticket and request numbers, and a link.
+- Every page shows a ticket number you can quote when you follow up; the detail view shows the ticket and request numbers together.
+- The Service Desk queue shows each hand-off as Request / For / Why, not raw data.
+- When a request can't be fulfilled, the ticket is closed honestly — not marked resolved. You're told, and the service desk is alerted. Before, a failure could look like success.
+
 ## 🔍 The problem
 
 Most ITSM platforms (ServiceNow, Jira Service Management, Zendesk) charge per seat, per month, and quickly run into the thousands a year. For a small or medium business, that's hard to justify for what is mostly password resets, group adds, and license requests. This project does the same job on tools an M365 tenant already has — **SharePoint, Power Automate, and Copilot Studio** — and automates the routine work end to end.

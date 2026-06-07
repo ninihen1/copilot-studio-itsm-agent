@@ -9,6 +9,7 @@ import { ApprovalsView } from '../../../routes/ApprovalsView';
 import { KnowledgeView } from '../../../routes/KnowledgeView';
 import { AdminView } from '../../../routes/AdminView';
 import { SubcategoriesView } from '../../../routes/SubcategoriesView';
+import { ServiceDeskQueueView, CloseDisposition } from '../../../routes/ServiceDeskQueueView';
 import { WorkItemDetailDialog, WorkItemDetailKind } from '../../../components/WorkItemDetailDialog';
 import { CatalogDetailDialog } from '../../../components/CatalogDetailDialog';
 import { CatalogItem } from '../../../models/CatalogItem';
@@ -29,7 +30,7 @@ import { LicenseCostService } from '../../../services/LicenseCostService';
 import { RequestService } from '../../../services/RequestService';
 import { SubcategoryService } from '../../../services/SubcategoryService';
 
-type RouteKey = 'home' | 'submit' | 'catalog' | 'subcategories' | 'tickets' | 'approvals' | 'knowledge' | 'admin';
+type RouteKey = 'home' | 'submit' | 'catalog' | 'subcategories' | 'tickets' | 'approvals' | 'queue' | 'knowledge' | 'admin';
 
 interface IItmsHostState {
   route: RouteKey;
@@ -42,8 +43,11 @@ interface IItmsHostState {
   catalogItems: CatalogItem[];
   licenseCosts: LicenseCost[];
   licenseCostCount: number;
+  licensePickerOptions: LicenseCost[];
   subcategories: Subcategory[];
   approvals: RequestItem[];
+  handoffQueue: RequestItem[];
+  closingRitmId?: number;
   knowledgeArticles: KnowledgeArticle[];
   failedJobs: ProvisioningJob[];
   detailIsOpen: boolean;
@@ -77,8 +81,10 @@ export default class ItsmHost extends React.Component<IItsmHostProps, IItmsHostS
       catalogItems: [],
       licenseCosts: [],
       licenseCostCount: 0,
+      licensePickerOptions: [],
       subcategories: [],
       approvals: [],
+      handoffQueue: [],
       knowledgeArticles: [],
       failedJobs: [],
       detailIsOpen: false,
@@ -127,6 +133,7 @@ export default class ItsmHost extends React.Component<IItsmHostProps, IItmsHostS
               {this._navItem('subcategories', 'S', 'Subcategories')}
               {this._navItem('knowledge', '?', 'Knowledge base')}
               {this._navItem('approvals', 'A', 'Approvals')}
+              {this._navItem('queue', 'Q', 'Service desk')}
             </div>
             <div className={styles.railSection}>
               <div className={styles.railLabel}>Operations</div>
@@ -168,12 +175,31 @@ export default class ItsmHost extends React.Component<IItsmHostProps, IItmsHostS
   private _navItem(route: RouteKey, icon: string, label: string): React.ReactElement {
     const active = this.state.route === route ? styles.active : '';
     return (
-      <button className={`${styles.railLink} ${active}`} onClick={() => this.setState({ route })}>
+      <button className={`${styles.railLink} ${active}`} onClick={() => this._navigate(route)}>
         <span className={styles.railIcon}>{icon}</span>
         {label}
       </button>
     );
   }
+
+  private _navigate = (route: RouteKey): void => {
+    this.setState({ route });
+    // The hand-off queue must reflect current state every time it is opened,
+    // not just what was loaded on initial mount.
+    if (route === 'queue') {
+      void this._refreshQueue();
+    }
+  };
+
+  private _refreshQueue = async (): Promise<void> => {
+    try {
+      const requestService = new RequestService({ siteUrl: this.props.siteUrl, spHttpClient: this.props.spHttpClient });
+      const handoffQueue = await requestService.getHandoffQueue();
+      this.setState({ handoffQueue });
+    } catch (error) {
+      this.setState({ loadError: error instanceof Error ? error.message : 'Could not refresh the service desk queue.' });
+    }
+  };
 
   private _initials(displayName: string): string {
     return displayName
@@ -187,7 +213,7 @@ export default class ItsmHost extends React.Component<IItsmHostProps, IItmsHostS
   private _renderRoute(): React.ReactElement {
     switch (this.state.route) {
       case 'submit':
-        return <SubmitIncidentView categories={this.state.categories} catalogItems={this.state.catalogItems} subcategories={this.state.subcategories} isSubmitting={this.state.isSubmittingTicket} currentUserDisplayName={this.props.userDisplayName} currentUserEmail={this.props.userEmail} onResolvePeople={this._resolvePeople} onSubmit={this._submitIncident} />;
+        return <SubmitIncidentView categories={this.state.categories} catalogItems={this.state.catalogItems} subcategories={this.state.subcategories} licenses={this.state.licensePickerOptions} isSubmitting={this.state.isSubmittingTicket} currentUserDisplayName={this.props.userDisplayName} currentUserEmail={this.props.userEmail} onResolvePeople={this._resolvePeople} onSubmit={this._submitIncident} />;
       case 'catalog':
         return <CatalogView items={this.state.catalogItems} licenseCosts={this.state.licenseCosts} isLoading={this.state.isLoading} onOpenItem={this._openCatalogDetail} />;
       case 'subcategories':
@@ -196,6 +222,8 @@ export default class ItsmHost extends React.Component<IItsmHostProps, IItmsHostS
         return <TicketDetailView tickets={this.state.tickets} isLoading={this.state.isLoading} onOpenTicket={this._openTicketDetail} />;
       case 'approvals':
         return <ApprovalsView approvals={this.state.approvals} isLoading={this.state.isLoading} onOpenApproval={this._openApprovalDetail} />;
+      case 'queue':
+        return <ServiceDeskQueueView queue={this.state.handoffQueue} isLoading={this.state.isLoading} busyRitmId={this.state.closingRitmId} onClose={this._closeHandoff} />;
       case 'knowledge':
         return <KnowledgeView articles={this.state.knowledgeArticles} isLoading={this.state.isLoading} />;
       case 'admin':
@@ -216,11 +244,12 @@ export default class ItsmHost extends React.Component<IItsmHostProps, IItmsHostS
     const catalogService = new CatalogService(serviceContext);
     const subcategoryService = new SubcategoryService(serviceContext);
     const approvalService = new ApprovalService(serviceContext);
+    const requestService = new RequestService(serviceContext);
     const knowledgeService = new KnowledgeService(serviceContext);
     const jobAuditService = new JobAuditService(serviceContext);
     const licenseCostService = new LicenseCostService(serviceContext);
 
-    const [metrics, tickets, categories, catalogItems, subcategories, approvals, knowledgeArticles, failedJobs, licenseCosts, licenseCostCount] = await Promise.all([
+    const [metrics, tickets, categories, catalogItems, subcategories, approvals, knowledgeArticles, failedJobs, licenseCosts, licenseCostCount, licensePickerOptions, handoffQueue] = await Promise.all([
       this._loadPart('dashboard metrics', ticketService.getDashboardMetrics(this.props.userEmail), {
         myOpenTickets: 0,
         pendingApprovals: 0,
@@ -236,9 +265,11 @@ export default class ItsmHost extends React.Component<IItsmHostProps, IItmsHostS
       this._loadPart('knowledge base', knowledgeService.search(''), []),
       this._loadPart('failed jobs', jobAuditService.getFailedJobs(), []),
       this._loadPart('license costs', licenseCostService.getRecentCosts(25), []),
-      this._loadPart('license cost count', licenseCostService.getCostCount(), 0)
+      this._loadPart('license cost count', licenseCostService.getCostCount(), 0),
+      this._loadPart('license picker', licenseCostService.getForPicker(), []),
+      this._loadPart('hand-off queue', requestService.getHandoffQueue(), [])
     ]);
-    const errors = [metrics, tickets, categories, catalogItems, subcategories, approvals, knowledgeArticles, failedJobs, licenseCosts, licenseCostCount]
+    const errors = [metrics, tickets, categories, catalogItems, subcategories, approvals, knowledgeArticles, failedJobs, licenseCosts, licenseCostCount, licensePickerOptions, handoffQueue]
       .map(result => result.error)
       .filter(Boolean);
 
@@ -256,12 +287,43 @@ export default class ItsmHost extends React.Component<IItsmHostProps, IItmsHostS
       catalogItems: catalogItems.value,
       licenseCosts: licenseCosts.value,
       licenseCostCount: licenseCostCount.value,
+      licensePickerOptions: licensePickerOptions.value,
       subcategories: subcategories.value,
       approvals: approvals.value,
+      handoffQueue: handoffQueue.value,
       knowledgeArticles: knowledgeArticles.value,
       failedJobs: failedJobs.value
     });
   }
+
+  private _closeHandoff = async (ritm: RequestItem, disposition: CloseDisposition, closeNotes: string): Promise<void> => {
+    this.setState({ closingRitmId: ritm.id, loadError: undefined });
+    const serviceContext = { siteUrl: this.props.siteUrl, spHttpClient: this.props.spHttpClient };
+    const requestService = new RequestService(serviceContext);
+    const ticketService = new TicketService(serviceContext);
+    const ritmState = disposition === 'declined' ? 'Closed Incomplete' : 'Closed Complete';
+    const ticketState = disposition === 'declined' ? 'Cancelled' : 'Closed';
+    const closeCode = disposition === 'declined' ? 'Rejected' : 'Fulfilled';
+    const notes = closeNotes && closeNotes.trim().length ? closeNotes.trim() : (disposition === 'declined' ? 'Declined by the IT service desk.' : 'Fulfilled by the IT service desk.');
+
+    try {
+      await requestService.closeRitm(ritm.id, ritmState, closeCode, notes);
+      if (ritm.parentTicketId) {
+        await ticketService.resolveTicket(ritm.parentTicketId, ticketState, closeCode, notes);
+      }
+      const handoffQueue = await requestService.getHandoffQueue();
+      this.setState({
+        closingRitmId: undefined,
+        handoffQueue,
+        loadError: `RITM #${ritm.id} ${ritmState.toLowerCase()}${ritm.parentTicketId ? ` · ticket #${ritm.parentTicketId} ${ticketState.toLowerCase()}` : ''}.`
+      });
+    } catch (error) {
+      this.setState({
+        closingRitmId: undefined,
+        loadError: error instanceof Error ? error.message : 'Closing the request failed.'
+      });
+    }
+  };
 
   private _submitIncident = async (input: Parameters<TicketService['createIncident']>[0]): Promise<void> => {
     this.setState({ isSubmittingTicket: true, loadError: undefined });
