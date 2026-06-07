@@ -33,7 +33,43 @@
     }
   },
   "actions": {
+    "Get_RITM_Fresh": {
+      "runAfter": {},
+      "type": "OpenApiConnection",
+      "inputs": {
+        "host": {
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+          "connectionName": "shared_sharepointonline",
+          "operationId": "GetItem"
+        },
+        "parameters": {
+          "dataset": "https://contoso.sharepoint.com/sites/ITSM",
+          "table": "Request Items",
+          "id": "@triggerBody()?['ritmId']"
+        },
+        "authentication": "@parameters('$authentication')"
+      }
+    },
     "If_RITM_Pending_Validation": {
+      "runAfter": {
+        "Get_RITM_Fresh": [
+          "Succeeded"
+        ]
+      },
+      "type": "If",
+      "expression": {
+        "and": [
+          {
+            "equals": [
+              "@outputs('Get_RITM_Fresh')?['body/RitmState/Value']",
+              "Pending Validation"
+            ]
+          }
+        ]
+      },
+      "else": {
+        "actions": {}
+      },
       "actions": {
         "Get_Parent_Ticket": {
           "runAfter": {},
@@ -74,6 +110,22 @@
           }
         },
         "If_Structured_Payload": {
+          "runAfter": {
+            "Get_Catalog_Item": [
+              "Succeeded"
+            ]
+          },
+          "type": "If",
+          "expression": {
+            "and": [
+              {
+                "equals": [
+                  "@startsWith(trim(coalesce(outputs('Get_RITM_Fresh')?['body/Variables'], '')), '{')",
+                  true
+                ]
+              }
+            ]
+          },
           "actions": {
             "Parse_Structured_Payload": {
               "runAfter": {},
@@ -165,55 +217,36 @@
               }
             }
           },
-          "runAfter": {
-            "Get_Catalog_Item": [
-              "Succeeded"
-            ]
-          },
           "else": {
             "actions": {
-              "AI_Builder_Create_Text_With_GPT": {
+              "Compose_TriagePrompt": {
                 "runAfter": {},
-                "metadata": {
-                  "flowSystemMetadata": {
-                    "portalOperationId": "PredictV2",
-                    "portalOperationGroup": "aibuilder",
-                    "portalOperationApiDisplayNameOverride": "AI Builder",
-                    "portalOperationIconOverride": "https://content.powerapps.com/resource/makerx/static/pauto/images/designeroperations/aibuilderIcon2026.8e878397.png",
-                    "portalOperationBrandColorOverride": "#0A76C4",
-                    "portalOperationApiTierOverride": "Standard"
-                  },
-                  "operationMetadataId": "ritm-validation-triage-ai-builder-gpt"
+                "type": "Compose",
+                "inputs": "Triage this ticket from the automated intake flow.\n\n[TRIAGE_REQUEST]\nticketId: @{coalesce(outputs('Get_RITM_Fresh')?['body/RitmNumber'], '')}\nticketSpItemId: @{string(outputs('Get_RITM_Fresh')?['body/ID'])}\ncallerUpn: @{last(split(coalesce(outputs('Get_RITM_Fresh')?['body/RequestedFor/Claims'], ''), '|'))}\ncallerName: @{coalesce(body('Get_Parent_Ticket')?['Caller/DisplayName'], '')}\nshortDescription: @{coalesce(body('Get_Catalog_Item')?['ItemName'], outputs('Get_RITM_Fresh')?['body/Title'], '')}\ndescription: @{coalesce(outputs('Get_RITM_Fresh')?['body/Variables'], body('Get_Parent_Ticket')?['Description'], body('Get_Parent_Ticket')?['ShortDescription'], '')}\nopenedDate: @{coalesce(outputs('Get_RITM_Fresh')?['body/OpenedDate'], '')}\n\nThis is a catalog Request Item (RITM) for '@{coalesce(body('Get_Catalog_Item')?['ItemName'], '')}' (JobType hint: @{coalesce(body('Get_Catalog_Item')?['JobType'], '')}). Classify and propose the privileged action. For any group-membership request, use your FindGroup tool to resolve the group and return the resolved groupId and groupDisplayName in proposedAction.args. Reply with EXACTLY the tagged JSON block and NOTHING ELSE."
+              },
+              "Execute_Agent_Triage": {
+                "runAfter": {
+                  "Compose_TriagePrompt": [
+                    "Succeeded"
+                  ]
                 },
-                "type": "OpenApiConnection",
+                "type": "OpenApiConnectionWebhook",
                 "inputs": {
-                  "host": {
-                    "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
-                    "connectionName": "shared_commondataserviceforapps",
-                    "operationId": "PredictV2"
-                  },
                   "parameters": {
-                    "recordId": "00000000-0000-0000-0000-000000000003",
-                    "item/requestv2/JobType": "@{coalesce(body('Get_Catalog_Item')?['JobType'], '')}",
-                    "item/requestv2/CatalogItem": "@{concat(coalesce(body('Get_Catalog_Item')?['ItemName'], ''), ' - ', coalesce(body('Get_Catalog_Item')?['Description'], ''))}",
-                    "item/requestv2/InputSchema": "@{coalesce(body('Get_Catalog_Item')?['InputSchema'], '')}",
-                    "item/requestv2/RequestedFor": "@{last(split(coalesce(outputs('Get_RITM_Fresh')?['body/RequestedFor/Claims'], ''), '|'))}",
-                    "item/requestv2/RequestText": "@{coalesce(outputs('Get_RITM_Fresh')?['body/Variables'], body('Get_Parent_Ticket')?['Description'], body('Get_Parent_Ticket')?['ShortDescription'], '')}"
+                    "Copilot": "cre79_agent",
+                    "body/message": "@{outputs('Compose_TriagePrompt')}"
+                  },
+                  "host": {
+                    "apiId": "/providers/Microsoft.PowerApps/apis/shared_microsoftcopilotstudio",
+                    "connectionName": "shared_microsoftcopilotstudio",
+                    "operationId": "ExecuteCopilotAsyncV2"
                   },
                   "authentication": "@parameters('$authentication')"
-                },
-                "runtimeConfiguration": {
-                  "secureData": {
-                    "properties": [
-                      "inputs",
-                      "outputs"
-                    ]
-                  }
                 }
               },
               "Patch_RITM_AI_Down": {
                 "runAfter": {
-                  "AI_Builder_Create_Text_With_GPT": [
+                  "Execute_Agent_Triage": [
                     "Failed",
                     "TimedOut"
                   ]
@@ -238,7 +271,7 @@
                     "item/Variables": "@coalesce(outputs('Get_RITM_Fresh')?['body/Variables'], '')",
                     "item/OpenedDate": "@outputs('Get_RITM_Fresh')?['body/OpenedDate']",
                     "item/ConfidentialityLevel/Value": "@outputs('Get_RITM_Fresh')?['body/ConfidentialityLevel/Value']",
-                    "item/WorkNotes": "@{concat('Validation triage could not run: AI Builder text extraction failed (model unavailable). Auto-placed On Hold for manual validation. RITM ', outputs('Get_RITM_Fresh')?['body/RitmNumber'], ' at ', utcNow(), '.')}"
+                    "item/WorkNotes": "@{concat('Validation triage could not run: the triage agent call failed or timed out. Auto-placed On Hold for manual validation. RITM ', outputs('Get_RITM_Fresh')?['body/RitmNumber'], ' at ', utcNow(), '.')}"
                   },
                   "authentication": "@parameters('$authentication')"
                 }
@@ -260,20 +293,124 @@
                     "poster": "Flow bot",
                     "location": "Chat with Flow bot",
                     "body/recipient": "itsm-admin@contoso.com",
-                    "body/messageBody": "@{concat('<h2>RITM validation could not run</h2><p>The AI extraction step failed (model unavailable), so <b>', outputs('Get_RITM_Fresh')?['body/RitmNumber'], '</b> (item ID ', string(outputs('Get_RITM_Fresh')?['body/ID']), ') was placed <b>On Hold</b> for manual validation.</p><p><a href=\"https://contoso.sharepoint.com/sites/ITSM/Lists/Request%20Items/DispForm.aspx?ID=', string(outputs('Get_RITM_Fresh')?['body/ID']), '\">Open request item</a></p>')}"
+                    "body/messageBody": "@{concat('<h2>RITM validation could not run</h2><p>The triage agent call failed (agent unavailable), so <b>', outputs('Get_RITM_Fresh')?['body/RitmNumber'], '</b> (item ID ', string(outputs('Get_RITM_Fresh')?['body/ID']), ') was placed <b>On Hold</b> for manual validation.</p><p><a href=\"https://contoso.sharepoint.com/sites/ITSM/Lists/Request%20Items/DispForm.aspx?ID=', string(outputs('Get_RITM_Fresh')?['body/ID']), '\">Open request item</a></p>')}"
                   },
                   "authentication": "@parameters('$authentication')"
                 }
               },
-              "Parse_AI_Intent": {
+              "Compose_RawReply": {
                 "runAfter": {
-                  "AI_Builder_Create_Text_With_GPT": [
+                  "Execute_Agent_Triage": [
+                    "Succeeded"
+                  ]
+                },
+                "type": "Compose",
+                "inputs": "@coalesce(outputs('Execute_Agent_Triage')?['body/lastResponse'], '')"
+              },
+              "Compose_ExtractedBlock": {
+                "runAfter": {
+                  "Compose_RawReply": [
+                    "Succeeded"
+                  ]
+                },
+                "type": "Compose",
+                "inputs": "@if(and(contains(outputs('Compose_RawReply'), '<<<TRIAGE_BEGIN>>>'), contains(outputs('Compose_RawReply'), '<<<TRIAGE_END>>>')), trim(substring(outputs('Compose_RawReply'), add(indexOf(outputs('Compose_RawReply'), '<<<TRIAGE_BEGIN>>>'), 19), sub(indexOf(outputs('Compose_RawReply'), '<<<TRIAGE_END>>>'), add(indexOf(outputs('Compose_RawReply'), '<<<TRIAGE_BEGIN>>>'), 19)))), '{}')"
+              },
+              "Parse_Agent_Triage": {
+                "runAfter": {
+                  "Compose_ExtractedBlock": [
                     "Succeeded"
                   ]
                 },
                 "type": "ParseJson",
                 "inputs": {
-                  "content": "@coalesce(outputs('AI_Builder_Create_Text_With_GPT')?['body/responsev2/predictionOutput/text'], outputs('AI_Builder_Create_Text_With_GPT')?['body/responsev2/predictionOutput/Text'])",
+                  "content": "@outputs('Compose_ExtractedBlock')",
+                  "schema": {
+                    "type": "object",
+                    "properties": {
+                      "outcome": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "ticketType": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "callerUpn": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "targetUserUpn": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "moreInfoNeeded": {},
+                      "proposedAction": {
+                        "type": [
+                          "object",
+                          "null"
+                        ],
+                        "properties": {
+                          "jobType": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "args": {
+                            "type": [
+                              "object",
+                              "null"
+                            ]
+                          }
+                        }
+                      },
+                      "confidence": {},
+                      "rationale": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      }
+                    }
+                  }
+                }
+              },
+              "Compose_Intent_Shim": {
+                "runAfter": {
+                  "Parse_Agent_Triage": [
+                    "Succeeded"
+                  ]
+                },
+                "type": "Compose",
+                "inputs": {
+                  "jobType": "@coalesce(body('Parse_Agent_Triage')?['proposedAction']?['jobType'], '')",
+                  "targetUserUpn": "@coalesce(body('Parse_Agent_Triage')?['targetUserUpn'], '')",
+                  "resourceType": "@if(startsWith(coalesce(body('Parse_Agent_Triage')?['proposedAction']?['jobType'], ''), 'groups.'), 'group', if(startsWith(coalesce(body('Parse_Agent_Triage')?['proposedAction']?['jobType'], ''), 'licensing.'), 'license', if(startsWith(coalesce(body('Parse_Agent_Triage')?['proposedAction']?['jobType'], ''), 'exchange.'), 'mailbox', if(startsWith(coalesce(body('Parse_Agent_Triage')?['proposedAction']?['jobType'], ''), 'sharepoint.'), 'file', ''))))",
+                  "resourceName": "@coalesce(body('Parse_Agent_Triage')?['proposedAction']?['args']?['groupDisplayName'], body('Parse_Agent_Triage')?['proposedAction']?['args']?['groupName'], body('Parse_Agent_Triage')?['proposedAction']?['args']?['skuPartNumber'], body('Parse_Agent_Triage')?['proposedAction']?['args']?['resourceName'], '')",
+                  "agentGroupId": "@coalesce(body('Parse_Agent_Triage')?['proposedAction']?['args']?['groupId'], '')",
+                  "confidence": "@if(equals(coalesce(body('Parse_Agent_Triage')?['outcome'], ''), 'propose'), 'high', 'low')",
+                  "missing": "@if(equals(coalesce(body('Parse_Agent_Triage')?['outcome'], ''), 'stop_and_ask'), createArray(coalesce(body('Parse_Agent_Triage')?['moreInfoNeeded'], 'clarification needed')), json('[]'))",
+                  "summary": "@coalesce(body('Parse_Agent_Triage')?['rationale'], '')"
+                }
+              },
+              "Parse_AI_Intent": {
+                "runAfter": {
+                  "Compose_Intent_Shim": [
+                    "Succeeded"
+                  ]
+                },
+                "type": "ParseJson",
+                "inputs": {
+                  "content": "@outputs('Compose_Intent_Shim')",
                   "schema": {
                     "type": "object",
                     "required": [
@@ -314,138 +451,23 @@
                   }
                 }
               },
-              "Compose_Lookup_Keys": {
-                "runAfter": {
-                  "Parse_AI_Intent": [
-                    "Succeeded"
-                  ]
-                },
-                "type": "Compose",
-                "inputs": {
-                  "userEmail": "@coalesce(body('Parse_AI_Intent')?['targetUserUpn'], '')",
-                  "groupName": "@coalesce(body('Parse_AI_Intent')?['resourceName'], '')",
-                  "resourceType": "@toLower(coalesce(body('Parse_AI_Intent')?['resourceType'], ''))"
-                }
-              },
-              "Get_KV_Secret": {
-                "runAfter": {
-                  "Parse_AI_Intent": [
-                    "Succeeded"
-                  ]
-                },
-                "type": "OpenApiConnection",
-                "inputs": {
-                  "host": {
-                    "apiId": "/providers/Microsoft.PowerApps/apis/shared_keyvault",
-                    "connectionName": "shared_keyvault",
-                    "operationId": "GetSecret"
-                  },
-                  "parameters": {
-                    "secretName": "SP-IT-Groups-ClientSecret"
-                  },
-                  "authentication": "@parameters('$authentication')"
-                },
-                "runtimeConfiguration": {
-                  "secureData": {
-                    "properties": [
-                      "inputs",
-                      "outputs"
-                    ]
-                  }
-                }
-              },
-              "Get_Graph_Token": {
-                "runAfter": {
-                  "Get_KV_Secret": [
-                    "Succeeded"
-                  ]
-                },
-                "type": "Http",
-                "inputs": {
-                  "method": "POST",
-                  "uri": "https://login.microsoftonline.com/00000000-0000-0000-0000-000000000001/oauth2/v2.0/token",
-                  "headers": {
-                    "Content-Type": "application/x-www-form-urlencoded"
-                  },
-                  "body": "@{concat('grant_type=client_credentials&client_id=00000000-0000-0000-0000-000000000002&scope=https%3A%2F%2Fgraph.microsoft.com%2F.default&client_secret=', encodeUriComponent(body('Get_KV_Secret')?['value']))}"
-                },
-                "runtimeConfiguration": {
-                  "secureData": {
-                    "properties": [
-                      "inputs",
-                      "outputs"
-                    ]
-                  }
-                }
-              },
-              "Parse_Graph_Token": {
-                "runAfter": {
-                  "Get_Graph_Token": [
-                    "Succeeded"
-                  ]
-                },
-                "type": "ParseJson",
-                "inputs": {
-                  "content": "@body('Get_Graph_Token')",
-                  "schema": {
-                    "type": "object",
-                    "properties": {
-                      "access_token": {
-                        "type": "string"
-                      },
-                      "token_type": {
-                        "type": "string"
-                      },
-                      "expires_in": {
-                        "type": "integer"
-                      }
-                    }
-                  }
-                },
-                "runtimeConfiguration": {
-                  "secureData": {
-                    "properties": [
-                      "inputs"
-                    ]
-                  }
-                }
-              },
-              "Graph_Find_Users": {
-                "runAfter": {
-                  "Parse_Graph_Token": [
-                    "Succeeded"
-                  ],
-                  "Compose_Lookup_Keys": [
-                    "Succeeded"
-                  ]
-                },
-                "type": "Http",
-                "inputs": {
-                  "method": "GET",
-                  "uri": "@{if(contains(coalesce(outputs('Compose_Lookup_Keys')?['userEmail'], ''), '@'), concat('https://graph.microsoft.com/v1.0/users?$filter=', encodeUriComponent(concat('userPrincipalName eq ''', outputs('Compose_Lookup_Keys')?['userEmail'], ''' or mail eq ''', outputs('Compose_Lookup_Keys')?['userEmail'], '''')), '&$select=id,displayName,userPrincipalName,mail&$top=2'), concat('https://graph.microsoft.com/v1.0/users?$search=\"displayName:', encodeUriComponent(if(empty(trim(coalesce(outputs('Compose_Lookup_Keys')?['userEmail'], ''))), 'zzzz-no-such-user-zzzz', outputs('Compose_Lookup_Keys')?['userEmail'])), '\"&$select=id,displayName,userPrincipalName,mail&$top=2'))}",
-                  "headers": {
-                    "Authorization": "@{concat('Bearer ', body('Parse_Graph_Token')?['access_token'])}",
-                    "ConsistencyLevel": "eventual"
-                  }
-                }
-              },
-              "Graph_Find_Groups": {
-                "runAfter": {
-                  "Graph_Find_Users": [
-                    "Succeeded"
-                  ]
-                },
-                "type": "Http",
-                "inputs": {
-                  "method": "GET",
-                  "uri": "@{concat('https://graph.microsoft.com/v1.0/groups?$search=\"displayName:', encodeUriComponent(if(empty(trim(coalesce(outputs('Compose_Lookup_Keys')?['groupName'], ''))), 'zzzz-no-such-group-zzzz', outputs('Compose_Lookup_Keys')?['groupName'])), '\"&$select=id,displayName,mail&$top=2')}",
-                  "headers": {
-                    "Authorization": "@{concat('Bearer ', body('Parse_Graph_Token')?['access_token'])}",
-                    "ConsistencyLevel": "eventual"
-                  }
-                }
-              },
               "If_Exact_Validated_Match": {
+                "runAfter": {
+                  "Parse_AI_Intent": [
+                    "Succeeded"
+                  ]
+                },
+                "type": "If",
+                "expression": {
+                  "and": [
+                    {
+                      "equals": [
+                        "@and(not(equals(toLower(coalesce(body('Parse_AI_Intent')?['confidence'], 'low')), 'low')), equals(length(coalesce(body('Parse_AI_Intent')?['missing'], json('[]'))), 0), or(not(equals(toLower(coalesce(body('Parse_AI_Intent')?['resourceType'], '')), 'group')), not(empty(coalesce(outputs('Compose_Intent_Shim')?['agentGroupId'], '')))))",
+                        true
+                      ]
+                    }
+                  ]
+                },
                 "actions": {
                   "Compose_Validated_Variables": {
                     "runAfter": {},
@@ -454,16 +476,15 @@
                       "triageStatus": "Validated",
                       "jobType": "@coalesce(body('Parse_AI_Intent')?['jobType'], '')",
                       "targetUserUpn": "@coalesce(body('Parse_AI_Intent')?['targetUserUpn'], '')",
-                      "userId": "@first(body('Graph_Find_Users')?['value'])?['id']",
-                      "userPrincipalName": "@first(body('Graph_Find_Users')?['value'])?['userPrincipalName']",
+                      "userPrincipalName": "@coalesce(body('Parse_AI_Intent')?['targetUserUpn'], '')",
                       "resourceType": "@coalesce(body('Parse_AI_Intent')?['resourceType'], '')",
                       "resourceName": "@coalesce(body('Parse_AI_Intent')?['resourceName'], '')",
-                      "groupId": "@first(body('Graph_Find_Groups')?['value'])?['id']",
-                      "groupName": "@first(body('Graph_Find_Groups')?['value'])?['displayName']",
+                      "groupId": "@coalesce(outputs('Compose_Intent_Shim')?['agentGroupId'], '')",
+                      "groupName": "@coalesce(body('Parse_AI_Intent')?['resourceName'], '')",
                       "confidence": "@body('Parse_AI_Intent')?['confidence']",
                       "summary": "@coalesce(body('Parse_AI_Intent')?['summary'], '')",
                       "validatedAt": "@utcNow()",
-                      "validationSource": "AI extraction (JobType-aware) plus Microsoft Graph resolution",
+                      "validationSource": "Triage agent (cre79_agent) + FindGroup; agent-resolved groupId, no flow-side Graph",
                       "originalText": "@coalesce(outputs('Get_RITM_Fresh')?['body/Variables'], '')"
                     }
                   },
@@ -517,11 +538,6 @@
                     }
                   }
                 },
-                "runAfter": {
-                  "Graph_Find_Groups": [
-                    "Succeeded"
-                  ]
-                },
                 "else": {
                   "actions": {
                     "Compose_Hold_Variables": {
@@ -529,16 +545,15 @@
                       "type": "Compose",
                       "inputs": {
                         "triageStatus": "NeedsClarification",
-                        "reason": "AI confidence was too low, a required field was missing, or the target user/group could not be resolved.",
+                        "reason": "Agent could not confidently classify, a required field was missing, or the group could not be resolved.",
                         "jobType": "@coalesce(body('Parse_AI_Intent')?['jobType'], '')",
                         "targetUserUpn": "@coalesce(body('Parse_AI_Intent')?['targetUserUpn'], '')",
                         "resourceType": "@coalesce(body('Parse_AI_Intent')?['resourceType'], '')",
                         "resourceName": "@coalesce(body('Parse_AI_Intent')?['resourceName'], '')",
                         "confidence": "@coalesce(body('Parse_AI_Intent')?['confidence'], '')",
-                        "missing": "@coalesce(body('Parse_AI_Intent')?['missing'], createArray())",
+                        "missing": "@coalesce(body('Parse_AI_Intent')?['missing'], json('[]'))",
                         "summary": "@coalesce(body('Parse_AI_Intent')?['summary'], '')",
-                        "userMatchCount": "@length(coalesce(body('Graph_Find_Users')?['value'], createArray()))",
-                        "groupMatchCount": "@length(coalesce(body('Graph_Find_Groups')?['value'], createArray()))",
+                        "agentGroupId": "@coalesce(outputs('Compose_Intent_Shim')?['agentGroupId'], '')",
                         "originalText": "@coalesce(outputs('Get_RITM_Fresh')?['body/Variables'], '')"
                       }
                     },
@@ -590,77 +605,20 @@
                           "poster": "Flow bot",
                           "location": "Chat with Flow bot",
                           "body/recipient": "itsm-admin@contoso.com",
-                          "body/messageBody": "@{concat('<h2>RITM needs clarification</h2><p><b>RITM:</b> ', outputs('Get_RITM_Fresh')?['body/RitmNumber'], ' (item ID ', string(outputs('Get_RITM_Fresh')?['body/ID']), ')</p><p><b>Operation:</b> ', coalesce(body('Parse_AI_Intent')?['jobType'], 'n/a'), '</p><p><b>Target user:</b> ', coalesce(body('Parse_AI_Intent')?['targetUserUpn'], '(none)'), '</p><p><b>Resource:</b> ', coalesce(body('Parse_AI_Intent')?['resourceName'], '(none)'), '</p><p><b>Confidence:</b> ', coalesce(body('Parse_AI_Intent')?['confidence'], ''), ' &middot; <b>Missing:</b> ', join(coalesce(body('Parse_AI_Intent')?['missing'], createArray()), ', '), '</p><p>', coalesce(body('Parse_AI_Intent')?['summary'], ''), '</p><p><a href=\"https://contoso.sharepoint.com/sites/ITSM/Lists/Request%20Items/DispForm.aspx?ID=', string(outputs('Get_RITM_Fresh')?['body/ID']), '\">Open request item</a></p>')}"
+                          "body/messageBody": "@{concat('<h2>RITM needs clarification</h2><p><b>RITM:</b> ', outputs('Get_RITM_Fresh')?['body/RitmNumber'], ' (item ID ', string(outputs('Get_RITM_Fresh')?['body/ID']), ')</p><p><b>Operation:</b> ', coalesce(body('Parse_AI_Intent')?['jobType'], 'n/a'), '</p><p><b>Target user:</b> ', coalesce(body('Parse_AI_Intent')?['targetUserUpn'], '(none)'), '</p><p><b>Resource:</b> ', coalesce(body('Parse_AI_Intent')?['resourceName'], '(none)'), '</p><p><b>Confidence:</b> ', coalesce(body('Parse_AI_Intent')?['confidence'], ''), ' &middot; <b>Missing:</b> ', join(coalesce(body('Parse_AI_Intent')?['missing'], json('[]')), ', '), '</p><p>', coalesce(body('Parse_AI_Intent')?['summary'], ''), '</p><p><a href=\"https://contoso.sharepoint.com/sites/ITSM/Lists/Request%20Items/DispForm.aspx?ID=', string(outputs('Get_RITM_Fresh')?['body/ID']), '\">Open request item</a></p>')}"
                         },
                         "authentication": "@parameters('$authentication')"
                       }
                     }
                   }
-                },
-                "expression": {
-                  "and": [
-                    {
-                      "equals": [
-                        "@and(not(equals(toLower(coalesce(body('Parse_AI_Intent')?['confidence'], 'low')), 'low')), equals(length(coalesce(body('Parse_AI_Intent')?['missing'], createArray())), 0), or(empty(coalesce(body('Parse_AI_Intent')?['targetUserUpn'], '')), greater(length(coalesce(body('Graph_Find_Users')?['value'], createArray())), 0)), or(not(equals(toLower(coalesce(body('Parse_AI_Intent')?['resourceType'], '')), 'group')), greater(length(coalesce(body('Graph_Find_Groups')?['value'], createArray())), 0)))",
-                        true
-                      ]
-                    }
-                  ]
-                },
-                "type": "If"
+                }
               }
             }
-          },
-          "expression": {
-            "and": [
-              {
-                "equals": [
-                  "@startsWith(trim(coalesce(outputs('Get_RITM_Fresh')?['body/Variables'], '')), '{')",
-                  true
-                ]
-              }
-            ]
-          },
-          "type": "If"
-        }
-      },
-      "runAfter": {
-        "Get_RITM_Fresh": [
-          "Succeeded"
-        ]
-      },
-      "else": {
-        "actions": {}
-      },
-      "expression": {
-        "and": [
-          {
-            "equals": [
-              "@outputs('Get_RITM_Fresh')?['body/RitmState/Value']",
-              "Pending Validation"
-            ]
           }
-        ]
-      },
-      "type": "If"
-    },
-    "Get_RITM_Fresh": {
-      "runAfter": {},
-      "type": "OpenApiConnection",
-      "inputs": {
-        "host": {
-          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
-          "connectionName": "shared_sharepointonline",
-          "operationId": "GetItem"
-        },
-        "parameters": {
-          "dataset": "https://contoso.sharepoint.com/sites/ITSM",
-          "table": "Request Items",
-          "id": "@triggerBody()?['ritmId']"
-        },
-        "authentication": "@parameters('$authentication')"
+        }
       }
     }
   },
-  "description": "3.2 RITM-Validation. 2026-06-02: on validated (structured OR AI exact-match), HTTP-calls 3.3 RITM-Approval {ritmId}. On Hold/AI-down do not call. #flowstudio-mcp"
+  "outputs": {},
+  "description": "3.2 RITM-Validation. 2026-06-07: free-text branch triages via cre79_agent + FindGroup and consumes the agent-resolved groupId directly (dropped flow-side Azure Key Vault + Microsoft Graph user/group resolution; userId no longer produced - executors resolve UPN at run time). Structured portal path unchanged. On validated -> 3.3 RITM-Approval {ritmId}."
 }

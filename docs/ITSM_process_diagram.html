@@ -132,7 +132,7 @@
         <div class="lane-head">REQUEST LANE &mdash; catalog items</div>
         <div class="box ritm"><span class="code">2.2 RITM-Generator</span><span class="desc">creates the RITM record</span></div>
         <div class="arrow"><span class="lbl">HTTP &mdash; RITM created</span><span class="line"></span><span class="head">&#9660;</span></div>
-        <div class="box triage"><span class="code">3.2 RITM-Validation-Triage</span><span class="desc">Graph resolves user/group · AI Builder validates</span></div>
+        <div class="box triage"><span class="code">3.2 RITM-Validation-Triage</span><span class="desc">cre79_agent + FindGroup resolve &amp; validate</span></div>
         <div class="arrow"><span class="lbl">HTTP &mdash; validated</span><span class="line"></span><span class="head">&#9660;</span></div>
         <div class="box approve"><span class="code">3.3 RITM-Approval</span><span class="desc">emits the APPROVAL CARD (manager)</span></div>
         <div class="arrow"><span class="lbl">HTTP &mdash; per task, on approve</span><span class="line"></span><span class="head">&#9660;</span></div>
@@ -234,8 +234,8 @@
     </div>
   </div>
 
-  <p class="ai-foot">AI surface area: AI Builder GPT in <b>3.2 RITM-Validation-Triage</b>
-    · cre79_agent in <b>2.1 Triage-Orchestrator</b> &amp; <b>X1 Major-Incident-Detector</b>
+  <p class="ai-foot">AI surface area: cre79_agent in <b>2.1 Triage-Orchestrator</b>, <b>3.2 RITM-Validation-Triage</b> (with its FindGroup tool)
+    &amp; <b>X1 Major-Incident-Detector</b>
     · <b>T1 SearchKnowledgeBase</b> Copilot Studio skill. The Clarifier (1.2) is deterministic — not AI.</p>
 
 </body>
