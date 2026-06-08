@@ -79,6 +79,7 @@ $provisioningOrder = @(
     @{ Num = '15'; Title = 'Approval Stages';           File = '15-approval-stages.ps1';       Function = 'Provision-ApprovalStagesList' }
     @{ Num = '16'; Title = 'Provisioning Jobs';         File = '16-provisioning-jobs.ps1';     Function = 'Provision-ProvisioningJobsList' }
     @{ Num = '17'; Title = 'License Costs';             File = '17-license-costs.ps1';         Function = 'Provision-LicenseCostsList' }
+    @{ Num = '18'; Title = 'Catalog Demand';            File = '18-catalog-demand.ps1';        Function = 'Provision-CatalogDemandList' }
 )
 
 # Filter by user-supplied list numbers if any
