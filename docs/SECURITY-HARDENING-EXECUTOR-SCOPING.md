@@ -26,7 +26,7 @@ Principle: AI proposes, humans approve, scoped service principals execute
 
 ## SharePoint Executor: Sites.Selected Pattern
 
-Target: `SP-IT-SharePoint` should not hold broad tenant-wide SharePoint access unless a job type explicitly requires it and Catherine accepts the risk.
+Target: `SP-IT-SharePoint` should not hold broad tenant-wide SharePoint access unless a job type explicitly requires it and the platform owner accepts the risk.
 
 Recommended permissions:
 
@@ -42,7 +42,7 @@ Initial selected sites:
 | Site | Recommended grant | Rationale |
 |---|---|---|
 | `https://contoso.sharepoint.com/sites/ITSM` | `write` or `manage` | ITSM system of record and pilot file restore target. |
-| Other managed IT sites | Confirm with Catherine | Add only after a catalog item or executor job type needs it. |
+| Other managed IT sites | Confirm with the platform owner | Add only after a catalog item or executor job type needs it. |
 
 Implementation notes:
 
@@ -70,7 +70,7 @@ Content-Type: application/json
 }
 ```
 
-Decision for Catherine:
+Decision for the platform owner:
 
 - Is `SP-IT-SharePoint` allowed to operate only on `/sites/ITSM` for Slice 1, or should it also cover selected business sites?
 - Does `sharepoint.restoreFile` need permission-management capability, or only file restore/write?
@@ -99,7 +99,7 @@ Hardening controls:
 - Log every target `teamId`, `channelId`, and `userId` to the Provisioning Job audit row.
 - Prefer team-level ownership or resource-specific consent patterns where they meet the job requirement; keep Teams Administrator only as a temporary pilot exception.
 
-Decision for Catherine:
+Decision for the platform owner:
 
 - Which Teams are in scope for automated channel creation?
 - Are private/shared channels allowed in pilot automation, or standard channels only?

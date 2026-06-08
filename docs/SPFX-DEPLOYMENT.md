@@ -61,9 +61,10 @@ Expected package output:
 sharepoint/solution/*.sppkg
 ```
 
-Before packaging ticket-type validation changes, verify the Submit Ticket route:
+Before packaging Submit Ticket or intake changes, verify the Submit Ticket route:
 
 - `SubmitIncidentView` exposes an explicit Incident/Request choice.
+- A license request uses the owned-license dropdown (plus *Other (not listed)*) and writes structured `RequestPayloadJson` (`LicenseCostService` + `TicketService`), so `RITM-Validation-Triage`'s fast path can validate it without parsing free text.
 - `TicketService.createTicket()` writes dynamic `TicketType` and `TicketSource=Portal`.
 - `TicketService.createIncident()` remains as a compatibility wrapper.
 - The deployed package can read active Service Catalog rows needed for subcategory-to-catalog validation.
@@ -236,3 +237,4 @@ After deployment:
 3. Confirm the frontend loads without console errors.
 4. Confirm calls to SharePoint lists are read-only unless the UX explicitly performs a user action.
 5. Confirm no privileged Graph writes exist in the frontend.
+6. Open the **Service desk** page and confirm it lists On-Hold hand-off RITMs with Mark fulfilled / Decline, and that `Ticket #N` / `Ticket #N · RITM #N` identifiers render across the pages (Home, My Tickets, Service Desk queue, Approvals, detail).
