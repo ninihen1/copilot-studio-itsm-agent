@@ -18,9 +18,21 @@ export abstract class SharePointServiceBase {
       throw new Error('SPHttpClient is not configured yet.');
     }
 
+    // SharePoint REST GETs can be served stale from the browser/proxy cache,
+    // which makes the portal show old data until a full page reload. A per-request
+    // cache-buster plus no-cache headers force a fresh read every time.
+    const separator = relativeUrl.indexOf('?') >= 0 ? '&' : '?';
+    const url = `${this.context.siteUrl}${relativeUrl}${separator}_=${Date.now()}`;
+
     const response: SPHttpClientResponse = await this.context.spHttpClient.get(
-      `${this.context.siteUrl}${relativeUrl}`,
-      SPHttpClient.configurations.v1
+      url,
+      SPHttpClient.configurations.v1,
+      {
+        headers: {
+          'Cache-Control': 'no-cache',
+          Pragma: 'no-cache'
+        }
+      }
     );
 
     if (!response.ok) {

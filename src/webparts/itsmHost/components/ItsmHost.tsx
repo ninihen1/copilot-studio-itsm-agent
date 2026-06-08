@@ -184,10 +184,77 @@ export default class ItsmHost extends React.Component<IItsmHostProps, IItmsHostS
 
   private _navigate = (route: RouteKey): void => {
     this.setState({ route });
-    // The hand-off queue must reflect current state every time it is opened,
+    // Every data-backed view must reflect current state each time it is opened,
     // not just what was loaded on initial mount.
-    if (route === 'queue') {
-      void this._refreshQueue();
+    void this._refreshForRoute(route);
+  };
+
+  // Re-fetch the data behind a route in the background (no global spinner), so a
+  // view shows current data on navigation and after a mutation — without a full
+  // page reload. Mirrors the existing _refreshQueue / _closeHandoff pattern.
+  private _refreshForRoute = async (route: RouteKey): Promise<void> => {
+    const ctx = { siteUrl: this.props.siteUrl, spHttpClient: this.props.spHttpClient };
+    try {
+      switch (route) {
+        case 'home': {
+          const ticketService = new TicketService(ctx);
+          const [metrics, tickets] = await Promise.all([
+            ticketService.getDashboardMetrics(this.props.userEmail),
+            ticketService.getMyTickets(this.props.userEmail)
+          ]);
+          this.setState(prev => ({ tickets, metrics: { ...metrics, licenseCostRows: prev.licenseCostCount } }));
+          break;
+        }
+        case 'tickets': {
+          const tickets = await new TicketService(ctx).getMyTickets(this.props.userEmail);
+          this.setState({ tickets });
+          break;
+        }
+        case 'approvals': {
+          const approvals = await new ApprovalService(ctx).getPendingApprovals();
+          this.setState({ approvals });
+          break;
+        }
+        case 'queue':
+          await this._refreshQueue();
+          break;
+        case 'admin': {
+          const jobAuditService = new JobAuditService(ctx);
+          const licenseCostService = new LicenseCostService(ctx);
+          const [failedJobs, licenseCosts, licenseCostCount] = await Promise.all([
+            jobAuditService.getFailedJobs(),
+            licenseCostService.getRecentCosts(25),
+            licenseCostService.getCostCount()
+          ]);
+          this.setState(prev => ({
+            failedJobs,
+            licenseCosts,
+            licenseCostCount,
+            metrics: prev.metrics ? { ...prev.metrics, licenseCostRows: licenseCostCount } : prev.metrics
+          }));
+          break;
+        }
+        case 'catalog': {
+          const catalogItems = await new CatalogService(ctx).getActiveItems();
+          const licenseCosts = await new LicenseCostService(ctx).getRecentCosts(25);
+          this.setState({ catalogItems, licenseCosts });
+          break;
+        }
+        case 'subcategories': {
+          const subcategories = await new SubcategoryService(ctx).getActiveSubcategories();
+          this.setState({ subcategories });
+          break;
+        }
+        case 'knowledge': {
+          const knowledgeArticles = await new KnowledgeService(ctx).search('');
+          this.setState({ knowledgeArticles });
+          break;
+        }
+        default:
+          break;
+      }
+    } catch (error) {
+      this.setState({ loadError: error instanceof Error ? error.message : 'Could not refresh the view.' });
     }
   };
 
@@ -407,7 +474,18 @@ export default class ItsmHost extends React.Component<IItsmHostProps, IItmsHostS
   };
 
   private _closeDetail = (): void => {
-    this.setState({ detailIsOpen: false });
+    // Clear the cached detail so reopening another item never flashes the
+    // previous item's data before the fresh fetch lands.
+    this.setState({
+      detailIsOpen: false,
+      detailError: undefined,
+      detailTicket: undefined,
+      detailRequestItem: undefined,
+      detailJob: undefined,
+      detailRequestItems: [],
+      detailJobs: [],
+      detailTasks: []
+    });
   };
 
   private _openCatalogDetail = (item: CatalogItem): void => {
@@ -545,14 +623,18 @@ export default class ItsmHost extends React.Component<IItsmHostProps, IItmsHostS
     if (ticket) {
       await this._loadDetail('ticket', ticket);
     }
+    // Keep the list behind the dialog in sync with the change just made.
+    void this._refreshForRoute(this.state.route);
   }
 
   private async _refreshApprovalDetail(requestItem: RequestItem): Promise<void> {
     await this._loadDetail('approval', requestItem);
+    void this._refreshForRoute(this.state.route);
   }
 
   private async _refreshJobDetail(job: ProvisioningJob): Promise<void> {
     await this._loadDetail('job', job);
+    void this._refreshForRoute(this.state.route);
   }
 
   private async _loadPart<T>(label: string, promise: Promise<T>, fallback: T): Promise<ILoadResult<T>> {
