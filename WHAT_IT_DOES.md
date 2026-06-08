@@ -96,7 +96,7 @@ Traditional IT support tickets that may or may not be automatable:
 - Printer problems
 - Network issues
 
-The AI agent classifies and routes these, proposes known fixes from the knowledge base, and escalates to human service desk when automation isn't possible.
+The AI agent classifies and routes these, proposes known fixes from the knowledge base, and — when automation can't fulfil a request — hands it to the IT service desk queue instead of dead-ending. Each hand-off is logged to a Catalog Demand list, so what people ask for but the catalog can't yet do becomes a record of what to automate next.
 
 ---
 
@@ -113,7 +113,7 @@ The AI agent classifies and routes these, proposes known fixes from the knowledg
    privileged change, and proposes a password-reset action
    (read-only — it can't make the change itself).
 
-3. The request is logged as Request #REQ0001234 and a manager
+3. The request is logged as Ticket #142 · RITM #77 and a manager
    approval card is raised in Teams.
 
 4. Manager gets the approval card in Teams → clicks "Approve"
@@ -126,8 +126,9 @@ The AI agent classifies and routes these, proposes known fixes from the knowledg
    - User receives temporary password via secure channel
    - All systems updated: SCTASK → Complete, RITM → Complete, Request → Resolved
 
-6. User is notified:
-   "✅ Your password has been reset. Check your email for the temporary password."
+6. User is notified, in plain English with the numbers to quote:
+   "Your request is done — password reset (Ticket #142 · RITM #77).
+   Check your email for the temporary password."
 ```
 
 **Duration:** < 2 minutes from submission to resolution
@@ -169,7 +170,7 @@ The AI agent classifies and routes these, proposes known fixes from the knowledg
    - Equipment needed (laptop model, phone, monitors)
 
 2. The triage flow picks it up; the agent matches it to the New Hire
-   Onboarding template and creates Request #REQ0001235, which generates
+   Onboarding template and creates Ticket #143 · RITM #78, which generates
    6 work tasks:
    - Create AD account
    - Assign M365 license
@@ -195,11 +196,56 @@ The AI agent classifies and routes these, proposes known fixes from the knowledg
 6. Over next 2-3 business days, tasks complete
 
 7. The requester receives a final notification:
-   "✅ New hire onboarding complete for [Name].
-   All accounts created, equipment ordered. Start date: [Date]"
+   "Your request is done — new hire onboarding for [Name]
+   (Ticket #143 · RITM #78). All accounts created, equipment
+   ordered. Start date: [Date]."
 ```
 
 **Duration:** 2-3 business days, **mostly automated** except hardware procurement
+
+---
+
+### Example 4: Needs More Info (Interactive Clarification)
+
+```
+1. User submits: "Please add me to the marketing group"
+
+2. The agent isn't sure which group — there are three with
+   "marketing" in the name — so it doesn't guess.
+
+3. The requester gets an approval card asking:
+   "Which group? Marketing-AU, Marketing-Global, or Marketing-Leads?"
+
+4. The requester answers in the card. Validation re-runs
+   automatically with the answer (and can ask again if it's still
+   unclear), or the requester clicks Cancel to drop it.
+
+5. Once it has enough, the request continues down the normal
+   approve → execute path.
+```
+
+**Duration:** as fast as the requester replies — no dead-end, no re-submitting
+
+---
+
+### Example 5: Could Not Be Completed (Honest Failure)
+
+```
+1. An approved license assignment runs, but the tenant is out of
+   that SKU.
+
+2. The executor reports the failure. The system does NOT mark the
+   ticket resolved.
+
+3. The ticket is closed honestly and the requester is told:
+   "Your request couldn't be completed — license assignment
+   (Ticket #144 · RITM #79). The service desk has been alerted."
+
+4. The IT service desk gets a "fulfilment failed — action needed"
+   alert and follows up.
+```
+
+**Why it matters:** a failed job never looks like success
 
 ---
 
@@ -299,6 +345,18 @@ Action taken:
 
 ---
 
+### 6. **Honest Outcomes — No False "Resolved"**
+
+When a job fails, the ticket is **closed** (not marked resolved), the requester is told it couldn't be completed, and the service desk is alerted. A request the automation can't fulfil is handed to the IT service desk queue and logged as catalog demand rather than dead-ending. You always know the real state.
+
+---
+
+### 7. **Interactive Clarification**
+
+When the agent needs more detail it asks on an approval card instead of guessing or giving up. The requester answers in the card and validation re-runs automatically (over several rounds if needed), or they cancel — on both the catalog/request path and form tickets.
+
+---
+
 ## Current Capabilities
 
 ### ✅ Working today (deployed and validated)
@@ -323,6 +381,10 @@ Action taken:
 12. **Knowledge Base** — 40+ published starter articles across common scenarios
 13. **Flow-driven intake** — the `ITSM-Triage-Orchestrator` flow calls the agent server-side on each new ticket and acts on its reply
 14. **Azure Hardening Resources** — App Insights, Service Bus dispatch topology, and Azure Table idempotency storage provisioned for the pilot hardening path
+15. **Interactive clarification** — when triage needs more detail, the requester gets an approval card with the agent's questions; answering re-runs validation automatically (multi-round) or cancels. Works on `RITM-Validation-Triage` and `Triage-Orchestrator`
+16. **Honest failure handling** — a failed provisioning job closes the ticket (not resolved), tells the requester it couldn't be completed, and alerts the service desk
+17. **Out-of-catalog hand-off** — requests the automation can't fulfil route to the ITSM Service Desk M365 group queue, surface on the portal's Service desk page (Mark fulfilled / Decline), and log to the Catalog Demand list; `ITSM-Handoff-Closure-Notify` tells the requester once the hand-off RITM closes
+18. **Structured license intake** — the Submit form's owned-license dropdown plus *Other (not listed)* produces a `RequestPayloadJson` the RITM validation flow reads on a fast path
 
 ### Ticket Type Validation Target Design
 
@@ -332,10 +394,10 @@ The current automation depends on `Tickets.TicketType` being correct when the ro
 - `Incident` tickets are picked up by triage and major incident detection.
 - A request-like ticket created as `Incident` will not create a RITM unless it is corrected.
 
-The planned correction is a two-layer validation system:
+The correction is a two-layer validation system (the post-create layer is live today):
 
 1. **Frontend validation** in the SharePoint portal submit form asks the creator to choose Incident or Request, maps the selected subcategory to active Service Catalog items, and prompts before saving when the selected type does not match the catalog signal.
-2. **Post-create validation** in a dedicated `ITSM-Ticket-Type-Validator` flow checks every new Tickets row, auto-reclassifies deterministic low-risk mismatches, and pauses ambiguous rows for caller or service desk confirmation before RITM, triage, or major incident flows act.
+2. **Post-create validation** in a dedicated `ITSM-Ticket-Type-Validator` flow checks every new Tickets row, auto-reclassifies deterministic low-risk mismatches, and for ambiguous rows sends the requester a clarification approval card (it re-validates on their answer) before RITM, triage, or major incident flows act.
 
 ### 🚧 Pilot Shortcuts (Production-Ready Alternatives Designed)
 
@@ -463,9 +525,9 @@ Beyond the current pilot:
        │  creates a Ticket row in
        ▼
 ┌─────────────────────────────┐
-│  SharePoint Lists           │  System of Record (18 lists)
+│  SharePoint Lists           │  System of Record (19 lists)
 │  - Tickets                  │  - Tickets, RITMs, SCTASKs, PJs
-│  - Service Catalog          │  - Categories, KB, Approvals, Config
+│  - Service Catalog          │  - Categories, KB, Approvals, Config, Catalog Demand
 │  - Configuration Items      │
 └──────┬──────────────────────┘
        │  new-ticket trigger fires
@@ -481,7 +543,7 @@ Beyond the current pilot:
        ▼
 ┌─────────────────────────────┐
 │  Copilot Studio Agent       │  READ-ONLY: classifies, searches KB,
-│  (Helpdesk Triage Agent)    │  returns deflect / ask / propose
+│  (Helpdesk Triage Agent)    │  returns deflect / ask / propose / hand-off
 └──────┬──────────────────────┘
        │  a "propose" outcome → approval → dispatch
        ▼
@@ -504,6 +566,8 @@ Beyond the current pilot:
 │  - Microsoft Teams          │
 └─────────────────────────────┘
 ```
+
+Two paths aren't drawn above. When the agent needs more detail (the *ask* outcome) it sends the requester a clarification approval card and re-validates on their answer. When a request can't be automated (the *hand-off* outcome) it goes to the ITSM Service Desk queue — worked from the portal's Service desk page and logged to the Catalog Demand list — and `ITSM-Handoff-Closure-Notify` tells the requester once it's closed.
 
 ---
 

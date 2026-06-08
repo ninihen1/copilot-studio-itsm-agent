@@ -11,6 +11,7 @@
 - When a request is missing detail, the agent asks for it with an approval card instead of dead-ending. You answer in the box and it re-checks automatically — or cancel, and it closes cleanly. Works for catalog requests and form tickets.
 - Outcome messages read in plain English ("your request is done" / "couldn't be completed"), with a service-desk note, the ticket and request numbers, and a link.
 - Every page shows a ticket number you can quote when you follow up; the detail view shows the ticket and request numbers together.
+- A request the automation can't fulfil goes to an IT Service Desk queue — a new portal page where a fulfiller marks it done or declines — instead of dead-ending. It's logged as catalog demand so you can see what's worth automating next.
 - The Service Desk queue shows each hand-off as Request / For / Why, not raw data.
 - When a request can't be fulfilled, the ticket is closed honestly — not marked resolved. You're told, and the service desk is alerted. Before, a failure could look like success.
 
@@ -40,7 +41,7 @@ The human's job is to **shepherd the agent** — describe the intent, review wha
 
 A user submits a ticket — *"I forgot my password,"* *"Please add me to the Marketing group,"* *"I need a Power BI license"* — through the **ITSM Service Portal**, a custom SharePoint-hosted app (a full-screen single-page app, not a list form — more on it below). 
 
-The moment the ticket is saved, a Power Automate flow fires on that new item and hands the ticket to the Copilot Studio triage agent. The agent reads it, classifies it, checks the knowledge base, and decides what happens next: **resolve it from the KB, send it back to the user for more detail, or propose an action.** If it proposes a change, a manager approves in one tap, a scoped executor performs it in Microsoft 365, and the ticket is closed with an audit record.
+The moment the ticket is saved, a Power Automate flow fires on that new item and hands the ticket to the Copilot Studio triage agent. The agent reads it, classifies it, checks the knowledge base, and decides what happens next: **resolve it from the KB, ask the user for more detail, propose an action, or hand it to the IT Service Desk queue when it can't be automated.** If it proposes a change, a manager approves in one tap, a scoped executor performs it in Microsoft 365, and the ticket is closed with an audit record. If the change fails, the ticket is closed honestly — not marked resolved — and the service desk is alerted.
 
 **There is no chatbot to converse with.** The agent isn't a front door users talk to — it's a triage brain the flow calls in the background, working on the submitted ticket.
 
@@ -70,10 +71,10 @@ The moment the ticket is saved, a Power Automate flow fires on that new item and
 Walk through it step by step:
 
 1. **A ticket is submitted.** A user logs the request in the **ITSM Service Portal** — a full-screen SPFx app hosted on a SharePoint page (see below) — and it lands as a row in a SharePoint list. SharePoint is the system of record; there's no separate database to run.
-2. **A flow picks it up and calls the agent.** The instant the ticket is saved, a Power Automate flow fires on the new item and passes it to the Copilot Studio triage agent. The agent classifies the ticket against your service catalog, tries to deflect it with a knowledge-base answer, and returns one of three outcomes — *resolve from KB*, *ask for more detail*, or *propose an action*. It has **read-only** access — it proposes, never changes.
+2. **A flow picks it up and calls the agent.** The instant the ticket is saved, a Power Automate flow fires on the new item and passes it to the Copilot Studio triage agent. The agent classifies the ticket against your service catalog, tries to deflect it with a knowledge-base answer, and returns one of four outcomes — *resolve from KB*, *ask for more detail*, *propose an action*, or *hand off to the IT Service Desk queue* when it can't be automated. It has **read-only** access — it proposes, never changes. When it asks for more detail, the requester gets an approval card with the questions; answering re-runs validation automatically, and you can go back and forth until it has enough or cancel.
 3. **A human approves.** Anything that changes the tenant pauses for a manager's approval in Teams. Nothing privileged happens without that tap.
 4. **A scoped robot does the work.** Once approved, one narrowly-scoped service principal — and only that one — performs the change through Microsoft Graph (or Exchange, via an Azure Function). The agent itself holds no power to make changes.
-5. **Everything is recorded.** The outcome is written to an audit log, the ticket is closed, and the requester is told what happened.
+5. **Everything is recorded.** The outcome is written to an audit log, the ticket is closed, and the requester is told what happened — in plain English, with the ticket and request numbers. A failed change closes the ticket honestly instead of marking it resolved, and a hand-off waits in the Service Desk queue until a fulfiller clears it.
 
 The live pipeline in action — the manager's one-tap approval card in Teams, then the change landing in the tenant:
 
@@ -91,7 +92,8 @@ The portal isn't a SharePoint list form. It's the **ITSM Service Portal**, a ful
 
 ![The Submit-a-ticket form — title, description, and classification: ticket type, category, subcategory, impact, urgency, with an attachments drop zone](docs/screenshots/portal-submit-ticket.png)
 
-- **Home** dashboard, **Service Catalog** with item detail dialogs, **Knowledge Base** with inline articles, **My Tickets** + ticket detail, **Approvals**, and an **Admin** view.
+- **Home** dashboard, **Service Catalog** with item detail dialogs, **Knowledge Base** with inline articles, **My Tickets** + ticket detail, **Approvals**, a **Service desk** hand-off queue (lists requests the automation couldn't fulfil; a fulfiller marks each done or declines, which closes the request and resolves the ticket), and an **Admin** view.
+- A **license request** uses a dropdown of the licenses you already own plus an *Other (not listed)* option, so it arrives as structured data the validation flow reads on a fast path instead of free text.
 - A typed service layer (`TicketService`, `CatalogService`, `KnowledgeService`, `ApprovalService`, …) reads and writes those SharePoint lists directly — **read-only except explicit user actions, and no privileged Graph calls ever run in the browser.**
 - It's packaged to an `.sppkg` and deployed to the **site-collection app catalog on `/sites/ITSM` via a certificate-authenticated GitHub Actions CI/CD pipeline** (`--appCatalogScope sitecollection`, `--skipFeatureDeployment` → available across that site collection). See [`docs/SPFX-DEPLOYMENT.md`](docs/SPFX-DEPLOYMENT.md).
 
@@ -106,7 +108,7 @@ This is how the repo was actually built: one person directing two AI coworkers, 
 
 The human directs and reviews; both agents were used together. Each step below notes which agent does it.
 
-1. **Provision the SharePoint lists.** *(IDE agent, or Cowork via helper flows.)* Run the PnP PowerShell scripts in [`infra/sharepoint/`](infra/sharepoint/) to create the 18 solution lists (Tickets, Service Catalog, Approval Policies, Provisioning Jobs, License Costs, etc.) and seed the taxonomy. In this build the IDE agent ran them, authenticating as a scoped service principal (`SP-IT-Provisioning`, `Sites.FullControl.All`, certificate in Key Vault) — no standing admin account. **Copilot Cowork can stand up the exact same lists a different way** — a helper flow that creates each list and its columns through the SharePoint connector — so this step is not IDE-agent-only. Only the mechanism differs (a flow's connection vs. PnP PowerShell as a service principal); either agent produces the same schema.
+1. **Provision the SharePoint lists.** *(IDE agent, or Cowork via helper flows.)* Run the PnP PowerShell scripts in [`infra/sharepoint/`](infra/sharepoint/) to create the 19 solution lists (Tickets, Service Catalog, Approval Policies, Provisioning Jobs, License Costs, Catalog Demand, etc.) and seed the taxonomy. In this build the IDE agent ran them, authenticating as a scoped service principal (`SP-IT-Provisioning`, `Sites.FullControl.All`, certificate in Key Vault) — no standing admin account. **Copilot Cowork can stand up the exact same lists a different way** — a helper flow that creates each list and its columns through the SharePoint connector — so this step is not IDE-agent-only. Only the mechanism differs (a flow's connection vs. PnP PowerShell as a service principal); either agent produces the same schema.
 2. **Author the help-desk agent in Copilot Studio.** *(IDE agent — not Cowork.)* This step needs an IDE agent with the **Microsoft Copilot Studio extension**; Copilot Cowork can't author Copilot Studio agents. Use the topic and knowledge definitions in [`agents/triage/`](agents/triage/) as the blueprint.
 3. **Build the flows with Flow Studio.** *(Copilot Cowork and Claude Code — both wrote flows.)* Through the Flow Studio MCP server, the agents create the flows in [`flows/`](flows/) — orchestrator, approval, dispatcher, and the six executors — some authored by Copilot Cowork, others by the Claude Code agent; when a run fails, the agent reads the action outputs and fixes the definition. **Every flow was agent-written; none of the flow JSON was hand-authored** — and it's fast: ~20 production flows ship in this repo, and 40-plus counting helper flows and earlier iterations retired along the way.
 
@@ -184,9 +186,9 @@ The whole design assumes an AI is in the loop, so the guardrails are deliberate.
 
 ```
 agents/      Copilot Studio agents — Helpdesk Triage (primary) + Self-Service Resolver
-flows/       Power Automate: dispatcher, approval, six executors, SLA timer, archival, more
+flows/       Power Automate: dispatcher, approval, six executors, RITM validation + clarification, hand-off closure notify, SLA timer, archival, more
 infra/       SharePoint provisioning scripts + Azure (Functions, Key Vault, Service Bus)
-src/         ITSM Service Portal — full-screen SPFx React SPA (home, catalog, KB, my tickets, approvals, admin) over the SharePoint lists
+src/         ITSM Service Portal — full-screen SPFx React SPA (home, catalog, KB, my tickets, approvals, service desk, admin) over the SharePoint lists
 docs + *.md  Design memo, deployment runbook, admin & user guides, troubleshooting
 ```
 

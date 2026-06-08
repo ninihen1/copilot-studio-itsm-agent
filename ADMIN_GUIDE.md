@@ -36,6 +36,7 @@ This table is a day-to-day operator reference. For full deployment status and im
 | Knowledge Base | Published support articles. |
 | Configuration Items | CMDB-style list of services, apps, devices, and systems. |
 | Tickets-Archive | Archived closed tickets. |
+| Catalog Demand | Out-of-catalog demand log. One row per request the automation couldn't fulfil and handed off to the service desk; triage `DemandStatus` (New/Reviewing/Onboarded/Declined) to decide what to onboard into the catalog. |
 
 ### Deployed Pilot Flows
 
@@ -53,6 +54,8 @@ This table is a day-to-day operator reference. For full deployment status and im
 | SLA Timer | Runs every 15 minutes in business hours and updates SLA status. |
 | Archival | Copies older closed tickets to Tickets-Archive. |
 | Major Incident Detector | Looks for clusters of related incidents and creates MI parent tickets. |
+| RITM-Validation-Triage | Validates a new RITM, resolves the target, runs the interactive clarification loop, and routes unfulfillable requests to the service desk hand-off queue. |
+| ITSM-Handoff-Closure-Notify | Notifies the requester in Teams, once, when a hand-off RITM reaches a closed state. |
 
 Some flows may be authored but not deployed in a given pilot environment. Confirm deployment in Power Automate before relying on them operationally.
 
@@ -71,10 +74,15 @@ Ticket created with TicketType=Request
   -> Dispatcher marks jobs Dispatched
   -> Executor flow performs job
   -> SCTASK closes based on job result
-  -> SCTASK Orchestrator closes RITM and then parent Ticket
+  -> On success: SCTASK Orchestrator closes the RITM, resolves the parent Ticket, requester told it's done
+  -> On failure: parent Ticket closed (not resolved), requester told it couldn't be completed, service desk alerted
 ```
 
-Manual tasks have an empty `JobType` and should be fulfilled by the assigned group.
+Manual tasks have an empty `JobType` and are fulfilled by the assigned group.
+
+A request the automation can't fulfil — no matching catalog item, or a catalog item with no automated `JobType` — is handed off rather than dead-ended. The RITM goes On Hold against the **ITSM Service Desk** group, a row is logged to **Catalog Demand**, and the requester is told the request was received and passed to the service desk. Fulfillers work these from the portal's **Service desk** page: marking one fulfilled or declining it closes the RITM and resolves the ticket, and `ITSM-Handoff-Closure-Notify` tells the requester once it's closed.
+
+When the agent needs more detail it doesn't dead-end either. The requester gets an approval card with the agent's questions; answering re-runs validation automatically (over several rounds if needed), or they cancel. This works on both the catalog/RITM path (`RITM-Validation-Triage`) and form tickets (`Triage-Orchestrator`).
 
 ### Ticket Type Validation Gate
 
@@ -85,7 +93,7 @@ Recommended implementation:
 - Create a separate `ITSM-Ticket-Type-Validator` flow with a SharePoint **When an item is created** trigger on the **Tickets** list.
 - Add validation columns to **Tickets**: `TicketTypeValidated`, `TicketTypeValidationStatus`, `TicketTypeValidationReason`, `SuggestedTicketType`, and optionally `TypeOverrideConfirmed`.
 - Auto-reclassify only deterministic low-risk rows, such as an Incident whose subcategory maps to exactly one active Service Catalog item and has no existing RITM, Provisioning Job, approval, or major incident link.
-- Prompt the caller or service desk for ambiguous rows, such as multiple catalog matches, missing subcategory, or a Request that has no active catalog match.
+- For ambiguous rows — multiple catalog matches, missing subcategory, or a Request with no active catalog match — ask the requester to clarify via the approval-card loop (it re-validates on their answer), and hand the request to the service desk queue when it can't be matched at all.
 - Exclude `TicketSource=ProposeAction` rows from forced reclassification unless explicitly required; those rows are created by the agent action after its own validation.
 
 Downstream trigger guards should wait for validation before acting:
@@ -184,6 +192,8 @@ Seeded catalog examples:
 - New Hire Onboarding
 - User Offboarding
 
+The **License Request** item captures its variables from a structured form: the portal Submit page shows a dropdown of licenses the tenant already owns plus an *Other (not listed)* option, and writes the choice as `RequestPayloadJson` on the ticket. `RITM-Validation-Triage` reads that payload on a fast path instead of parsing free text.
+
 ### Adding A Catalog Item
 
 1. Confirm the top-level category and subcategory exist.
@@ -251,6 +261,9 @@ Create these SharePoint groups for pilot operations:
 | Change-Advisory-Board | Senior IT approvers | CAB approval for future Change flows. |
 | HR-Confirmation-Approvers | HR partners | HR confirmation for onboarding and offboarding. |
 | ITSM-Agent-Users | Pilot users | Read access to user-facing lists and submit access through supported surfaces. |
+| ITSM Service Desk *(M365 group)* | Service desk fulfillers | Hand-off fulfilment queue. Owns On-Hold hand-off RITMs; members clear them from the portal's Service desk page. |
+
+The **ITSM Service Desk** group is a Microsoft 365 group, not a SharePoint site group. It's the target the hand-off routing assigns On-Hold RITMs to, and its members work them from the portal's **Service desk** page (Mark fulfilled / Decline closes the RITM and resolves the ticket).
 
 Recommended list permissions:
 

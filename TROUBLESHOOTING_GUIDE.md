@@ -14,6 +14,9 @@ When something fails, identify the record and the flow stage:
 4. Job ID in **Provisioning Jobs**, if automation began.
 5. Approval Session ID in **Approvals**, if approval is involved.
 6. CorrelationId and GraphRequestId, if an executor called Microsoft Graph.
+7. Demand row in **Catalog Demand**, if this was an out-of-catalog hand-off (keyed by `RitmRef`).
+
+The portal surfaces these IDs on every page — `Ticket #N` on Home and My Tickets, `Ticket #N · RITM #N` on the Service Desk queue, Approvals, and detail — so you can read the reference straight from the page or the requester's notification. The Service Desk hand-off card shows Request / For / Why, not raw JSON.
 
 Then open Power Automate run history for the relevant flow.
 
@@ -36,6 +39,7 @@ Cause:
 Fix:
 
 - For catalog items, ensure the request form or agent writes valid JSON matching Service Catalog `InputSchema`.
+- License requests now arrive as structured `RequestPayloadJson` from the Submit form's owned-license dropdown (plus *Other (not listed)*), which `RITM-Validation-Triage` reads on a fast path — a well-formed license request should not need the plain-text workaround.
 - Validate `Variables` before creating a Provisioning Job.
 - If data is plain text, route the SCTASK to manual fulfillment instead of automation.
 - In Power Automate, use a Compose guard before Parse JSON and create an explicit failure note when JSON is invalid.
@@ -97,6 +101,58 @@ Fix:
    - Cancelled
 4. Open SCTASK Orchestrator run history (Request path). For an Incident or propose-path ticket with no SCTASK, open `ITSM-PJ-Ticket-Resolver` run history instead: it resolves the parent Ticket once the PJ, whose `IdempotencyKey` does not start with `SCTASK-`, reaches `Succeeded`.
 5. If PatchItem failed, confirm the flow supplies all required SharePoint fields, not only changed fields.
+
+### Interactive Clarification (Agent Needs More Info)
+
+Symptom:
+
+- A request sits On Hold and nothing advances.
+- The requester says they answered but nothing re-ran.
+- The clarification card never arrived.
+
+Cause:
+
+- When triage can't proceed it sends the requester an approval card with its questions; answering re-runs validation (`RITM-Validation-Triage` for catalog/RITM, `Triage-Orchestrator` for form tickets). A break in card delivery or the resume step stalls the request.
+
+Fix:
+
+1. Card not delivered — check the Approvals/Teams connection and that `RequestedFor` resolves to a real user.
+2. Answered but no re-validation — open the clarification re-validation flow's run history and confirm the resume fired on the card response.
+3. Stuck waiting — look for an open clarification card or an On-Hold RITM; the request resumes only on an answer or Cancel.
+4. Cancelled — a cancelled clarification leaves the RITM On Hold by design; close it out manually if needed.
+
+### Honest Failure Handling (Closed, Not Resolved)
+
+Symptom:
+
+- A ticket is **Closed** rather than **Resolved**.
+- IT received a "fulfilment failed — action needed" alert.
+
+Cause:
+
+- This is expected behaviour, not a bug. When a provisioning job fails, the parent ticket is set to Closed (never falsely Resolved), the requester is told it couldn't be completed, and the service desk is alerted.
+
+Fix:
+
+- Read the Provisioning Job `ErrorJson` and follow §7 Re-Drive Guidance. A successful re-drive must also restore ticket state and re-notify the requester, so they aren't left with a stale "couldn't be completed" message.
+
+### Out-of-Catalog Hand-off Routing
+
+Symptom:
+
+- A hand-off RITM doesn't appear on the Service desk page.
+- Mark fulfilled / Decline didn't close the RITM or resolve the ticket.
+
+Cause:
+
+- Unfulfillable requests route to the **ITSM Service Desk** M365 group queue, log to **Catalog Demand**, and surface on the portal's Service desk page. A break in the routing, the page's action flow, or group membership strands them.
+
+Fix:
+
+1. Not in queue — confirm the RITM is On Hold with the hand-off marker and that the SharePoint trigger fired.
+2. Action didn't close/resolve — check the Service desk page's flow run and that its PatchItem supplied all required columns.
+3. Membership — confirm the fulfiller is in the ITSM Service Desk group.
+4. Closure notify missing or doubled — check `ITSM-Handoff-Closure-Notify`; it must fire exactly once on close (verify the fire-once dedup gate).
 
 ### Mis-Cased JobType
 
@@ -279,6 +335,30 @@ Common fixes:
 - Confirm Graph application permissions and admin consent.
 - Confirm matching Entra directory role.
 
+### RITM-Validation-Triage
+
+Check:
+
+- The new RITM has a resolvable target (the agent resolves the user, group, or resource).
+- License requests carry `RequestPayloadJson`; the fast path validates without parsing free text.
+- A stop_and_ask outcome raised a clarification card and re-validates on the answer.
+- An unfulfillable request routed to the Service Desk hand-off queue and logged a Catalog Demand row.
+
+### ITSM-Handoff-Closure-Notify
+
+Check:
+
+- The trigger is a hand-off RITM reaching a closed state.
+- It fires exactly once — verify the fire-once dedup gate if it fires zero or multiple times.
+- The requester message carries the plain-English outcome, the `Ticket #N · RITM #N` reference, and a link.
+
+### Outcome Notifications
+
+Check (for "requester not notified" or "blank/wrong reference"):
+
+- The success/failure notify step ran for the ticket.
+- The message is plain English ("your request is done" / "couldn't be completed") with the ticket short description, a labelled service-desk note, the `Ticket #N · RITM #N` reference, and a link.
+
 ## 4. Service Principal Permission Verification
 
 For each executor SP:
@@ -359,6 +439,7 @@ For a failed Provisioning Job:
 4. If no change occurred, create a new Provisioning Job with a new IdempotencyKey.
 5. If partial change occurred, decide whether to mark the existing job Succeeded, Failed, or create a compensation job.
 6. Add work notes explaining the manual decision.
+7. A failed job now also closes the parent ticket and notifies the requester. After a successful re-drive, restore the ticket state and re-notify so the requester isn't left with a stale "couldn't be completed" message.
 
 Do not simply change a failed job back to `Dispatched` unless the executor is known to be idempotent for that job type.
 

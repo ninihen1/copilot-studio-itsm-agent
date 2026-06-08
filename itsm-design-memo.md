@@ -4,6 +4,8 @@
 
 Owner: **Catherine Han**   ·   Date: 29 April 2026   ·   Status: *Draft for review*
 
+> **Status note (2026-06-08):** This is the original April 2026 design memo, kept as a historical snapshot. The pilot has since shipped and moved past several items here — interactive clarification (Teams approval cards), honest failure handling (failed jobs close the ticket, never falsely "Resolved"), out-of-catalog hand-off to an IT Service Desk queue plus a Catalog Demand list, plain-English requester notifications, and trackable Ticket #N / RITM #N identifiers. For current behaviour see [`README.md`](README.md), [`WHAT_IT_DOES.md`](WHAT_IT_DOES.md), [`ADMIN_GUIDE.md`](ADMIN_GUIDE.md), and [`IMPLEMENTATION-PLAYBOOK.md`](IMPLEMENTATION-PLAYBOOK.md).
+
 # **1. Overview**
 
 We are designing an AI-assisted IT helpdesk on the Microsoft 365 stack — SharePoint as the system of record, Power Automate for orchestration, and Copilot Studio for the user-facing agents. The goal is a ServiceNow-style ticketing experience without the ServiceNow licence cost, with AI that triages and proposes actions but never executes privileged writes without a human approval.
@@ -12,7 +14,7 @@ This document covers the agent layer and gaps not already captured in the schema
 
 ### **Companion artefacts**
 
-- **sharepoint-itsm-schema.xlsx** — 13 SharePoint lists, full column-level schema, choices, performance notes.
+- **sharepoint-itsm-schema.xlsx** — the documented SharePoint lists (10 core ServiceNow-model lists plus the Catalog Demand operational list), full column-level schema, choices, performance notes.
 
 
 - **servicenow-itsm-ticketing-report.md** — research on the ServiceNow modules we are mirroring.

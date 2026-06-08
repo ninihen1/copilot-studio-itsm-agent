@@ -12,9 +12,21 @@ Notable changes to this Microsoft 365 ITSM project, grouped by release.
 - SharePoint permission groups for ITSM admins, approvers, agents, and users.
 - Pilot hardening services provisioned: Application Insights, Azure Table idempotency storage, and a Service Bus dispatch topology.
 - `ITSM-Ticket-Type-Validator` flow that checks every new ticket, auto-reclassifies deterministic low-risk mismatches, and pauses ambiguous tickets for caller confirmation.
+- Out-of-catalog hand-off: a request the automation can't fulfil routes to an IT Service Desk queue instead of dead-ending — logged to a Catalog Demand list and acknowledged to the requester.
+- `Catalog Demand` SharePoint list: out-of-catalog demand log (RequestedItem, ResourceName, JobTypeGuess, Requester, RitmRef, DemandStatus [New/Reviewing/Onboarded/Declined], DemandNotes), provisioned by `infra/sharepoint/lists/18-catalog-demand.ps1`.
+- `ITSM-Handoff-Closure-Notify` flow: notifies the requester in Teams, once, when a hand-off RITM reaches a closed state.
+- `ITSM Service Desk` Microsoft 365 group as the hand-off fulfilment queue target.
+- Service desk portal page: lists on-hold hand-off RITMs; a fulfiller marks each fulfilled or declines, and declining closes the RITM and resolves the ticket.
+- Interactive triage clarification: when the agent needs more detail it sends the requester an approval card with its questions; answering re-runs validation automatically (multiple rounds) or cancels. Covers the catalog/RITM path (`RITM-Validation-Triage`) and form tickets (`Triage-Orchestrator`).
+- Structured license intake: the Submit form uses an owned-license dropdown plus an *Other (not listed)* option, so the request arrives as structured data the RITM validation flow reads on a fast path.
+- Trackable identifiers across the portal: `Ticket #N` on Home and My Tickets; `Ticket #N · RITM #N` on the Service Desk queue, Approvals, and detail.
 
 ### Changed
 - Triage Orchestrator updates deflected non-Incident tickets and no longer writes text to the `Subcategory` lookup.
+- Failed provisioning jobs are handled honestly: the parent ticket is closed (no longer marked resolved), the requester is told it couldn't be completed, and the service desk is alerted.
+- Requester notifications rewritten in plain English ("your request is done" / "couldn't be completed"), with the ticket short description, a labelled service-desk note, a `Ticket #N · RITM #N` reference, and a link.
+- The Service Desk hand-off card shows Request / For / Why instead of raw data.
+- Triage clarification replaced the old one-way message / silent dead-end with the multi-round approval-card loop above.
 
 ### Fixed
 - SharePoint list schema aligned (identifier fields stored in `Title`, KB author mapped to `KbAuthor`).

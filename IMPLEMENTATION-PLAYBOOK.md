@@ -14,6 +14,8 @@ Build a ServiceNow-style IT helpdesk on Microsoft 365 — SharePoint as system o
 
 Pilot scope: a caller files a ticket → the Triage Orchestrator flow calls the Helpdesk Triage Agent to classify it → the orchestrator writes a Provisioning Job + an Approvals row → human approver approves → Dispatcher patches PJ to Dispatched → Identity-Executor calls Microsoft Graph to reset the user's password → audit row written. Closed loop. (The original agent-callable ProposeAction handoff was retired; see ADR 0002.)
 
+Two terminal paths sit beyond the happy path. If the agent needs more information it stops and asks: the requester gets a Teams approval card with the questions, answers in the card comments, and the request re-validates automatically (multi-round) or is cancelled. If a request can't be automated it's handed off to the IT Service Desk queue (not dead-ended), logged to the Catalog Demand list, and the requester is told. If a provisioning job fails, the ticket is set to Closed (never falsely Resolved), the requester is told it couldn't be completed, and IT is alerted.
+
 ---
 
 ## 2. Architecture
@@ -31,6 +33,8 @@ Pilot scope: a caller files a ticket → the Triage Orchestrator flow calls the 
 ```
 
 The type gate is implemented in two layers: frontend validation in the portal submit form, plus a post-create `ITSM-Ticket-Type-Validator` flow on the Tickets list. The validator must set explicit validation fields before normal created-ticket subscribers act.
+
+Two branches extend this. A **CLARIFY** loop: when the agent returns stop_and_ask, the requester gets a Teams approval card with the questions, answers in the card comments, and the request re-validates automatically (multi-round) or cancels — on both the catalog/RITM path (`RITM-Validation-Triage`) and form tickets (`Triage-Orchestrator`). A **HAND-OFF** path: a request the automation can't fulfil becomes an On-Hold RITM assigned to the ITSM Service Desk M365 group, logged to the Catalog Demand list, surfaced on the portal Service desk page (Mark fulfilled / Decline → close RITM + resolve ticket), with `ITSM-Handoff-Closure-Notify` telling the requester once it closes. A failed provisioning job closes the ticket honestly (not Resolved) and alerts IT.
 
 ### 2.2 Pilot architecture (what's actually deployed)
 
@@ -122,6 +126,12 @@ flowchart TD
 | shared_keyvault | `00000000000000000000000000000005` | Identity-Executor |
 | shared_microsoftcopilotstudio | `shared-microsoftcopi-00000000-0000-4000-8000-000000000041` | Triage-Orchestrator |
 
+### 4.5 Microsoft 365 groups
+
+| Group | Role |
+|---|---|
+| `ITSM Service Desk` | Hand-off fulfilment queue target. Out-of-catalog routing assigns On-Hold RITMs to this group; members work them from the portal Service desk page. Targeted by group ID/claims, not by display name. |
+
 ---
 
 ## 5. Implementation order
@@ -157,7 +167,7 @@ cd infra/sharepoint
     -CertificatePath "<local-cert-path>"
 ```
 
-Provisions 17 lists from `infra/sharepoint/lists/*.ps1` (License Costs is created separately by `ensure-license-costs-sync-schema.ps1` — 18 solution lists total). Idempotent — safe to re-run.
+Provisions 19 lists from `infra/sharepoint/lists/*.ps1` (incl. License Costs and Catalog Demand). Idempotent — safe to re-run.
 
 **Then seed:**
 
@@ -168,7 +178,7 @@ Provisions 17 lists from `infra/sharepoint/lists/*.ps1` (License Costs is create
 ./seed-config.ps1              -SiteUrl ... -AppId ... -CertificatePath ...   # KillSwitch=false
 ```
 
-**Verify:** open `/sites/ITSM` in browser → Site Contents → all 18 solution lists exist with rows in Priority Matrix (9), Approval Policies (6), JobTypes (10+), Config (1).
+**Verify:** open `/sites/ITSM` in browser → Site Contents → all 19 solution lists exist with rows in Priority Matrix (9), Approval Policies (6), JobTypes (10+), Config (1).
 
 ### Phase 4 — Triage Agent + Orchestrator (~45 min)
 
@@ -463,15 +473,19 @@ Re-fire the dispatcher with the same `idempotencyKey`:
 
 | Flow | id | Purpose |
 |---|---|---|
-| ITSM-Triage-Orchestrator | `00000000-0000-4000-8000-000000000030` | Tickets row → calls Triage Agent → records reply |
+| ITSM-Triage-Orchestrator | `00000000-0000-4000-8000-000000000030` | Tickets row → calls Triage Agent → records reply; supports the interactive clarification card on form tickets |
+| ITSM-RITM-Validation-Triage | (env flow) | Validates a RITM, resolves the target, runs the stop_and_ask clarification loop, fast-paths structured license `RequestPayloadJson`, and routes unfulfillable requests to the Service Desk hand-off queue + Catalog Demand |
 | ITSM-Identity-Executor | `00000000-0000-4000-8000-000000000043` | PJ Dispatched → Graph password reset |
 | ITSM-Dispatcher | `00000000-0000-4000-8000-000000000033` | HTTP POST → validates + patches PJ to Dispatched |
 | ITSM-Approval-Bridge | `00000000-0000-4000-8000-000000000001` | Approvals row state change → calls Dispatcher |
-| ITSM-PJ-Ticket-Resolver | `00000000-0000-4000-8000-000000000062` | PJ Succeeded (propose path, non-SCTASK) → resolves parent Ticket |
+| ITSM-PJ-Ticket-Resolver | `00000000-0000-4000-8000-000000000062` | PJ Succeeded (propose path, non-SCTASK) → resolves parent Ticket. On PJ failure → closes the Ticket (not Resolved), tells the requester it couldn't be completed, alerts IT |
+| ITSM-Handoff-Closure-Notify | (env flow) | SharePoint-triggered; notifies the requester in Teams once a hand-off RITM reaches a closed state (fires once) |
+
+This lists the load-bearing flows; the repo ships ~30 flow definitions under `flows/` (the executors, RITM/SCTASK orchestration, the clarifier, SLA, archival, major-incident, and helper flows).
 
 ### 8.2 SharePoint lists (`/sites/ITSM`)
 
-18 solution lists provisioned (17 via `provision-lists.ps1` + License Costs). Schema in `sharepoint-itsm-schema.xlsx` and `infra/sharepoint/lists/*.ps1`. Critical ones:
+19 solution lists provisioned via `provision-lists.ps1` (incl. License Costs and Catalog Demand). Schema in `sharepoint-itsm-schema.xlsx` and `infra/sharepoint/lists/*.ps1`. Critical ones:
 
 | List | Role |
 |---|---|
@@ -488,6 +502,7 @@ Re-fire the dispatcher with the same `idempotencyKey`:
 | Service Catalog | Request types |
 | Config | KillSwitch + global toggles |
 | Request Items | RITM rows for catalog requests |
+| Catalog Demand | Out-of-catalog demand log — requests the automation couldn't fulfil; triage `DemandStatus` to decide what to onboard |
 | Tickets-Archive | Closed > 12 months (archival pending) |
 | Categories-Routing | Auto-assignment rules |
 | Watchers | User subscriptions to tickets |
@@ -496,8 +511,16 @@ Re-fire the dispatcher with the same `idempotencyKey`:
 
 | Agent | schemaName | Purpose |
 |---|---|---|
-| Helpdesk Triage Agent | `cr1c2_helpdesktriage` (placeholder; replace with real) | Classifies tickets, attempts deflection, proposes actions |
+| Helpdesk Triage Agent | `cr1c2_helpdesktriage` (placeholder; replace with real) | Classifies tickets, attempts deflection, proposes actions, stops to ask for missing detail (clarification card), and hands off requests it can't automate |
 | Self-Service Resolver | (deferred) | Pure KB Q&A; build when KB has 30+ articles |
+
+### 8.4 ITSM Service Portal (SPFx)
+
+Full-screen SPFx web part on `/sites/ITSM`, built with Heft (see `docs/SPFX-DEPLOYMENT.md`). It surfaces the user-facing behaviour the flows rely on:
+
+- **Service desk** page — lists On-Hold hand-off RITMs; Mark fulfilled / Decline closes the RITM and resolves the ticket.
+- **Trackable identifiers** — `Ticket #N` on Home and My Tickets; `Ticket #N · RITM #N` on the Service Desk queue, Approvals, and detail. The hand-off card shows Request / For / Why, not raw JSON.
+- **License intake** — the Submit form's owned-license dropdown plus *Other (not listed)* writes a structured `RequestPayloadJson` that `RITM-Validation-Triage` reads on a fast path.
 
 ---
 
@@ -518,7 +541,7 @@ What's deliberately deferred. Each is independently addable per the migration pa
 11. **CMDB seed** — Intune export + business services manual entries
 12. **KB seed** — 30-50 articles minimum before deflection rate is meaningful
 13. **SharePoint groups + permission split** — IT-ITSM-Admins, IT-Approvers-Backup, Change-Advisory-Board, HR-Confirmation-Approvers, ITSM-Agent-Users
-14. **Notification cards** — approval, SLA breach, resolution, and major-incident notifications are sent by the flows via the Teams connector
+14. **Notification cards** — approval, SLA breach, resolution, and major-incident notifications are sent by the flows via the Teams connector. Requester outcome messages are live and plain-English ("your request is done" / "couldn't be completed") with the ticket short description, a labelled service-desk note, a `Ticket #N · RITM #N` reference, and a link
 15. **SLA timer flow** (Week 6) — 75% warning + 100% breach
 16. **Archival flow** (Week 6) — Closed > 12 months → Tickets-Archive
 17. **Major Incident detector** (Week 6) — webhook cluster detection

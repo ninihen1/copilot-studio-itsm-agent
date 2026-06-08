@@ -13,7 +13,7 @@ Step-by-step manual setup for the M365 ITSM build, in dependency order. Some ste
 | 0 Prerequisites | ✅ done | contoso tenant, `/sites/ITSM` provisioned, PnP/Az/Graph modules installed |
 | 1 Entra apps | ⏳ partial | **SP-IT-Identity** (`<app-id>`) registered + admin-consented + **Password Administrator** directory role assigned. Other 5 SPs deferred to Week 5+ when their executors are built. SP-IT-Provisioning (cert auth, used by PnP scripts) `<app-id>` already in place. |
 | 2 Azure infra | ⏳ minimal | **Key Vault `kv-itsm-demo`** (RG `rg-itsm-pilot`, MPN sub `a45a0c43-...`, australiaeast). Storage Account / Service Bus / App Insights / jwt-sign Function NOT deployed — see "Pilot deviations" below. |
-| 3 SharePoint provisioning | ✅ done | All 18 solution lists provisioned (17 via provision-lists.ps1 + License Costs) + seed scripts run (Priority Matrix, Approval Policies, JobTypes, Config-KillSwitch) |
+| 3 SharePoint provisioning | ✅ done | All 19 solution lists provisioned via provision-lists.ps1 (incl. License Costs and Catalog Demand) + seed scripts run (Priority Matrix, Approval Policies, JobTypes, Config-KillSwitch) |
 | 4 SharePoint groups | ❌ pending | Catherine is sole admin today; pilot uses single approver. Groups still need to be created + populated |
 | 5 Power Automate flows | ⏳ partial | **Deployed:** `ITSM-Identity-Executor` (`c06e63bf-...`), `ITSM-Dispatcher` (`97a4c109-...`), `ITSM-Approval-Bridge` (`05b00ed2-...`), `ITSM-Triage-Orchestrator` (`8214cc66-...`). **Pending:** other executors (Week 5), archival/SLA/MI flows (Week 6) |
 | 6 Copilot Studio agents | ✅ Triage Agent live | Self-Service Resolver deferred until KB matures |
@@ -33,7 +33,7 @@ To prove the loop end-to-end without standing up four Azure resources Catherine 
 | **Six dedicated executor SPs** (one per Graph scope family) | Pilot has only **SP-IT-Identity** for `identity.*` JobTypes | Each new executor adds ~30 min: copy the Identity executor pattern + new SP + matching directory role. |
 | **Cert in HSM-backed Key Vault** | Pilot uses 1-year client secret in standard KV | Cert rotation runbook is a separate work-item; secret in KV beats secret-in-flow-body. |
 | **App Insights primary audit + structured custom events** | PA run history (28-day cap) + SP audit row in `Provisioning Jobs` | Sufficient for first-quarter spot-checks. Production must add App Insights before SOC 2 timeline starts. |
-| **DLQ + scheduled re-driver flow** | Failed runs sit in `JobStatus=Failed` with `ErrorJson`; manual re-drive only | At pilot volumes, manual re-drive is fine. Production needs the `dlq-monitor` per `flows/dispatcher/contract.md` §5.4. |
+| **DLQ + scheduled re-driver flow** | Failed runs sit in `JobStatus=Failed` with `ErrorJson`; manual re-drive only. A failed job also closes the parent ticket (not resolved), tells the requester it couldn't be completed, and alerts the service desk. | At pilot volumes, manual re-drive is fine. Production needs the `dlq-monitor` per `flows/dispatcher/contract.md` §5.4. |
 | **Approval flow with policy stages (Manager / IT-Owner / CAB)** | `ITSM-Approval-Bridge` listens to `Approvals` SP list state changes — single approver flips the row to `Approved` | Pilot has no multi-stage policy; ApprovalStages list is provisioned but empty. Production needs the approval-policy engine per `flows/approval/spec.md`. |
 
 ### Critical gotchas discovered during build (read before testing)
@@ -201,7 +201,7 @@ cd "c:/Users/ninih/GitHub/Copilot Studio/infra/sharepoint"
     -Verbose
 ```
 
-Output should report 17 lists either CREATED or NO-CHANGE (re-runs safe). License Costs is provisioned separately by `ensure-license-costs-sync-schema.ps1`.
+Output should report 19 lists either CREATED or NO-CHANGE (re-runs safe). License Costs (`17-license-costs.ps1`) and Catalog Demand (`18-catalog-demand.ps1`) are part of the same run.
 
 Then Sites.Selected grant for SP-IT-SharePoint:
 
@@ -252,6 +252,9 @@ In `/sites/ITSM`, Site Settings -> People and Groups, create:
 | `Change-Advisory-Board` | Senior IT staff and architects (3-5 people) |
 | `HR-Confirmation-Approvers` | HR partners who can confirm new hires |
 | `ITSM-Agent-Users` | All employees (or a pilot subset). This group has Read on Tickets / KB / CMDB / Categories / Service Catalog. |
+| `ITSM Service Desk` *(Microsoft 365 group, not a site group)* | Service desk fulfillers. The hand-off fulfilment queue — the target the out-of-catalog routing assigns On-Hold RITMs to. Members work them from the portal's Service desk page. |
+
+Create the `ITSM Service Desk` group as a Microsoft 365 group (it owns the hand-off queue and is targeted by group ID), separately from the SharePoint site groups above.
 
 Manually adjust permissions on the lists:
 - Tickets: ITSM-Agent-Users Read; IT-ITSM-Admins Full Control
@@ -260,6 +263,7 @@ Manually adjust permissions on the lists:
 - Categories: ITSM-Agent-Users Read; IT-ITSM-Admins Edit
 - Service Catalog: ITSM-Agent-Users Read; IT-ITSM-Admins Edit
 - Provisioning Jobs: IT-ITSM-Admins Edit only (not visible to general users)
+- Catalog Demand: IT-ITSM-Admins + ITSM Service Desk Edit; not visible to general users
 - ApprovalStages: IT-ITSM-Admins Read only
 - JobTypes: ITSM-Agent-Users Read; IT-ITSM-Admins Edit
 - Config: IT-ITSM-Admins Edit only — break inheritance, very tight perms
@@ -313,6 +317,9 @@ Pilot order (matches the 6-week plan):
 - `flows/ritm-approval/definition.json` — holds RITMs in Pending Approval, sends manager approval, and creates SCTASKs only after approval.
 - `flows/sctask-pj-bridge/definition.json` — creates a Provisioning Job for each SCTASK with a non-empty `JobType`.
 - `flows/sctask-orchestrator/definition.json` — closes RITMs when all SCTASKs close, then resolves the parent Ticket when all RITMs close.
+- `flows/ritm-validation-triage/definition.json` — validates a new RITM, resolves the target, runs the interactive clarification loop (stop_and_ask → Teams approval card → re-validate on the answer, multi-round, or Cancel), reads structured license `RequestPayloadJson` on a fast path, and routes unfulfillable requests to the Service Desk hand-off queue + Catalog Demand log.
+- `flows/handoff-closure-notify/definition.json` — SharePoint-triggered; notifies the requester in Teams once when a hand-off RITM reaches a closed state (fires once).
+- Honest failure: when a provisioning job fails, the parent Ticket is closed (not resolved), the requester is told it couldn't be completed, and IT is alerted ("fulfilment failed — action needed").
 - `flows/executors/groups/definition.json` — handles `groups.*` jobs after SP-IT-Groups is provisioned.
 - `flows/executors/licensing/definition.json` — handles `licensing.*` jobs after SP-IT-Licensing is provisioned.
 - `flows/executors/exchange/definition.json` — handles Exchange mailbox permission jobs through the EXO Function wrapper.
@@ -352,6 +359,21 @@ Per flow:
 - Connection references → bind to the service-account connections from 5.1
 
 Power Automate import wizard will prompt for connection bindings. Don't sign in as Catherine — use the dedicated service account.
+
+---
+
+## Phase 5b — ITSM Service Portal (SPFx, ~30 min)
+
+The front end is a full-screen SPFx web part built with Heft — not part of the Power Automate import above. Full setup and required secrets are in [`docs/SPFX-DEPLOYMENT.md`](docs/SPFX-DEPLOYMENT.md). In short:
+
+1. Build the package: `npm run bundle` then `npm run package` → `sharepoint/solution/itsm-frontend.sppkg`.
+2. Deploy to the site-collection app catalog on `/sites/ITSM`: `Add-PnPApp -Path <sppkg> -Scope Site -Overwrite -Publish` (or the certificate-authenticated GitHub Actions pipeline).
+
+The portal carries the user-facing behaviour the flows depend on:
+
+- **Service desk** page — lists On-Hold hand-off RITMs; Mark fulfilled / Decline closes the RITM and resolves the ticket.
+- **Trackable identifiers** — `Ticket #N` on Home and My Tickets; `Ticket #N · RITM #N` on the Service Desk queue, Approvals, and detail. The hand-off card shows Request / For / Why, not raw JSON.
+- **License intake** — the Submit form's owned-license dropdown plus *Other (not listed)* writes a structured `RequestPayloadJson` the RITM validation flow reads on a fast path.
 
 ---
 
@@ -415,6 +437,24 @@ End-to-end test 2: Reset Password proposal -> approval -> dispatch -> execute
 8. Verify Graph API actually reset the password (try signing in with the temp password)
 9. Verify all events in App Insights trace
 
+End-to-end test 3: Interactive clarification
+1. Submit a request the agent can't resolve without more detail (e.g. "add me to the marketing group" with three matching groups).
+2. Verify the requester gets a Teams approval card with the agent's questions.
+3. Answer in the card; verify validation re-runs automatically and the request advances (repeat if it asks again).
+4. Verify Cancel ends the request cleanly. Test both the catalog/RITM path (RITM-Validation-Triage) and a form ticket (Triage-Orchestrator).
+
+End-to-end test 4: Honest failure
+1. Force a provisioning job to fail (e.g. assign a license with no seats left).
+2. Verify the parent Ticket is set to Closed (NOT Resolved).
+3. Verify the requester is told it couldn't be completed.
+4. Verify IT gets a "fulfilment failed — action needed" alert.
+
+End-to-end test 5: Out-of-catalog hand-off
+1. Submit a request with no catalog match.
+2. Verify it routes to the ITSM Service Desk queue (On-Hold RITM), logs a Catalog Demand row, and the requester is told it was received.
+3. On the portal Service desk page, Mark fulfilled (or Decline) and verify the RITM closes and the ticket resolves.
+4. Verify ITSM-Handoff-Closure-Notify fires exactly once on close.
+
 Final validation checklist:
 
 Provisioning checks:
@@ -435,7 +475,9 @@ Flow checks:
 - RITM Generator creates a RITM for a Request with a matching Subcategory.
 - RITM Approval holds SCTASK creation until approval.
 - SCTASK -> PJ Bridge creates a Provisioning Job for tasks with `JobType`.
-- SCTASK Orchestrator closes SCTASK parents in order: task -> RITM -> Ticket.
+- SCTASK Orchestrator closes SCTASK parents in order on success: task -> RITM -> Ticket resolved. On a failed job the Ticket is Closed (not Resolved), the requester is told, and IT is alerted.
+- RITM-Validation-Triage resolves the target, fast-paths structured license payloads, and raises a clarification card on stop_and_ask.
+- Out-of-catalog requests route to the ITSM Service Desk queue and log a Catalog Demand row; ITSM-Handoff-Closure-Notify fires exactly once when a hand-off RITM closes.
 
 Negative checks:
 
