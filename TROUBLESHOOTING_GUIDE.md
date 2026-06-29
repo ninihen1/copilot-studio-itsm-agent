@@ -185,8 +185,8 @@ Cause:
 
 Fix:
 
-- For a truly non-solution flow, use Flow Studio MCP `add_live_flow_to_solution`.
-- If Flow Studio MCP returns `AlreadyInSolution`, add the existing Dataverse workflow component to the named solution using `AddSolutionComponent`.
+- For a truly non-solution flow, use FlowStudio MCP `add_live_flow_to_solution`.
+- If FlowStudio MCP returns `AlreadyInSolution`, add the existing Dataverse workflow component to the named solution using `AddSolutionComponent`.
 - Cloud flows are solution component type `29`.
 
 Example `AddSolutionComponent` payload:

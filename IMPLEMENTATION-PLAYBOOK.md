@@ -404,8 +404,8 @@ Root cause:
 Fix:
 
 - Add the existing workflow component to a named unmanaged solution such as `FS Demo`, or the same named solution used to manage the Copilot Studio agent.
-- If the flow is not solution-aware at all, use Flow Studio MCP `add_live_flow_to_solution`.
-- If Flow Studio MCP returns `AlreadyInSolution`, the flow is probably already only in Default/Active solution containers. Add the existing Dataverse workflow component to the named solution with Dataverse `AddSolutionComponent`.
+- If the flow is not solution-aware at all, use FlowStudio MCP `add_live_flow_to_solution`.
+- If FlowStudio MCP returns `AlreadyInSolution`, the flow is probably already only in Default/Active solution containers. Add the existing Dataverse workflow component to the named solution with Dataverse `AddSolutionComponent`.
 - Cloud flows are Dataverse solution component type `29`.
 
 Verification:

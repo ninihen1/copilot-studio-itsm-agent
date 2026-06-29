@@ -268,5 +268,5 @@
     }
   },
   "outputs": {},
-  "description": "Deterministic Knowledge Base lookup for Copilot Studio. Queries published SharePoint KB rows, scores matches against ArticleNumber/Title/Keywords/Summary/Body, and returns top articles for grounding. - Updated via Flow Studio MCP #flowstudio-mcp"
+  "description": "Deterministic Knowledge Base lookup for Copilot Studio. Queries published SharePoint KB rows, scores matches against ArticleNumber/Title/Keywords/Summary/Body, and returns top articles for grounding. - Updated via FlowStudio MCP #flowstudio-mcp"
 }

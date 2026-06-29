@@ -34,7 +34,7 @@ A small-to-medium business that:
 You don't build all of this by hand. The whole system is designed to be **co-worked with an AI agent**:
 
 - **Copilot Studio (CP)** — you build the help-desk triage agent here. The AI does the topic and knowledge wiring; you review.
-- **Flow Studio MCP** ([mcp.flowstudio.app](https://mcp.flowstudio.app)) — an MCP server that lets your AI agent **build, read, and debug the Power Automate flows directly**, reading action-level run outputs to find and fix problems instead of clicking through the portal.
+- **FlowStudio MCP** ([mcp.flowstudio.app](https://mcp.flowstudio.app)) — an MCP server that lets your AI agent **build, read, and debug the Power Automate flows directly**, reading action-level run outputs to find and fix problems instead of clicking through the portal.
 - **Coding agent** — this can be Copilot Cowork, GitHub Copilot, Claude Code, or a Codex agent. In my build, I used both Copilot Cowork and the Claude Code agent.
 
 The human's job is to **shepherd the agent** — describe the intent, review what it produces, approve the changes. One person, paired with an AI coworker, can stand up and maintain what would normally take a team. You don't even have to know how to do the work yourself: the person who ran this build had never deployed an SPFx package by hand and didn't need to learn — the agent did it. The point is that the labour shifts from "build and operate a ticketing platform" to "supervise an agent that does."
@@ -105,18 +105,18 @@ The cool part: **this SPFx portal was built and shipped by AI agents, not a fron
 
 This is how the repo was actually built: one person directing two AI coworkers, which created the whole stack — **the SharePoint lists, all the Power Automate flows, and the SPFx portal** — with almost nothing hand-built. Two kinds of agent split the work:
 
-- **Copilot Cowork** — equipped with Flow Studio MCP, it authors the Power Automate flows and helper flows and reaches the GitHub repo and workflow to deploy the SPFx package to SharePoint. With the right helper flows it can also create SharePoint lists, pages, and list items. *(The **Flow Studio MCP plugin for Copilot Cowork** is now in [Microsoft's marketplace](https://marketplace.microsoft.com/en-us/product/WA200011013). The Flow Studio MCP **server** also works with Claude, GitHub Copilot, and any MCP-compatible agent.)*
-- **An IDE agent in VS Code** (in this build, Claude Code — the cloud agent) — does the one thing Cowork genuinely can't: author the Copilot Studio agent, via the Microsoft Copilot Studio extension. It also provisioned most of the SharePoint lists (PnP PowerShell, as a scoped service principal) and wrote a share of the Power Automate flows — but neither of those is exclusive to it: Cowork created some lists through helper flows, and both agents author flows through Flow Studio MCP.
+- **Copilot Cowork** — equipped with FlowStudio MCP, it authors the Power Automate flows and helper flows and reaches the GitHub repo and workflow to deploy the SPFx package to SharePoint. With the right helper flows it can also create SharePoint lists, pages, and list items. *(The **FlowStudio MCP plugin for Copilot Cowork** is now in [Microsoft's marketplace](https://marketplace.microsoft.com/en-us/product/WA200011013). The FlowStudio MCP **server** also works with Claude, GitHub Copilot, and any MCP-compatible agent.)*
+- **An IDE agent in VS Code** (in this build, Claude Code — the cloud agent) — does the one thing Cowork genuinely can't: author the Copilot Studio agent, via the Microsoft Copilot Studio extension. It also provisioned most of the SharePoint lists (PnP PowerShell, as a scoped service principal) and wrote a share of the Power Automate flows — but neither of those is exclusive to it: Cowork created some lists through helper flows, and both agents author flows through FlowStudio MCP.
 
 The human directs and reviews; both agents were used together. Each step below notes which agent does it.
 
 1. **Provision the SharePoint lists.** *(IDE agent, or Cowork via helper flows.)* Run the PnP PowerShell scripts in [`infra/sharepoint/`](infra/sharepoint/) to create the 19 solution lists (Tickets, Service Catalog, Approval Policies, Provisioning Jobs, License Costs, Catalog Demand, etc.) and seed the taxonomy. In this build the IDE agent ran them, authenticating as a scoped service principal (`SP-IT-Provisioning`, `Sites.FullControl.All`, certificate in Key Vault) — no standing admin account. **Copilot Cowork can stand up the exact same lists a different way** — a helper flow that creates each list and its columns through the SharePoint connector — so this step is not IDE-agent-only. Only the mechanism differs (a flow's connection vs. PnP PowerShell as a service principal); either agent produces the same schema.
 2. **Author the help-desk agent in Copilot Studio.** *(IDE agent — not Cowork.)* This step needs an IDE agent with the **Microsoft Copilot Studio extension**; Copilot Cowork can't author Copilot Studio agents. Use the topic and knowledge definitions in [`agents/triage/`](agents/triage/) as the blueprint.
-3. **Build the flows with Flow Studio.** *(Copilot Cowork and Claude Code — both wrote flows.)* Through the Flow Studio MCP server, the agents create the flows in [`flows/`](flows/) — orchestrator, approval, dispatcher, and the six executors — some authored by Copilot Cowork, others by the Claude Code agent; when a run fails, the agent reads the action outputs and fixes the definition. **Every flow was agent-written; none of the flow JSON was hand-authored** — and it's fast: ~20 production flows ship in this repo, and 40-plus counting helper flows and earlier iterations retired along the way.
+3. **Build the flows with FlowStudio.** *(Copilot Cowork and Claude Code — both wrote flows.)* Through the FlowStudio MCP server, the agents create the flows in [`flows/`](flows/) — orchestrator, approval, dispatcher, and the six executors — some authored by Copilot Cowork, others by the Claude Code agent; when a run fails, the agent reads the action outputs and fixes the definition. **Every flow was agent-written; none of the flow JSON was hand-authored** — and it's fast: ~20 production flows ship in this repo, and 40-plus counting helper flows and earlier iterations retired along the way.
 
-That "when a run fails, read the action outputs and fix it" loop is exactly what Flow Studio MCP enables — the agent reads a live flow's run detail, confirms the bug, and patches the definition itself:
+That "when a run fails, read the action outputs and fix it" loop is exactly what FlowStudio MCP enables — the agent reads a live flow's run detail, confirms the bug, and patches the definition itself:
 
-![An AI agent self-healing a flow through Flow Studio MCP — getting the live flow, confirming the exact bug, and deploying the fix](docs/screenshots/agent-self-heals-flow.png)
+![An AI agent self-healing a flow through FlowStudio MCP — getting the live flow, confirming the exact bug, and deploying the fix](docs/screenshots/agent-self-heals-flow.png)
 
 4. **Set up the scoped service principals.** One Entra app per executor (identity, groups, licensing, exchange, sharepoint, teams), each with a single Graph permission family. Secrets live in Azure Key Vault.
 5. **Build and deploy the ITSM Service Portal (SPFx).** *(IDE agent builds the app and sets up the pipeline; Cowork patches the code and ships through it.)* The IDE agent scaffolds the SPFx React app in [`src/`](src/) and stands up the **one-time** deployment pipeline — a deployment Entra app registration, a certificate, the GitHub environment secrets, the site-collection app catalog on `/sites/ITSM`, and the `spfx-build-deploy.yml` GitHub Actions workflow. After that, **Copilot Cowork patches the portal's own code** — it changes a module or a line in the React/TypeScript source and pushes, and the existing pipeline builds it; the app-catalog deploy runs as a `workflow_dispatch` that Cowork or a person triggers. So Cowork makes real code changes and ships them through the pipeline the IDE agent built — it reuses that pipeline, it just didn't set it up. Full setup and required secrets are in [`docs/SPFX-DEPLOYMENT.md`](docs/SPFX-DEPLOYMENT.md).
@@ -144,7 +144,7 @@ The schedule that drives it, and a history of unattended runs:
 
 The standing instructions each cycle follows, the per-run plan ("read tracker, advance one item"), and the tools Cowork is allowed to use unattended:
 
-![Cowork's autopilot instructions and allow-listed tools — pick one unblocked tracker item, do the real work via Flow Studio MCP, the SharePoint proxy flow, and Graph, then update the board; 22 always-allowed actions including Trigger and Update live flow and Call Graph API](docs/screenshots/cowork-autopilot-instructions-and-tools.png)
+![Cowork's autopilot instructions and allow-listed tools — pick one unblocked tracker item, do the real work via FlowStudio MCP, the SharePoint proxy flow, and Graph, then update the board; 22 always-allowed actions including Trigger and Update live flow and Call Graph API](docs/screenshots/cowork-autopilot-instructions-and-tools.png)
 
 Cowork also documented what it built. The system grew to **20-plus Power Automate flows**, so Cowork created a **flow inventory** — a SharePoint list with each flow's key details — and then generated a dedicated **SharePoint page for every flow**, one at a time. The whole automation estate ends up self-documented, by the same agent that built it.
 
@@ -204,9 +204,9 @@ docs + *.md  Design memo, deployment runbook, admin & user guides, troubleshooti
 
 ## 🚀 Try it, or let us help
 
-It's open source and genuinely agent-buildable: point your AI coworker at this repo and tell it to build the system in your tenant — it reads everything here and stands it up, building and debugging the flows through [Flow Studio MCP](https://mcp.flowstudio.app) (works with Copilot, Claude, and any MCP-compatible agent), and comes back to you only for the tenant, admin consent, and approvals. You don't grind through the docs; your agent reads them.
+It's open source and genuinely agent-buildable: point your AI coworker at this repo and tell it to build the system in your tenant — it reads everything here and stands it up, building and debugging the flows through [FlowStudio MCP](https://mcp.flowstudio.app) (works with Copilot, Claude, and any MCP-compatible agent), and comes back to you only for the tenant, admin consent, and approvals. You don't grind through the docs; your agent reads them.
 
-If that still feels like a lot, **[Flow Studio](https://flowstudio.app/services/) also does it as a service** — we build and run Power Automate and Copilot Studio automations like this one for teams who'd rather have it set up for them.
+If that still feels like a lot, **[FlowStudio](https://flowstudio.app/services/) also does it as a service** — we build and run Power Automate and Copilot Studio automations like this one for teams who'd rather have it set up for them.
 
 ## 📝 A note on the code
 
@@ -220,4 +220,4 @@ Licensed under the [MIT License](LICENSE). Bundled dependencies retain their own
 
 ---
 
-*Architecture and design by Catherine Han. Built AI-assisted with **Copilot Cowork** as the primary coworker — the Power Automate flows were authored and debugged through the [Flow Studio MCP server](https://mcp.flowstudio.app).*
+*Architecture and design by Catherine Han. Built AI-assisted with **Copilot Cowork** as the primary coworker — the Power Automate flows were authored and debugged through the [FlowStudio MCP server](https://mcp.flowstudio.app).*
